@@ -1,0 +1,35 @@
+########################################################################
+# Modified: 2021-01-20
+# Author: Milos Atz
+# Comment: gitignore for DASSH
+########################################################################
+
+# None of the old code or my other maintenance directories
+old/
+misc/
+dist/
+build/
+dassh.egg-info/
+code_length.txt
+animation.py
+misc_benchmarking_crap.py
+timing.py
+tmp_plot.py
+
+# None of the test results
+tests/test_results/
+
+# Any pycache directories in DASSH source and tests
+__pycache__/
+dassh/__pycache__/
+dassh/_se2anl/__pycache__/
+dassh/correlations/__pycache__/
+tests/__pycache__/
+tests
+
+# Any pycache files
+*.pyc
+
+# Any unix filesystem objects
+*._
+*.DS_Store
