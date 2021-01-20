@@ -31,5 +31,5 @@ tests
 *.pyc
 
 # Any unix filesystem objects
-*._
-*.DS_Store
+._*
+.DS_Store*
