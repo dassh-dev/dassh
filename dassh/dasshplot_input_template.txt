@@ -1,0 +1,23 @@
+[Setup]
+    [[Units]]
+        temperature = string(default='kelvin')
+        length = string(default='m')
+[Plot]
+    [[__many__]]
+        type = option(SubchannelPlot, PinPlot, CoreSubchannelPlot, CorePinPlot, CoreHexPlot)
+        z = force_list(default=None)
+        cmap = string(default=jet)
+        cbar_lbnd = float(default=None)
+        cbar_mpnt = float(default=None)
+        cbar_ubnd = float(default=None)
+        cbar_label = string(default=None)
+        dpi = float(default=200.0)
+        units = string(default=None)
+        value = force_list(default=None)
+        rings = integer(min=1, default=None)
+        ignore_unrodded = boolean(default=False)
+        assembly_id = force_list(default=None)
+        pins = boolean(default=False)
+        pin_alpha = float(min=0.0, max=1.0, default=1.0)
+        data_label = boolean(default=True)
+        omit_nonvalue_rings = boolean(default=False)

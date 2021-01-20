@@ -16,6 +16,9 @@ misc_benchmarking_crap.py
 timing.py
 tmp_plot.py
 
+# No tests (for now; need to clean)
+tests/
+
 # None of the test results
 tests/test_results/
 
