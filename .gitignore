@@ -25,7 +25,6 @@ dassh/__pycache__/
 dassh/_se2anl/__pycache__/
 dassh/correlations/__pycache__/
 tests/__pycache__/
-tests
 
 # Any pycache files
 *.pyc
