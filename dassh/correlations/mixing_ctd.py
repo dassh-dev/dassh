@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-06-12
+date: 2021-03-09
 author: matz
 Cheng-Todreas Detailed mixing correlations: eddy diffusivity and
 swirl velocity (1986)
@@ -23,6 +23,7 @@ swirl velocity (1986)
 import numpy as np
 from . import friction_ctd as ctd_ff
 from . import flowsplit_ctd as ctd_fs
+from . import corr_utils
 
 
 applicability = {}
@@ -128,13 +129,20 @@ def calculate_laminar_turbulent_params(asm_obj):
     swirl = {}
     cm, cs = calculate_mixing_param_constants(asm_obj)
     # Calculate params in laminar and turbulent regimes
+    AS = corr_utils.calculate_bare_rod_sc_area('ctd',
+                                               asm_obj.pin_pitch,
+                                               asm_obj.pin_diameter,
+                                               asm_obj.wire_diameter,
+                                               asm_obj.edge_pitch)
+    AR = corr_utils.calculate_wproj('ctd',
+                                    asm_obj.pin_pitch,
+                                    asm_obj.pin_diameter,
+                                    asm_obj.wire_diameter)
     for r in ['laminar', 'turbulent']:
         eddy[r] = (cm[r] * np.tan(asm_obj.params['theta'])
-                   * np.sqrt(asm_obj.params['wproj'][0]
-                             / asm_obj.bare_params['area'][0]))
+                   * np.sqrt(AR[0] / AS[0]))
         swirl[r] = (cs[r] * np.tan(asm_obj.params['theta'])
-                    * np.sqrt(asm_obj.params['wproj'][1]
-                              / asm_obj.bare_params['area'][1]))
+                    * np.sqrt(AR[1] / AS[1]))
     return eddy, swirl
 
 

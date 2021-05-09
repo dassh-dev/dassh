@@ -1,7 +1,7 @@
 [Setup]
     [[Units]]
-        temperature = string(default='kelvin')
-        length = string(default='m')
+        temperature = string(default=None)
+        length = string(default=None)
 [Plot]
     [[__many__]]
         type = option(SubchannelPlot, PinPlot, CoreSubchannelPlot, CorePinPlot, CoreHexPlot)

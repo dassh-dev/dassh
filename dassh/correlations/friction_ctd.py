@@ -14,12 +14,13 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-04-22
+date: 2021-03-09
 author: matz
 Cheng-Todreas Detailed original correlations (1986)
 """
 ########################################################################
 import numpy as np
+from . import corr_utils
 
 
 # Cheng-Todreas Reynolds number exponent
@@ -175,28 +176,31 @@ def _calc_sc_ff_const(asm, wd, ws):
     if asm.wire_diameter == 0.0:
         Cf = Cfb
     else:
+        bwp = corr_utils.calculate_bare_rod_wp(
+            asm.pin_pitch, asm.pin_diameter, asm.edge_pitch)
+        wproj = corr_utils.calculate_wproj(
+            'ctd', asm.pin_pitch, asm.pin_diameter, asm.wire_diameter)
+        b_area = corr_utils.calculate_bare_rod_sc_area(
+            'ctd', asm.pin_pitch, asm.pin_diameter, asm.wire_diameter,
+            asm.edge_pitch)
         for r in ['laminar', 'turbulent']:
             Cf[r] = np.zeros(3)
             # Interior
-            Cf[r][0] = (Cfb[r][0] * (asm.bare_params['wp'][0]
-                                     / asm.params['wp'][0])
-                        + (wd[r] * (3 * asm.params['wproj'][0]
-                                    / asm.bare_params['area'][0])
+            Cf[r][0] = (Cfb[r][0] * (bwp[0] / asm.params['wp'][0])
+                        + (wd[r] * (3 * wproj[0] / b_area[0])
                            * (asm.params['de'][0] / asm.wire_pitch)
                            * (asm.params['de'][0]
                               / asm.wire_diameter)**_m[r]))
             # Edge
             _exp = (3.0 - _m[r]) / 2
             Cf[r][1] = Cfb[r][1]
-            Cf[r][1] *= (1 + (ws[r] * (asm.params['wproj'][1]
-                                       / asm.bare_params['area'][1])
+            Cf[r][1] *= (1 + (ws[r] * (wproj[1] / b_area[1])
                               * np.tan(asm.params['theta'])**2))**_exp
             # Corner
 
             Cf[r][2] = Cfb[r][2]
             Cf[r][2] *= (1 + (
-                ws[r] * (asm.params['wproj'][2]
-                         / asm.bare_params['area'][2])
+                ws[r] * (wproj[2] / b_area[2])
                 * np.tan(asm.params['theta'])**2))**_exp
     return Cf
 

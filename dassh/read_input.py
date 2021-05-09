@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-12-22
+date: 2021-05-09
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -29,10 +29,10 @@ from configobj import ConfigObj, flatten_errors
 from validate import Validator
 import matplotlib as mpl
 import matplotlib.pyplot as plt
-import py4c  # 4C file parsers in Python from Adam
 import dassh
 from dassh.logged_class import LoggedClass
 from dassh import utils
+from dassh import py4c
 
 
 _ROOT = os.path.dirname(os.path.abspath(__file__))
@@ -243,6 +243,8 @@ class DASSHPlot_Input(LoggedClass):
         core_len = self.data['Core']['length']
         n_asm = len(self.data['Assignment']['ByPosition'])
         len_unit = self.data['Setup']['Units']['length']
+        if len_unit is None:
+            len_unit = 'm'
         self._plt_check_params = {'core_len': core_len,
                                   'n_asm': n_asm,
                                   'len_unit': len_unit}
@@ -253,40 +255,6 @@ class DASSHPlot_Input(LoggedClass):
             f = f"check_{all_plot_dict[p]['type']}_input"
             all_plot_dict[p] = getattr(self, f)(all_plot_dict[p], p)
         return all_plot_dict
-
-    # def check_dasshplot_input(cls, plotdict, core_len, n_asm, unit=None):
-    #     """Check all plot inputs for correctness and agreement"""
-    #     # Remove empty fields
-    #     plotdict = cls.check_plot_requested(plotdict)
-    #     if plotdict is None:
-    #         return
-    #
-    #     # Now that we've cleared out the unused plots, we can check
-    #     # the user specifications
-    #     # Check core hex plot values, if requested
-    #     cls.check_plot_core_hex_value(plotdict)
-    #
-    #     # Check axial points at which plots are requested
-    #     plotdict = cls.check_plot_zpts(plotdict, core_len, unit)
-    #
-    #     # Check colorbar bounds
-    #     cls.check_plot_cbar_bounds(plotdict)
-    #
-    #     # Check units, if specified
-    #     cls.check_plot_units(plotdict)
-    #
-    #     # For assembly_subchannel plot, make sure the assembly
-    #     # specification is acceptable
-    #     for k in ['assembly_subchannel', 'assembly_pin']:
-    #         if k in plotdict.keys():
-    #             plotdict[k] = cls.check_plot_asm_id(plotdict[k], n_asm)
-    #
-    #     for k in ['assembly_pin', 'core_pin']:
-    #         if k in plotdict.keys():
-    #             tmp = cls.check_pinplot_values(plotdict[k])
-    #             if tmp is None:  # If no acceptable values, remove dict
-    #                 del plotdict[k]
-    #     return plotdict
 
     def check_CorePinPlot_input(self, cpp_dict, title):
         """Check that CorePinPlot input has appropriate values"""
@@ -492,7 +460,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
     Notes
     -----
     DASSH input files contain 4 main sections and 2 optional sections:
-    1. File paths to neutronics files: [Neutronics]
+    1. File paths to ARC files: [ARC]
     2. Core parameters: [Core]
     3. Assembly details: [Assembly]
     4. Assembly assignments: [Assignment]
@@ -511,7 +479,8 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         LoggedClass.__init__(self, 4, 'dassh.read_input.DASSH_Input')
         DASSH_Assignment.__init__(self)
         self.path = os.path.split(infile)[0]
-        self.timepoints = self.get_timepoints(infile)
+        # self.timepoints = self.get_timepoints(infile)
+        # self.timepoints = 1
         self.tmp_path = self.get_template()  # path to input template
 
         # Check input file text that all required sections are present
@@ -534,8 +503,13 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         # Now that self.data is complete, run consistency
         # checks on inputs in each section
 
-        # Neutronics
+        # Power input - figure out what section it's coming from and
+        # make sure it exists
+        self._cccc_power, self._user_power = self.determine_power_input()
+        if not self._cccc_power:
+            empty4c = True
         self.check_4c_input()
+        self.check_user_power()
         # Assembly
         self.check_unrodded_regions()
         self.check_pin()
@@ -546,6 +520,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         # Assignment
         self.check_assignment_assembly_agreement()
         self.check_assignment_boundary_conditions()
+        self.check_assignment_against_geodst(empty4c)
         # Core
         self.check_core_specifications()
         # Setup (optional)
@@ -562,13 +537,15 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         # ConfigObj template
         DASSHPlot_Input.__init__(self, str_infile)
 
-        # Coerce non-list input to list
-        for k in self.data['Neutronics']:
-            if not isinstance(self.data['Neutronics'][k], list):
-                self.data['Neutronics'][k] = \
-                    [self.data['Neutronics'][k]] * self.timepoints
+        # Coerce non-list input to list with the proper number of tpts
+        self.timepoints = self.get_timepoints(infile)
+        for k in ['ARC', 'Power']:
+            for kk in self.data[k]:
+                if not isinstance(self.data[k][kk], list):
+                    self.data[k][kk] = \
+                        [self.data[k][kk]] * self.timepoints
 
-        # Import and run checks dimensionality of neutronics files
+        # Import and run checks dimensionality of 4C files
         # for tpt in range(0, self.timepoints):
         #    geodst, labels = self.read_4c(tpt)
         #    self.check_4c_agreement(self.data['GEODST'])
@@ -578,7 +555,8 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
 
         # Clean up any user-specified inputs against GEODST specs
         if not empty4c:
-            self.axial_region_cleanup()
+            self.check_geodst()
+            # self.axial_region_cleanup()
 
     def get_input(self, infile):
         """Read input into dictionary using configobj.
@@ -615,8 +593,33 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         self.data = inp
 
     def get_timepoints(self, infile):
-        """Determine whether input contains multiple time points."""
         txt = open(infile).read().splitlines()
+        if self._cccc_power:
+            tpts_cccc = self._get_cccc_timepoints(txt)
+        else:
+            tpts_cccc = None
+        if self._user_power:
+            tpts_user = self._get_user_timepoints(txt)
+        else:
+            tpts_user = None
+        # Now figure out which time points are relevant and assess
+        if self._cccc_power and not self._user_power:
+            return tpts_cccc
+        elif self._user_power and not self._cccc_power:
+            return tpts_user
+        elif self._user_power and self._cccc_power:
+            if tpts_cccc == tpts_user:
+                return tpts_cccc
+            else:
+                msg = ('If both [ARC] and [Power] input sections are '
+                       'defined, they need to have the same number '
+                       'of entries')
+                self.log(msg)
+        else:  # neither specified
+            raise ValueError('should have caught this elswhere')
+
+    def _get_cccc_timepoints(self, txt):
+        """Determine whether input contains multiple time points."""
         # Use GEODST as time point ref e.g. txt = 'geodst_input = ... '
         tpts = []
         for cccc_inp in ['geodst', 'ndxsrf', 'znatdn',
@@ -630,6 +633,12 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
             self.log('error', msg)
         else:
             return tpts[0]
+
+    def _get_user_timepoints(self, txt):
+        """Determine whether input contains multiple time points."""
+        idx = [idx for idx, s in enumerate(txt) if 'user_power' in s][0]
+        tpts = len(txt[idx].split('=')[1].split(','))
+        return tpts
 
     def get_template(self):
         """Get template config file for single- or multi-time input."""
@@ -647,16 +656,26 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         """Check that mandatory sections are present in the input.
         Note: RegionList is optional."""
         # Read from the input file
-        txt = open(inputfile).read().splitlines()
-        for sec in ['Neutronics', 'Assembly', 'Core', 'Assembly']:
-            tmp = [i for i, s in enumerate(txt) if f'[{sec}]' in s]
+        txt = open(inputfile).read()
+        txtlines = txt.splitlines()
+        for sec in ['Assembly', 'Core', 'Assignment']:
+            tmp = [i for i, s in enumerate(txtlines) if f'[{sec}]' in s]
             if not len(tmp) == 1:  # either no entries or more than one
                 # raise OSError('Missing/incorrect input section: ' + sec)
                 self.log('error', f'Missing/incorrect section: {sec}')
+        # Check whether any power distribution section present
+        tmp = [False, False]
+        sec = ['ARC', 'Power']
+        for i in range(2):
+            if f'[{sec[i]}]' in txt:
+                tmp[i] = True
+        if not any(tmp):
+            self.log('error', ('Missing power distribution section: '
+                               '(need [ARC] and/or [Power]'))
 
     def check_configobj_sections(self):
         """Check the data structure contains the mandatory sections"""
-        for sec in ['Neutronics', 'Core', 'Assembly']:
+        for sec in ['Core', 'Assembly']:
             if sec not in self.data.keys():
                 # raise OSError('Missing/incorrect input section: ' + sec)
                 self.log('error', f'Missing/incorrect section: {sec}')
@@ -664,35 +683,88 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                 if not self.data[sec]:  # empty dictionary entry
                     # raise OSError('Empty input section: ' + sec)
                     self.log('error', f'Empty section: {sec}')
+        any_power = self.determine_power_input()
+        if not any(any_power):
+            self.log('error', ('Empty power distribution sections: '
+                               '(need [ARC] and/or [Power]'))
 
     def check_4c_input(self):
-        """Check existence and consistency of all neutronics files."""
-        for ft in self.data['Neutronics']:  # Loop over file type
+        """Check existence and consistency of all 4C files."""
+        for ft in self.data['ARC'].keys():  # Loop over file type
+            # If None, skip; already screened for the failure if all
+            # are None and no power is defined.
+            if self.data['ARC'][ft] is None:
+                continue
             # Single value entries, not list
-            if isinstance(self.data['Neutronics'][ft], list):
+            elif isinstance(self.data['ARC'][ft], list):
                 # Note: type checking okay here because I'm expecting
                 # values from ConfigObj that are either list or str
-                for i in range(len(self.data['Neutronics'][ft])):
-                    fp = self.data['Neutronics'][ft][i]
+                for i in range(len(self.data['ARC'][ft])):
+                    fp = self.data['ARC'][ft][i]
                     if not os.path.exists(
                         os.path.abspath(
                             os.path.join(self.path, fp))):
                         # raise OSError('Path ' + fp + ' does not exist')
                         self.log('error', f'Path {fp} does not exist')
                     # Set as absolute path
-                    self.data['Neutronics'][ft][i] = \
+                    self.data['ARC'][ft][i] = \
                         os.path.abspath(os.path.join(self.path, fp))
 
             else:  # Single value entry, only check file existence
-                fp = self.data['Neutronics'][ft]
+                fp = self.data['ARC'][ft]
                 if not os.path.exists(
                     os.path.abspath(
                         os.path.join(self.path, fp))):
                     # raise OSError('Path ' + fp + ' does not exist')
                     self.log('error', f'Path {fp} does not exist')
                 # Set as absolute path
-                self.data['Neutronics'][ft] = \
+                self.data['ARC'][ft] = \
                     os.path.abspath(os.path.join(self.path, fp))
+
+    def determine_power_input(self):
+        """Confirm input has appropriate power specification"""
+        incl = [False, False]
+        sec = ['ARC', 'Power']
+        for i in range(2):
+            tmp = []
+            # if all(self.data[sec[i]][k] for k in self.data[sec[i]].keys()):
+            for k in self.data[sec[i]].keys():
+                try:
+                    if self.data[sec[i]][k][0] is not None:
+                        tmp.append(True)
+                    else:
+                        tmp.append(False)
+                except TypeError:
+                    if self.data[sec[i]][k] is not None:
+                        tmp.append(True)
+                    else:
+                        tmp.append(False)
+                # if not any(None in self.data[sec[i]][k]):
+                #     incl[i] = True
+                #     break
+            if all(tmp):
+                incl[i] = True
+            # if not any(None in self.data[sec[i]][k]
+            #            for k in self.data[sec[i]].keys()):
+            #     incl[i] = True
+        return incl
+
+    def check_user_power(self):
+        """Confirm user-spec power dist input file exists, if given"""
+        if not self._user_power:
+            return
+        print(self.data['Power']['user_power'])
+        print(self.determine_power_input())
+        print(self.data['Power'])
+        print(self.data['ARC'])
+        for i in range(len(self.data['Power']['user_power'])):
+            abs_fp = os.path.abspath(
+                os.path.join(self.path,
+                             self.data['Power']['user_power'][i]))
+            if not os.path.exists(abs_fp):
+                self.log('error', f'Path {abs_fp} does not exist')
+            # Set as absolute path
+            self.data['Power']['user_power'][i] = abs_fp
 
     # def check_stage_factors(self):
     #     """Stage factor entries should be postive and consistent."""
@@ -814,7 +886,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
     def check_pin(self):
         """Check that pin details are physically meaningful."""
         for asm in self.data['Assembly']:
-            pre = f'Asm: \"{asm}\";'  # indicate asm for error msg
+            pre = f'Asm: \"{asm}\"; '  # indicate asm for error msg
             # Values must be nonzero
             for k in ['num_rings', 'pin_pitch', 'pin_diameter',
                       'clad_thickness']:
@@ -844,7 +916,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                 self.log('error', pre + msg)
 
             # Pins must fit inside duct
-            msg1 = 'Pins do not fit inside duct; {:f} m too big.'
+            msg1 = 'Pins do not fit inside duct; {:s} m too big.'
             msg2 = 'Rod bundle FTF calculated as:'
             msg3 = ('sqrt(3) * (N_ring - 1) * pin_pitch + pin_diameter '
                     '+ 2 * wire_diameter')
@@ -864,7 +936,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
     def check_duct(self):
         """Make sure duct details are physically meaningful"""
         for asm in self.data['Assembly']:
-            pre = f'Asm: \"{asm}\";'  # indicate asm for error msg
+            pre = f'Asm: \"{asm}\"; '  # indicate asm for error msg
             if len(self.data['Assembly'][asm]['duct_ftf']) % 2 != 0:
                 msg = ('Number of duct FTF values must be even; need '
                        'inner/outer FTF for each duct')
@@ -889,7 +961,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         """Check bypass pressure drop parameters for each assembly
         with more than one duct"""
         for asm in self.data['Assembly']:
-            pre = f'Asm: \"{asm}\";'  # indicate asm for error msg
+            pre = f'Asm: \"{asm}\"; '  # indicate asm for error msg
             if len(self.data['Assembly'][asm]['duct_ftf']) == 2:
                 continue  # only one duct
 
@@ -904,7 +976,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         """
         for asm in self.data['Assembly']:
             if self.data['Assembly'][asm]['dummy_pin'] is not None:
-                pre = f'Asm: \"{asm}\";'  # indicate asm for error msg
+                pre = f'Asm: \"{asm}\"; '  # indicate asm for error msg
                 # Dummy pin ID must be greater than or equal to 0
                 if not all([pin >= 0 for pin in
                             self.data['Assembly'][asm]['dummy_pin']]):
@@ -1035,11 +1107,13 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
 
     def check_assignment_assembly_agreement(self):
         """Make sure all assigned assemblies are specified"""
-        # Make sure all specified assemblies are assigned
-        assigned_assemblies = \
-            list(set([a[0] for a in
-                      self.data['Assignment']['ByPosition']]))
-        for asm in assigned_assemblies:
+        # Make sure all specified assemblies are assigned to a position
+        # assigned_assemblies = \
+        #     list(set([a[0] for a in
+        #               self.data['Assignment']['ByPosition']]))
+        assn_pos = [a[0] for a in self.data['Assignment']['ByPosition']
+                    if len(a) > 0]
+        for asm in assn_pos:
             if asm not in self.data['Assembly'].keys():
                 self.log('warning', (f'Assembly \"{asm}\" is specified'
                                      ' in "Assembly" input section but'
@@ -1047,6 +1121,8 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
 
         # Make sure all assigned assemblies are specified
         for i in range(len(self.data['Assignment']['ByPosition'])):
+            if self.data['Assignment']['ByPosition'][i] == []:
+                continue
             asm = self.data['Assignment']['ByPosition'][i][0]
             if asm not in self.data['Assembly'].keys():
                 self.log('error', (f'Assembly type \"{asm}\" assigned '
@@ -1058,6 +1134,8 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         temperature) are non-negative"""
         for i in range(len(self.data['Assignment']['ByPosition'])):
             assn = self.data['Assignment']['ByPosition'][i]
+            if assn == []:
+                continue
 
             # kwargs must have one of the following keywords
             nkwarg = 0
@@ -1077,29 +1155,138 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                    f'positive but was given {assn[2][bc]}')
             self._check_nonzero(assn[2][bc], msg)
 
+    def check_assignment_against_geodst(self, empty4c=False):
+        """Make sure all assigned positions are active in GEODST"""
+        if self.data['ARC']['geodst'] is None or empty4c:
+            return
+
+        for g in self.data['ARC']['geodst']:
+            geodst = dassh.py4c.geodst.GEODST(g)
+
+            msg = ('More assembly positions specified in input file '
+                   f'than available in GEODST: {g}')
+            n_active_pos = np.count_nonzero(geodst.reg_assignments[0])
+            n_asm = len([x for x in self.data['Assignment']['ByPosition']
+                         if x != []])
+            if not n_asm <= n_active_pos:
+                self.log('error', msg)
+
+            # Check assignments against each reg assignment in GEODST
+            geodst_map = geodst.reg_assignments[0].copy()
+            n_zeros = geodst_map.size - np.count_nonzero(geodst_map)
+            tmp = geodst_map.flatten()
+            tmp = tmp.argsort()
+            tmp = tmp.argsort() - (n_zeros - 1)
+            tmp[tmp <= 0] = 0
+            geodst_map = tmp.reshape(geodst_map.shape)
+            _dirs = [(1, 0), (0, -1), (-1, -1), (-1, 0), (0, 1), (1, 1)]
+            _origin = np.floor((np.array(geodst_map.shape) - 1) / 2)
+            msg1 = ('Assembly assignment does not match region '
+                    f'assignment in GEODST ({g})')
+            for i in range(len(self.data['Assignment']['ByPosition'])):
+                k = self.data['Assignment']['ByPosition'][i]
+                if k == []:
+                    continue
+                else:
+                    msg2 = f'Assembly: {k[1][2] + 1}; '
+                    msg2 += f'Loc: ({k[1][0] + 1, k[1][1] + 1})'
+                    msg = msg1 + '\n' + msg2
+                    steps_per_side = k[1][0]
+                    _active_pos = _origin + np.array([0, k[1][0]])
+                    _idx = 0
+                    _side = 0
+                    _steps = 0
+                    while _idx < k[1][1]:
+                        _active_pos += _dirs[_side]
+                        _steps += 1
+                        _idx += 1
+                        if _steps == steps_per_side:
+                            _side += 1
+                            _steps = 0
+                    res = geodst_map[int(_active_pos[0]),
+                                     int(_active_pos[1])]
+                    if res == 0:
+                        # print(geodst_map)
+                        # print(asm_idx, res, _active_pos)
+                        # print(k)
+                        self.log('error', msg)
+
     def check_units(self):
         """Make sure user unit specifications are valid"""
-        # Temperature
         msg = 'Requested {:s} unit \"{:s}\" not supported'
+
+        # Temperature
         temp_unit = self.data['Setup']['Units']['temperature'].lower()
-        if temp_unit.lower() not in ['c', 'degc', 'celsius', 'kelvin',
-                                     'k', 'f', 'degf', 'fahrenheit']:
+        if temp_unit in utils._degK:
+            self.data['Setup']['Units']['temperature'] = 'kelvin'
+        elif temp_unit in utils._degC:
+            self.data['Setup']['Units']['temperature'] = 'celsius'
+        elif temp_unit in utils._degF:
+            self.data['Setup']['Units']['temperature'] = 'fahrenheit'
+        else:
             self.log('error', msg.format('temperature', temp_unit))
 
         # Length
-        len_unit = self.data['Setup']['Units']['length']
-        if len_unit.lower() not in ['m', 'meter', 'meters',
-                                    'cm', 'centimeter', 'centimeters',
-                                    'in', 'inch', 'inches',
-                                    'ft', 'foot', 'feet']:
-            self.log('error', msg.format('temperature', len_unit))
+        len_unit = self.data['Setup']['Units']['length'].lower()
+        if len_unit in utils._cm:
+            self.data['Setup']['Units']['length'] = 'cm'
+        elif len_unit in utils._mm:
+            self.data['Setup']['Units']['length'] = 'mm'
+        elif len_unit in utils._m:
+            self.data['Setup']['Units']['length'] = 'm'
+        elif len_unit in utils._in:
+            self.data['Setup']['Units']['length'] = 'in'
+        elif len_unit in utils._ft:
+            self.data['Setup']['Units']['length'] = 'ft'
+        else:
+            self.log('error', msg.format('length', len_unit))
 
-        # Flow rate
-        fr_unit = self.data['Setup']['Units']['mass_flow_rate']
-        if fr_unit.lower() not in ['kg/s', 'kg/sec', 'kg/min', 'kg/h',
-                                   'kg/hr', 'lb/s', 'lb/sec', 'lb/min',
-                                   'lb/h', 'lb/hr']:
-            self.log('error', msg.format('temperature', fr_unit))
+        # Mass flow rate
+        mfr_unit = self.data['Setup']['Units']['mass_flow_rate'].lower()
+        # Get conversion method, then apply to all lengths
+        if '/' in mfr_unit:
+            mass_time = mfr_unit.split('/')
+        elif 'per' in mfr_unit:
+            mass_time = mfr_unit.split('per')
+        else:
+            msg = 'Do not understand mass flow rate unit specification: '
+            self.log('error', msg + mfr_unit)
+        if mass_time[0] in utils._lb:
+            tmp = 'lb'
+        elif mass_time[0] in utils._kg:
+            tmp = 'kg'
+        else:
+            self.log('error', msg.format('mass flow rate (mass)', mfr_unit))
+        if mass_time[1] in utils._sec:
+            tmp += '/s'
+        elif mass_time[1] in utils._min:
+            tmp += '/min'
+        elif mass_time[1] in utils._hr:
+            tmp += '/hr'
+        else:
+            self.log('error', msg.format('mass flow rate (time)', mfr_unit))
+        self.data['Setup']['Units']['mass_flow_rate'] = tmp
+
+        # # Temperature
+        # temp_unit = self.data['Setup']['Units']['temperature'].lower()
+        # if temp_unit.lower() not in ['c', 'degc', 'celsius', 'kelvin',
+        #                              'k', 'f', 'degf', 'fahrenheit']:
+        #     self.log('error', msg.format('temperature', temp_unit))
+        #
+        # # Length
+        # len_unit = self.data['Setup']['Units']['length']
+        # if len_unit.lower() not in ['m', 'meter', 'meters',
+        #                             'cm', 'centimeter', 'centimeters',
+        #                             'in', 'inch', 'inches',
+        #                             'ft', 'foot', 'feet']:
+        #     self.log('error', msg.format('temperature', len_unit))
+        #
+        # # Flow rate
+        # fr_unit = self.data['Setup']['Units']['mass_flow_rate']
+        # if fr_unit.lower() not in ['kg/s', 'kg/sec', 'kg/min', 'kg/h',
+        #                            'kg/hr', 'lb/s', 'lb/sec', 'lb/min',
+        #                            'lb/h', 'lb/hr']:
+        #     self.log('error', msg.format('temperature', fr_unit))
 
     def check_core_specifications(self):
         """Check the values specified in the Core section"""
@@ -1144,7 +1331,8 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                 for p in ['heat_capacity',
                           'thermal_conductivity',
                           'density',
-                          'viscosity']:
+                          'viscosity',
+                          'beta']:
                     msg = (f'Material "{m}" property "{p}" input '
                            'must be list of floats')
                     if p in self.data['Materials'][m].keys():
@@ -1190,7 +1378,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
     def check_dump(self):
         """Check specifications for dumping temperatures"""
         keys = ['all', 'coolant', 'duct', 'pins', 'gap',
-                'average', 'maximum']
+                'average', 'maximum', 'gap_fine']
         warn = False
         for k in self.data['Setup']['Dump'].keys():
             if k == 'interval':
@@ -1237,13 +1425,11 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
     def read_4c(self, t):
         """Read the 4C files input for the specified time point"""
         # GEODST
-        path = os.path.join(self.path,
-                            self.data['Neutronics']['geodst'][t])
+        path = os.path.join(self.path, self.data['ARC']['geodst'][t])
         geodst_obj = py4c.geodst.GEODST(path)
 
         # LABELS
-        path = os.path.join(self.path,
-                            self.data['Neutronics']['labels'][t])
+        path = os.path.join(self.path, self.data['ARC']['labels'][t])
         labels_obj = py4c.labels.LABELS(path)
 
         # OTHER
@@ -1339,7 +1525,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
     # AXIAL REGION CLEANUP
     ####################################################################
 
-    def axial_region_cleanup(self, tol=1e-2):
+    def axial_region_cleanup(self, tol=1e-6):
         """Find AxialRegion boundaries in GEODST zmesh
 
         Parameters
@@ -1365,9 +1551,9 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         # Open all geodst files
         geodst_files = []
         geodst = []
-        for i in range(len(self.data['Neutronics']['geodst'])):
+        for i in range(len(self.data['ARC']['geodst'])):
             geodst_files.append(os.path.join(self.path,
-                                self.data['Neutronics']['geodst'][i]))
+                                self.data['ARC']['geodst'][i]))
             geodst.append(py4c.geodst.GEODST(geodst_files[i]))
 
         # Find z_boundaries in the first GEODST file
@@ -1402,6 +1588,32 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                             self.log('error',
                                      missing.format(z1, reg, asm,
                                                     geodst_files[g]))
+
+    def check_geodst(self, atol=1e-6):
+        """Check GEODST files share same assembly pitch and same
+        core length with DASSH input"""
+        # Open all geodst files
+        geodst_files = []
+        geodst = []
+        for i in range(len(self.data['ARC']['geodst'])):
+            geodst_files.append(os.path.join(self.path,
+                                self.data['ARC']['geodst'][i]))
+            geodst.append(py4c.geodst.GEODST(geodst_files[i]))
+
+        # Check assembly pitch in all files
+        for i in range(len(geodst_files)):
+            if not np.isclose(geodst[i].xmesh[1] / 100.0,  # cm --> m
+                              self.data['Core']['assembly_pitch'],
+                              atol=atol):
+                self.log('error', 'Assembly pitch in GEODST file '
+                                  f'{geodst_files[i]} does not match '
+                                  'value given in DASSH input')
+            if not np.isclose(geodst[i].zmesh[-1] / 100.0,  # cm --> m
+                              self.data['Core']['length'],
+                              atol=atol):
+                self.log('error', 'Maximum z-mesh in GEODST file '
+                                  f'{geodst_files[i]} does not match '
+                                  'core length given in DASSH input')
 
     ####################################################################
     # LOAD MATERIALS
@@ -1476,10 +1688,16 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                                f'property {prop}'))
         # Check that attribute returns feasible property value
         v = getattr(mat_obj, prop)
-        if v <= 0.0:
-            self.log('error', (f'Material {mat_obj.name}; expected '
-                               f'positive float for property {prop}; '
-                               f'recieved {v}'))
+        if prop == 'thermal_conductivity':
+            if not v >= 0.0:
+                self.log('error', (f'Material {mat_obj.name}; expected '
+                                   f'float >= 0 for property {prop}; '
+                                   f'recieved {v}'))
+        else:
+            if not v > 0.0:
+                self.log('error', (f'Material {mat_obj.name}; expected '
+                                   f'positive float for property '
+                                   f'{prop}; recieved {v}'))
 
     ####################################################################
     # CHECK PLOTTING INPUTS
@@ -1578,6 +1796,9 @@ def convert_temperature(data):
 
     # Assembly outlet temperature assignments
     for i in range(len(data['Assignment']['ByPosition'])):
+        if data['Assignment']['ByPosition'][i] == []:
+            continue
+
         if 'outlet_temp' in data['Assignment']['ByPosition'][i][2].keys():
             data['Assignment']['ByPosition'][i][2]['outlet_temp'] = \
                 conv(data['Assignment']['ByPosition'][i][2]['outlet_temp'])
@@ -1686,6 +1907,8 @@ def convert_mass_flow_rate(data):
 
     # Assembly mass flow rate assignments
     for i in range(len(data['Assignment']['ByPosition'])):
+        if data['Assignment']['ByPosition'][i] == []:
+            continue
         if 'flowrate' in data['Assignment']['ByPosition'][i][2].keys():
             data['Assignment']['ByPosition'][i][2]['flowrate'] = \
                 t_conv(m_conv(data['Assignment']

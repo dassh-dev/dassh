@@ -1,14 +1,51 @@
-[Neutronics]
-    pmatrx = string
-    geodst = force_list(min=1)
-    ndxsrf = force_list(min=1)
-    znatdn = force_list(min=1)
-    labels = force_list(min=1)
-    nhflux = force_list(min=1)
-    ghflux = force_list(min=1)
+[Setup]
+    [[Units]]
+        temperature = string(default='kelvin')
+        length = string(default='m')
+        mass_flow_rate = string(default='kg/s')
+    [[Options]]
+        axial_mesh_size = float(min=0.0, default=None)
+        axial_plane = force_list(default=None)
+        log_progress = integer(min=0, default=0)
+        debug = boolean(default=False)
+        conv_approx_dz_cutoff = float(min=0.0, default=None)
+        conv_approx = boolean(default=False)
+        calc_energy_balance = boolean(default=False)
+        parallel = boolean(default=False)
+        se2geo = boolean(default=False)
+    [[Dump]]
+        all = boolean(default=False)
+        coolant = boolean(default=False)
+        duct = boolean(default=False)
+        pins = boolean(default=False)
+        gap = boolean(default=False)
+        gap_fine = boolean(default=False)
+        average = boolean(default=False)
+        maximum = boolean(default=False)
+        interval = float(min=0.0, default=None)
+
+
+[Materials]
+    [[__many__]]
+        thermal_conductivity = force_list(default=None)
+        heat_capacity = force_list(default=None)
+        density = force_list(default=None)
+        viscosity = force_list(default=None)
+        beta = force_list(default=None)
+        from_file = string(default=None)
+
+
+[ARC]
+    pmatrx = string(default=None)
+    geodst = force_list(min=1, default=None)
+    ndxsrf = force_list(min=1, default=None)
+    znatdn = force_list(min=1, default=None)
+    labels = force_list(min=1, default=None)
+    nhflux = force_list(min=1, default=None)
+    ghflux = force_list(min=1, default=None)
 
 [Power]
-    user_power = string(default=None)
+    user_power = force_list(min=1, default=None)
 
 [Core]
     coolant_inlet_temp = float
@@ -20,7 +57,7 @@
     bypass_fraction = float(min=0.0, max=1.0, default=0.0)
     assembly_pitch = float
     gap_model = option('flow', 'no_flow', 'duct_average', 'none', default='no_flow')
-    total_power = float(min=0.0, default=0.0)
+    total_power = float(min=0.0, default=None)
     power_scaling_factor = float(min=0.0, default=1.0)
     power_model = option('distribute', 'pin_only', default='distribute')
 
@@ -38,7 +75,7 @@
         clad_thickness = float
         corr_mixing = option('MIT', 'CTD', 'UCTD', default='CTD')
         corr_friction = option('NOV', 'REH', 'ENG', 'CTD', 'CTS', 'UCTD', default='CTD')
-        corr_flowsplit = option('NOV', 'MIT', 'CTD', 'UCTD', default='CTD')
+        corr_flowsplit = option('NOV', 'SE2', 'MIT', 'CTD', 'UCTD', default='CTD')
         corr_nusselt = string(default='DB')
 	dummy_pin = int_list(min=1, default=None)
         htc_params_duct = float_list(default=None)
@@ -69,41 +106,6 @@
             pu_frac = force_list(default=list(0.0))
             zr_frac = force_list(default=list(0.0))
             porosity = force_list(default=list(0.0))
-
-
-[Setup]
-    [[Units]]
-        temperature = string(default='kelvin')
-        length = string(default='m')
-        mass_flow_rate = string(default='kg/s')
-    [[Options]]
-        dif3d_indexing = boolean(default=True)
-        axial_mesh_size = float(min=0.0, default=None)
-        axial_plane = force_list(default=None)
-        log_progress = integer(min=0, default=0)
-        debug = boolean(default=False)
-        conv_approx_dz_cutoff = float(min=0.0, default=None)
-        conv_approx = boolean(default=False)
-        calc_energy_balance = boolean(default=False)
-        parallel = boolean(default=False)
-    [[Dump]]
-        all = boolean(default=False)
-        coolant = boolean(default=False)
-        duct = boolean(default=False)
-        pins = boolean(default=False)
-        gap = boolean(default=False)
-        average = boolean(default=False)
-        maximum = boolean(default=False)
-        interval = float(min=0.0, default=None)
-
-
-[Materials]
-    [[__many__]]
-        thermal_conductivity = force_list(default=None)
-        heat_capacity = force_list(default=None)
-        density = force_list(default=None)
-        viscosity = force_list(default=None)
-        from_file = string(default=None)
 
 
 [Orificing]

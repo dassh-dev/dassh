@@ -14,9 +14,10 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-03-09
+date: 2021-03-16
 author: matz
-MIT correlation for flow split (1980)
+SE2 correlation for flow split (1980); like the MIT correlation with
+some very minor differences
 """
 ########################################################################
 import numpy as np
@@ -54,7 +55,6 @@ def calculate_flow_split(asm):
         return asm.corr_constants['fs']['fs']
     except (KeyError, AttributeError):
         pass  # continue onward and do the calculation
-
     na1 = (asm.subchannel.n_sc['coolant']['interior']
            * asm.params['area'][0])
     na2 = (asm.subchannel.n_sc['coolant']['edge']
@@ -70,17 +70,21 @@ def calculate_flow_split(asm):
     H = asm.wire_pitch
     AS = corr_utils.calculate_bare_rod_sc_area('mit', P, D, Dw)
     AR = corr_utils.calculate_wproj('mit', P, D, Dw)
-    # AS1 = np.sqrt(3) * P**2 / 4 - np.pi * D**2 / 8
-    # AR1 = np.pi * (P - 0.5 * D)**2 / 6 - np.pi * D**2 / 24
-    # AS2 = P * (0.5 * D + Dw) - 0.125 * np.pi * D**2
-    # AR2 = np.pi * (0.25 * (0.5 * D + Dw)**2 - 0.0625 * D**2)
     # Ugly constants
     n = (P * (P - D) / 2
          / ((P - 0.5 * D) * P / 2
             - np.pi * D**2 / 16))
-    hyp = np.sqrt(np.pi**2 * P**2 + H**2)
-    vtv2_gap = 10.5 * (Dw / P)**0.35 * np.sqrt(AR[1] / AS[1]) * P / hyp
-    lol = c1 * (asm.params['de'][0] / H) * (AR[0] / AS[0]) * (P / hyp)**2 + 1
+    hyp1 = np.sqrt(np.pi**2 * (D + Dw)**2 + H**2)
+    hyp2 = np.sqrt(np.pi**2 * P**2 + H**2)
+    vtv2_gap = (10.5
+                * ((P - D) / P)**0.35
+                * np.sqrt(AR[1] / AS[1])
+                * (D + Dw)
+                / hyp1)
+    lol = 1 + (c1
+               * (asm.params['de'][0] / H)
+               * (AR[0] / AS[0])
+               * (P / hyp2)**2)
     lol = lol / c3 / (1 + (c2 * n * vtv2_gap)**2)**1.375
     # combine into flow split relationships
     x1 = ((na1 + na2 + na3)

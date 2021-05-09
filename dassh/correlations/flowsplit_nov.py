@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-04-24
+date: 2021-04-01
 author: matz
 Novendstern correlation (1972) for flow split
 """
@@ -31,7 +31,7 @@ applicability['Re'] = np.array([2600, 1e5])
 applicability['bare rod'] = False
 
 
-def calculate_flow_split(asm_obj):
+def calculate_flow_split(asm_obj, shortcut=True):
     """Calculate the flow split into the different types of
     subchannels based on the Novendstern correlation
 
@@ -48,10 +48,11 @@ def calculate_flow_split(asm_obj):
 
     """
     # If you've already loaded the constant, skip the calculation
-    try:
-        return asm_obj.corr_constants['fs']['fs']
-    except (KeyError, AttributeError):
-        pass  # continue onward and do the calculation
+    if shortcut:
+        try:
+            return asm_obj.corr_constants['fs']['fs']
+        except (KeyError, AttributeError):
+            pass  # continue onward and do the calculation
 
     na1 = (asm_obj.subchannel.n_sc['coolant']['interior']
            * asm_obj.params['area'][0])

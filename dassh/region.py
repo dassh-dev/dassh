@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-12-09
+date: 2021-04-02
 author: matz
 Methods to describe the axial regions in an assembly
 """
@@ -24,7 +24,7 @@ import dassh
 
 
 class DASSH_Region(object):
-    """."""
+    """Base class describing axial region within an assembly"""
 
     def __init__(self, n_node_coolant, node_area_coolant, n_node_duct,
                  node_area_duct, n_bypass=0, node_area_byp=None):
@@ -49,30 +49,32 @@ class DASSH_Region(object):
         self.temp['duct_mw'] = np.ones((n_bypass + 1, n_node_duct))
         self.area['duct_mw'] = node_area_duct
         self.total_area['duct_mw'] = np.sum(node_area_duct, axis=1)
+        self.area['duct_mw_over_total'] = \
+            np.zeros(self.area['duct_mw'].shape)
+        for i in range(self.area['duct_mw'].shape[0]):
+            self.area['duct_mw_over_total'][i] = \
+                self.area['duct_mw'][i] / self.total_area['duct_mw'][i]
 
         # Duct surface; won't ever be averaging
         self.temp['duct_surf'] = np.ones((n_bypass + 1, 2, n_node_duct))
 
+        # Peak temperature trackers
+        # self._peak_temp = {}
+        # self._peak_temp['cool'] = 0.0
+        # self._peak_temp['z_cool'] = 0.0
+        # self._peak_temp['duct'] = np.zeros(self.temp['duct_mw'].shape[0])
+        # self._peak_temp['z_duct'] = np.zeros(self.temp['duct_mw'].shape[0])
+
         # Coolant energy balance tracker (W)
         self.ebal = {}
-        self.ebal['power_added'] = 0.0
-        self.ebal['from_duct'] = 0.0
-        self.ebal['per_hex_side'] = np.zeros(6)
+        self.ebal['power'] = 0.0  # Power added to asm
+        self.ebal['duct'] = np.zeros(n_node_duct)  # edge/corner sc
+        self.ebal['per_hex_side'] = np.zeros(6)  # sum of 'from_duct'
         if n_bypass > 0:
-            self.ebal['from_duct_byp'] = np.zeros(n_bypass)
+            self.ebal['duct_byp_in'] = np.zeros((n_bypass, n_node_duct))
+            self.ebal['duct_byp_out'] = np.zeros((n_bypass, n_node_duct))
             self.ebal['per_hex_side_byp_in'] = np.zeros((n_bypass, 6))
             self.ebal['per_hex_side_byp_out'] = np.zeros((n_bypass, 6))
-        self.ebal['temp_in'] = 0.0
-        self.ebal['temp_out'] = 0.0
-        self.ebal['temp_rise'] = 0.0
-
-        # Energy balance utilities: track hex side energy balance
-        duct_idx = np.arange(0, n_node_duct, 1)
-        duct_idx.shape = ((6, int(n_node_duct / 6)))
-        self._ebal_duct_idx = np.zeros((6, int(n_node_duct / 6) + 1),
-                                       dtype='int')
-        self._ebal_duct_idx[:, 1:] = duct_idx
-        self._ebal_duct_idx[:, 0] = np.roll(duct_idx[:, -1], 1)
 
     @property
     def pressure_drop(self):
@@ -136,9 +138,15 @@ class DASSH_Region(object):
     def avg_duct_mw_temp(self):
         """Calculate volume-average of individual duct node
         temperatures"""
-        tot = np.sum(self.temp['duct_mw']
-                     * self.area['duct_mw'], axis=1)
-        return tot / self.total_area['duct_mw']
+        # return np.sum(self.temp['duct_mw']
+        #               * self.area['duct_mw_over_total'],
+        #               axis=1)
+        # tot = np.sum(self.temp['duct_mw']
+        #              * self.area['duct_mw'], axis=1)
+        # return tot / self.total_area['duct_mw']
+        return np.diagonal(
+            np.dot(self.temp['duct_mw'],
+                   self.area['duct_mw_over_total'].T))
 
     @property
     def duct_outer_surf_temp(self):
@@ -205,15 +213,15 @@ class DASSH_Region(object):
         # - If a duct is added, set surface/midwall temperatures equal
         #   to the average interior coolant temperature.
 
-        # Outer duct temperatures - approximate
+        # Outer duct temperatures - interpolate
         self.temp['duct_mw'][-1] = \
-            dassh.reactor.approximate_temps(
+            dassh.mesh_functions.interpolate_quad(
                 previous_reg.x_pts,
                 previous_reg.temp['duct_mw'][-1],
                 self.x_pts)
         for s in range(2):
             self.temp['duct_surf'][-1, s] = \
-                dassh.reactor.approximate_temps(
+                dassh.mesh_functions.interpolate_quad(
                     previous_reg.x_pts,
                     previous_reg.temp['duct_surf'][-1, s],
                     self.x_pts)
@@ -238,6 +246,18 @@ class DASSH_Region(object):
         # Energy balance - initiate temperature tracking
         self.ebal['temp_in'] = avg_cool_temp
 
+    # def update_peak_temp(self, z):
+    #     """Update trackers on peak coolant and duct temperature"""
+    #     max_cool = np.max(self.temp['coolant_int'])
+    #     if max_cool > self._peak_temp['cool']:
+    #         self._peak_temp['cool'] = max_cool
+    #         self._peak_temp['z_cool'] = z
+    #     max_duct = np.max(self.temp['duct_mw'], axis=1)
+    #     for i in range(max_duct.shape[0]):
+    #         if max_duct[i] > self._peak_temp['duct_mw'][i]:
+    #             self._peak_temp['duct'][i] = max_duct[i]
+    #             self._peak_temp['z_duct'][i] = z
+
     def update_ebal(self, q_in, q_from_duct):
         """Update the region energy-balance tallies
 
@@ -248,17 +268,13 @@ class DASSH_Region(object):
         q_from_duct : numpy.ndarray
             Power (W) added to coolant through contact with duct wall
             for each coolant/duct connection
-
         Returns
         -------
         None
 
         """
-        self.ebal['power_added'] += q_in
-        self.ebal['from_duct'] += np.sum(q_from_duct)
-        energy_per_side = q_from_duct[self._ebal_duct_idx]
-        energy_per_side[:, (0, -1)] *= 0.5
-        self.ebal['per_hex_side'] += np.sum(energy_per_side, axis=1)
+        self.ebal['power'] += q_in
+        self.ebal['duct'] += q_from_duct
 
     def update_ebal_byp(self, byp_idx, q_duct_in, q_duct_out):
         """Update the bypass gap coolant energy balance tallies
@@ -278,16 +294,36 @@ class DASSH_Region(object):
         None
 
         """
-        # From duct to bypass coolant total
-        self.ebal['from_duct_byp'][byp_idx] += \
-            np.sum(q_duct_in + q_duct_out)
-        # Energy per hex side; from inner duct to bypass coolant
-        eps = q_duct_in[self._ebal_duct_idx]
-        eps[:, (0, -1)] *= 0.5
-        self.ebal['per_hex_side_byp_in'][byp_idx] += np.sum(eps, axis=1)
-        # Energy per hex side; from outer duct to bypass coolant
-        eps = q_duct_out[self._ebal_duct_idx]
-        eps[:, (0, -1)] *= 0.5
-        self.ebal['per_hex_side_byp_out'][byp_idx] += np.sum(eps, axis=1)
+        # From duct to bypass coolant
+        self.ebal['duct_byp_in'][byp_idx] += q_duct_in
+        self.ebal['duct_byp_out'][byp_idx] += q_duct_out
+
+    def collect_ebal(self):
+        """Summarize energy balance per hex side"""
+        # Energy balance utilities: track hex side energy balance
+        n = self.temp['duct_mw'].shape[1]  # number of duct elements
+        duct_idx = np.arange(0, n, 1)
+        duct_idx.shape = ((6, int(n / 6)))
+        ebal_duct_idx = np.zeros((6, int(n / 6) + 1), dtype='int')
+        ebal_duct_idx[:, 1:] = duct_idx
+        ebal_duct_idx[:, 0] = np.roll(duct_idx[:, -1], 1)
+        # Single duct wall
+        energy_per_side = self.ebal['duct'][ebal_duct_idx]
+        energy_per_side[:, (0, -1)] *= 0.5
+        self.ebal['per_hex_side'] = np.sum(energy_per_side, axis=1)
+        # Bypass energy per hex side
+        if 'duct_byp_in' in self.ebal.keys():
+            for byp in range(len(self.ebal['duct_byp_in'])):
+                # from inner duct to bypass coolant
+                eps = self.ebal['duct_byp_in'][byp][ebal_duct_idx]
+                eps[:, (0, -1)] *= 0.5
+                self.ebal['per_hex_side_byp_in'][byp] += \
+                    np.sum(eps, axis=1)
+
+                # from outer duct to bypass coolant
+                eps = self.ebal['duct_byp_out'][byp][ebal_duct_idx]
+                eps[:, (0, -1)] *= 0.5
+                self.ebal['per_hex_side_byp_out'][byp] += \
+                    np.sum(eps, axis=1)
 
 ########################################################################

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-04-16
+date: 20201-05-09
 author: matz
 Utility methods
 """
@@ -363,6 +363,16 @@ def dassh_loc_to_dif3d_id(dassh_loc):
     else:
         dif3d_loc = dif3d_loc_to_dassh_loc(dassh_loc)
         return 3 * (dif3d_loc[0] - 1) * dif3d_loc[0] + dif3d_loc[1] + 1
+
+
+########################################################################
+
+
+def _get_profile_data(path='dassh_profile.out', n=50):
+    """Shortcut to print DASSH profile data"""
+    import pstats
+    p = pstats.Stats(path)
+    p.sort_stats('cumulative').print_stats(n)
 
 
 ########################################################################

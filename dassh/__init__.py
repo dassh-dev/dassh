@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-01-08
+date: 2021-05-09
 author: Milos Atz, Micheal Smith
 """
 ########################################################################
@@ -37,9 +37,11 @@ from dassh.table import *
 from dassh.fuel_pin import *
 from dassh._ascii import *
 from dassh.plot import *
+from dassh import mesh_functions
+import dassh.py4c as py4c
 
 
 np.set_printoptions(threshold=sys.maxsize, linewidth=500)
 
 
-__version__ = '0.4.0-dev'
+__version__ = '0.6.1-dev'

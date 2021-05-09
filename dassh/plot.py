@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-12-14
+date: 2021-04-07
 author: matz
 Methods to plot DASSH objects (such as hexagonal fuel assemblies and
 the pins and subchannels that comprise them).
@@ -30,6 +30,7 @@ import matplotlib.pyplot as plt
 from matplotlib import colors
 from mpl_toolkits.axes_grid1 import make_axes_locatable
 from dassh import utils
+from dassh import core
 
 
 _default_color = {
@@ -52,20 +53,20 @@ _sc_type = {
 
 
 _hex_cols = {
-    'coolant': [6, 4],
-    'duct_mw': [7, 5],
-    'clad_mw': [9, 6],
-    'fuel_cl': [10, 7]
+    'coolant': [5, 3],
+    'duct_mw': [6, 4],
+    'clad_mw': [8, 5],
+    'fuel_cl': [9, 6]
 }
 
 
 _pin_cols = {
-    'coolant': 4,
-    'clad_od': 5,
-    'clad_mw': 6,
-    'clad_id': 7,
-    'fuel_od': 8,
-    'fuel_cl': 9
+    'coolant': 3,
+    'clad_od': 4,
+    'clad_mw': 5,
+    'clad_id': 6,
+    'fuel_od': 7,
+    'fuel_cl': 8
 }
 
 
@@ -112,7 +113,7 @@ def make_SubchannelPlot(dassh_reactor, plot_data):
         for zi in _data['z_data'].keys():
             asm_zdata = _data['z_data'][zi][
                 _data['z_data'][zi][:, 0] == asm_id]
-            ascp.plot(asm_zdata[0, 4:],
+            ascp.plot(asm_zdata[0, 3:],
                       lbnd=_data['cbar_lbnd'],
                       ubnd=_data['cbar_ubnd'],
                       middle=_data['cbar_mpnt'],
@@ -299,6 +300,9 @@ class AssemblyPlot(object):
         if not kwargs.get('linewidth'):
             kwargs['linewidth'] = 0.5
 
+        if not kwargs.get('edgecolor'):
+            kwargs['edgecolor'] = 'k'
+
         if kwargs['linewidth'] == 0.0:
             kwargs['linestyle'] = 'None'
         else:
@@ -313,7 +317,7 @@ class AssemblyPlot(object):
 
         return kwargs
 
-    def _add_duct_walls(self, ax, xy_shift=None, lw=0.5):
+    def _add_duct_walls(self, ax, xy_shift=None, lw=0.5, color='0.5'):
         """Find duct dimensions to plot ducts as overlapping hexagons
 
         Parameters
@@ -345,7 +349,7 @@ class AssemblyPlot(object):
             rad = d[1] / np.sqrt(3)
             duct = [mpl.patches.RegularPolygon(xy, 6, radius=rad)]
             duct = mpl.collections.PatchCollection(
-                duct, facecolor='0.5', linewidth=lw, edgecolor='k')
+                duct, facecolor=color, linewidth=lw, edgecolor='k')
             ax.add_collection(duct)
 
             # Inner duct wall: plot with white hexagon
@@ -420,7 +424,8 @@ class SubchannelPlot(AssemblyPlot):
         patch_kwargs = {'cmap': kwargs['cmap'],
                         'norm': kwargs['norm'],
                         'linewidth': kwargs['linewidth'],
-                        'linestyle': kwargs['linestyle']}
+                        'linestyle': kwargs['linestyle'],
+                        'edgecolor': kwargs['edgecolor']}
 
         # Setup the figure
         fig = plt.figure()
@@ -453,6 +458,88 @@ class SubchannelPlot(AssemblyPlot):
         if kwargs.get('cbar_label'):
             txt = kwargs['cbar_label']
         ax = _add_colorbar(ax, txt, kwargs['cmap'], kwargs['norm'])
+        return ax
+
+    def map(self, **kwargs):
+        """Plot the layout of subchannels in the assembly
+
+        Parameters
+        ----------
+        None
+
+        kwargs
+        ------
+        cmap : matploblib.cm object
+            Color map with which to color the subchannel temperatures
+        norm : matplotlib.colors.TwoSlopNorm object, or another norm
+            option from matplotlib.colors
+        cbar_label : str
+            Label for the color bar
+        lw : float
+            Border line width to apply to the subchannel patches
+        pins : boolean
+            Indicate whether to plot pins over subchannels
+        pin_alpha : float
+            Indicate the opacity of the pin fill
+
+        Returns
+        -------
+        matplotlib.axes.Axes object
+
+        """
+        # Set default arguments
+        data = np.ones(self.sc['n_sc']['coolant']['total'])
+        kwargs = self.parse_args(data, 0.0, 2.0, 1.0, cmap='bwr', **kwargs)
+
+        # isolate the patch kwargs
+        patch_kwargs = {'cmap': kwargs['cmap'],
+                        'norm': kwargs['norm'],
+                        'linewidth': kwargs['linewidth'],
+                        'linestyle': kwargs['linestyle'],
+                        'edgecolor': kwargs['edgecolor']}
+
+        # Setup the figure
+        fig = plt.figure()
+        ax = fig.add_subplot(111, aspect='equal')
+
+        # 0. Add duct walls
+        ax = self._add_duct_walls(ax, color='1.0')
+
+        # 1. Add corner channels (hexagons)
+        ax = self._add_corner_sc(ax, data, **patch_kwargs)
+
+        # 2. Add edge channels (squares)
+        ax = self._add_edge_sc(ax, data, **patch_kwargs)
+
+        # 3. Add interior channels (triangles)
+        ax = self._add_int_sc(ax, data, **patch_kwargs)
+
+        # 4. If requested, add pins
+        if kwargs.get('pins'):
+            _alpha = 1.0
+            if kwargs.get('pin_alpha'):
+                _alpha = kwargs['pin_alpha']
+            ax = self._add_pins(ax, color='1.0', alpha=_alpha)
+
+        # Add labels
+        lab = np.arange(1, self.sc['n_sc']['coolant']['total'] + 1, 1)
+        xy = self.sc['xy'][:self.sc['n_sc']['coolant']['total']]
+        if kwargs.get('fontsize'):
+            fontsize = kwargs['fontsize']
+        else:
+            fontsize = 6
+        textcolor = 'r'
+        for i in range(lab.shape[0]):
+            txt = ax.annotate(str(lab[i].astype(int)),
+                              xy[i],
+                              size=fontsize,
+                              ha='center',
+                              va='center',
+                              weight='bold',
+                              color=textcolor)
+        # Format figure and return
+        plt.axis('off')
+        ax = self._set_ax_bnds(ax)
         return ax
 
     def _add_corner_sc(self, ax, data, xy_shift=None, **kwargs):
@@ -749,6 +836,49 @@ class SingleNodePlot(AssemblyPlot):
             **patch_kwargs)
         if not gray:
             duct.set_array(np.array([data]))
+        ax.add_collection(duct)
+        return ax
+
+    def plot_single_color(self, ax, color, lw=0.5, xy_shift=None):
+        """Plot colored hexagon
+
+        Parameters
+        ----------
+        ax : matplotlib.axes.Axes object
+            Axis on which to plot pin duct walls
+        color : string
+            Color to plot in the hexagon
+        lw : float (optional)
+            Hexagon line width (in pts)
+        xy_shift : numpy.ndarray (optional)
+            New coordinate center for the assembly rather than (0, 0)
+
+        Returns
+        -------
+        matplotlib.axes.Axes object
+
+        """
+        xy = np.array([0.0, 0.0])
+        if xy_shift is not None:
+            xy = xy_shift
+
+        # Plot ducts from the outside in
+        # Outer duct wall: plot using gray hexagon
+        try:
+            rad = self.duct['ftf'][1] / np.sqrt(3)
+        except IndexError:
+            print(self.duct['ftf'])
+            raise
+        duct = [mpl.patches.RegularPolygon(xy, 6, radius=rad)]
+        duct = mpl.collections.PatchCollection(
+            duct, facecolor='0.5', linewidth=lw, edgecolor='k')
+        ax.add_collection(duct)
+
+        # Inner duct wall: plot with hexagon the color of the data
+        rad = self.duct['ftf'][0] / np.sqrt(3)
+        duct = [mpl.patches.RegularPolygon(xy, 6, radius=rad)]
+        duct = mpl.collections.PatchCollection(
+            duct, facecolor=color, linewidth=lw, edgecolor='k')
         ax.add_collection(duct)
         return ax
 
@@ -1375,6 +1505,11 @@ class CoreHexPlot(CorePlot):
         data_label_fmt (optional) : str
             Formatter for the data labels
         """
+        # Assemblies to ignore
+        asm_to_ignore = []
+        if 'ignore_assemblies' in kwargs.keys():
+            asm_to_ignore = kwargs['ignore_assemblies']
+
         kwargs = self.parse_args(data, lbnd, ubnd, middle, **kwargs)
         # isolate the patch kwargs
         patch_kwargs = {'cmap': kwargs['cmap'],
@@ -1391,7 +1526,9 @@ class CoreHexPlot(CorePlot):
         to_plot = []
         hex_to_ignore = []
         for i in range(len(data)):
-            if data[i] >= nonvalue:
+            if i in asm_to_ignore:
+                continue
+            elif data[i] >= nonvalue:
                 to_plot.append(data[i])
                 hex_to_color.append(self.hex[i])
             elif np.all(data[i:] < nonvalue) and omit_nonvalue_rings:
@@ -1415,13 +1552,14 @@ class CoreHexPlot(CorePlot):
         # are plotting
         n_rings = None
         if omit_nonvalue_rings:
-            n_rings = self._count_rings(len(to_plot))
+            n_rings = core.count_rings(len(to_plot))
         ax = self._set_ax_bnds(ax, rings=n_rings)
 
         # Add data labels
         if kwargs.get('data_label'):
             self._add_data_labels(fig, ax, data, nonvalue,
-                                  kwargs.get('data_label_fmt'))
+                                  kwargs.get('data_label_fmt'),
+                                  asm_to_ignore)
 
         # Add colorbar and label if requested
         txt = ''
@@ -1433,14 +1571,14 @@ class CoreHexPlot(CorePlot):
         ax.axis('off')
         return ax
 
-    def _add_data_labels(self, fig, ax, data, nv, fmt):
+    def _add_data_labels(self, fig, ax, data, nv, fmt, ignore=[]):
         """Annotate hex plot with data labels"""
         txtwidth = 0.7 * (0.5 * np.sqrt(3) * self._asm_pitch)
         fontsize = 12
         if fmt is None:
             fmt = '{:0.1f}'
         for i in range(len(data)):
-            if data[i] >= nv:
+            if i not in ignore and data[i] >= nv:
                 txt = ax.annotate(fmt.format(data[i]),
                                   self.xy[i],
                                   size=fontsize,
@@ -1492,16 +1630,16 @@ class CoreHexPlot(CorePlot):
         # don't have to go through these iterations.
         return fs
 
-    @staticmethod
-    def _count_rings(n_asm):
-        """Given some number of assemblies, count hex rings"""
-        nr = int(np.ceil(0.5 * (1 + np.sqrt(1 + 4 * (n_asm - 1) // 3))))
-        return nr
+    # @staticmethod
+    # def _count_rings(n_asm):
+    #     """Given some number of assemblies, count hex rings"""
+    #     nr = int(np.ceil(0.5 * (1 + np.sqrt(1 + 4 * (n_asm - 1) // 3))))
+    #     return nr
 
     def make_power(self, dassh_reactor, plot_data):
         """Generate the total assembly power hex plot"""
-        data = np.array([a.power_delivered / 1e6 for a in
-                         dassh_reactor.assemblies])
+        data = np.array([sum(list(a._power_delivered.values())) / 1e6
+                         for a in dassh_reactor.assemblies])
         cbl = plot_data['cbar_label']
         if cbl is None:
             cbl = 'Power (MW)'
@@ -1636,11 +1774,11 @@ class CoreHexPlot(CorePlot):
     def _get_axial_peak_data(dassh_reactor, value):
         """Pull overall peak temperature data from DASSH reactor obj"""
         if 'coolant' in value:
-            data = np.array([a._peak['cool'] for a in
+            data = np.array([a._peak['cool'][0] for a in
                              dassh_reactor.assemblies])
         elif 'duct_mw' in value:
-            data = np.array([a._peak['duct'] for a in
-                             dassh_reactor.assemblies])
+            data = np.array([np.max(a._peak['duct'], axis=0)[0]
+                             for a in dassh_reactor.assemblies])
         elif 'clad_mw' in value:
             data = np.array([a._peak['pin']['clad_mw'][0]
                              if 'pin' in a._peak.keys() else -1.0
@@ -1727,6 +1865,12 @@ class CoreSubchannelPlot(CorePlot):
 
         """
         data = {'int': data}
+
+        # Assemblies to ignore
+        asm_to_ignore = []
+        if 'ignore_assemblies' in kwargs.keys():
+            asm_to_ignore = kwargs['ignore_assemblies']
+
         kwargs = self.parse_args(data, lbnd, ubnd, middle, **kwargs)
 
         # isolate the patch kwargs
@@ -1739,7 +1883,8 @@ class CoreSubchannelPlot(CorePlot):
         fig = plt.figure()
         ax = fig.add_subplot(111, aspect='equal')
 
-        for asm in self.reactor.assemblies:
+        for i in range(len(self.reactor.assemblies)):
+            asm = self.reactor.assemblies[i]
             # Skip if assembly is not included in rings: once you
             # reach the maximum number of rings, should just break
             if rings is not None and asm.loc[0] > rings - 1:
@@ -1752,9 +1897,9 @@ class CoreSubchannelPlot(CorePlot):
                 if key != 'int':
                     continue
                 else:
-                    tmp = data[key][data[key][:, 0] == asm.id]
+                    tmp = data[key][np.round(data[key][:, 0]) == asm.id]
                     try:
-                        asm_data[key] = tmp[0, 4:]
+                        asm_data[key] = tmp[0, 3:]
                     except:
                         print('DASSH asm ID:', asm.id)
                         print('z (m)', tmp[0, 2])
@@ -1763,17 +1908,26 @@ class CoreSubchannelPlot(CorePlot):
                         raise
 
             # Add subchannel temperatures to the plot
+            # Ignore assemblies if asked to
+            if asm.name in asm_to_ignore or asm.id in asm_to_ignore:
+                # continue
+                snp = SingleNodePlot(asm)
+                ax = snp.plot(
+                    ax, asm_data['int'][0], patch_kwargs['cmap'],
+                    patch_kwargs['norm'], True, 0.0, self.asm_xy[i])
+
             # If only a single value is given, use the proper plotting
             # object for that; just create on the fly b/c it's small
-            if np.sum(asm_data['int'] > 0) == 1:
-                snp = SingleNodePlot(asm)
-                ax = snp.plot(ax, asm_data['int'][0], patch_kwargs['cmap'],
-                              patch_kwargs['norm'], ignore_ur, 0.0,
-                              self.asm_xy[asm.id])
+            # elif np.sum(asm_data['int'] > 0) == 1:
+            #    snp = SingleNodePlot(asm)
+            #    ax = snp.plot(ax, asm_data['int'][0], patch_kwargs['cmap'],
+            #                  patch_kwargs['norm'], ignore_ur, 0.0,
+            #                  self.asm_xy[i])
+
             # Otherwise plot every subchannel in the assembly.
             else:
                 ax = self._plot_asm(ax, asm.name, asm_data,
-                                    self.asm_xy[asm.id], pins,
+                                    self.asm_xy[i], pins,
                                     pin_alpha, **patch_kwargs)
 
         # Remove axes
@@ -1893,7 +2047,8 @@ class CorePinPlot(CorePlot):
         fig = plt.figure()
         ax = fig.add_subplot(111, aspect='equal')
 
-        for asm in self.reactor.assemblies:
+        for i in range(len(self.reactor.assemblies)):
+            asm = self.reactor.assemblies[i]
             # Skip if assembly is not included in rings: once you
             # reach the maximum number of rings, should just break
             if rings is not None and asm.loc[0] > rings - 1:
@@ -1912,6 +2067,109 @@ class CorePinPlot(CorePlot):
                 ax = snp.plot(ax, 1.0, patch_kwargs['cmap'],
                               patch_kwargs['norm'], ignore_ur, 0.0,
                               self.asm_xy[asm.id])
+            # Otherwise plot every pin in the assembly.
+            else:
+                ax = self.pp[asm.name]._add_duct_walls(
+                    ax, self.asm_xy[asm.id], lw=0.0)
+                ax = self.pp[asm.name]._add_pins(
+                    ax, asm_data, self.asm_xy[asm.id], **patch_kwargs)
+
+        # Remove axes
+        plt.axis('off')
+
+        # Scale axis bounds to properly fit figure
+        ax = self._set_ax_bnds(ax, rings)
+
+        # Add colorbar and label, if desired
+        txt = ''
+        if kwargs.get('cbar_label'):
+            txt = kwargs['cbar_label']
+        ax = _add_colorbar(ax, txt, kwargs['cmap'], kwargs['norm'])
+
+        return ax
+
+    def plot_FH(self, data, lbnd=None, ubnd=None, middle=None,
+                rings=None, **kwargs):
+        """Plot subchannel temperatures for all assemblies in the core
+
+        Parameters
+        ----------
+        data : numpy.ndarray
+            Pin temperature data for every assembly in the core at the
+            requested axial height; generally from temp_pin.csv
+        value : str
+            Indicate the type of value to plot;
+            {"clad_od", "clad_mw", "clad_id", "fuel_od", "fuel_cl"}
+        lbnd : float (optional)
+            Lower bound for the color map
+        ubnd : float (optional)
+            Upper bound for the color map
+        middle : float (optional)
+            Middle value for the color map
+        rings : int (optional)
+            Indicate how many assembly rings of the core to plot;
+            default is to plot everything.
+
+        kwargs
+        ------
+        cmap : matploblib.cm object
+            Color map with which to color the subchannel temperatures
+        norm : matplotlib.colors.TwoSlopNorm object, or another norm
+            option from matplotlib.colors
+        cbar_label : str
+            Label for the color bar
+        linewidth : float
+            Border line width to apply to the subchannel patches
+
+        Returns
+        -------
+        matplotlib.axes.Axes object
+
+        """
+        data = {'pins': data}
+        kwargs = self.parse_args(data, lbnd, ubnd, middle, **kwargs)
+        data = data['pins']
+
+        # isolate the patch kwargs
+        patch_kwargs = {'cmap': kwargs['cmap'],
+                        'norm': kwargs['norm'],
+                        'linewidth': kwargs['linewidth'],
+                        'linestyle': kwargs['linestyle']}
+
+        # Setup the figure
+        fig = plt.figure()
+        ax = fig.add_subplot(111, aspect='equal')
+
+        for asm in self.reactor.assemblies:
+            # Skip if assembly is not included in rings: once you
+            # reach the maximum number of rings, should just break
+            if rings is not None and asm.loc[0] > rings - 1:
+                break
+
+            # Get subset of data for specific assembly
+            # NEED TO REMOVE DETAIL COLS
+            asm_data = data[data[:, 0] == asm.id]
+            asm_data = asm_data[:, -1]
+
+            # Add pin temperatures to the plot; if no value is given,
+            # no pin data for this assembly at this axial height
+            if asm_data.size == 0:
+                if asm.name == 'test':
+                    # hex_color = 'mediumorchid'
+                    hex_color = (149 / 255, 221 / 255, 0)
+                elif asm.name == 'control':
+                    hex_color = 'darkgray'
+                elif asm.name == 'reflector':
+                    hex_color = 'lightgray'
+                elif asm.name == 'shield':
+                    hex_color = 'gray'
+                else:  # Sodium
+                    continue
+
+                snp = SingleNodePlot(asm)
+                ax = snp.plot_single_color(ax, hex_color, 0.0,
+                                           self.asm_xy[asm.id])
+
             # Otherwise plot every pin in the assembly.
             else:
                 ax = self.pp[asm.name]._add_duct_walls(
@@ -1984,7 +2242,7 @@ def _prepare_input(dassh_reactor, plot_data, file_to_load):
     # Get data and apply unit conversion
     z_data = _load_data(file_to_load, z_conv, plot_data['assembly_id'])
     for k in z_data.keys():
-        z_data[k][:, 4:] = temp_conv(z_data[k][:, 4:])
+        z_data[k][:, 3:] = temp_conv(z_data[k][:, 3:])
     plot_data['z_data'] = z_data
 
     # Return for use in object
@@ -1995,11 +2253,11 @@ def _get_data_bnds(data, lbnd, ubnd, mpnt):
     """If necessary, get data lower/upper bounds and midpoint"""
     if isinstance(data, dict):
         if lbnd is None:
-            lbnd = np.min([np.min(data[k][:, 4:][data[k][:, 4:] > 0])
+            lbnd = np.min([np.min(data[k][:, 3:][data[k][:, 3:] > 0])
                            for k in data.keys()])
 
         if ubnd is None:
-            ubnd = np.max([np.max(data[k][:, 4:])
+            ubnd = np.max([np.max(data[k][:, 3:])
                            for k in data.keys()])
     else:
         if lbnd is None:
@@ -2014,17 +2272,16 @@ def _get_data_bnds(data, lbnd, ubnd, mpnt):
 
 def _sort_asm(dassh_reactor, plot_data):
     """Order the assemblies requested by the user"""
-    # Get the assembly indices; only need to modify if DIF3D index; in
-    # this case, user specifies DIF3D index but we want DASSH index
-    user_asm_list = []
-    if dassh_reactor._options['dif3d_idx']:
-        for user_asm in plot_data['assembly_id']:
-            for asm in dassh_reactor.assemblies:
-                if asm.dif3d_id == user_asm:
-                    user_asm_list.append(asm.id)
-                    break
-    else:
-        user_asm_list = plot_data['assembly_id']
+    # Get the assembly indices; also convert to python (base-0 index)
+    # user_asm_list = []
+    # if dassh_reactor._options['dif3d_idx']:
+    #     for user_asm in plot_data['assembly_id']:
+    #         for asm in dassh_reactor.assemblies:
+    #             if asm.dif3d_id == user_asm - 1:
+    #                 user_asm_list.append(asm.id)
+    #                 break
+    # else:
+    user_asm_list = [a_id - 1 for a_id in plot_data['assembly_id']]
     return user_asm_list
 
 
@@ -2126,7 +2383,7 @@ def _load_data(file, z_user, asmlist=None):
     """
     # Need a single list of all z-values to pull in
     with open(file, 'r') as f:
-        z_data = np.unique(np.loadtxt(f, delimiter=',', usecols=(2)))
+        z_data = np.unique(np.loadtxt(f, delimiter=',', usecols=(1)))
     z_to_load, interp_dict = _interp_z(z_data, z_user)
 
     # Read in numpy array selectively
@@ -2138,12 +2395,12 @@ def _load_data(file, z_user, asmlist=None):
     # Connect z-data in numpy array with user request
     z_dict = {}
     for z in z_user:
-        if z in data[:, 2]:
-            z_dict[z] = data[data[:, 2] == z]
+        if z in data[:, 1]:
+            z_dict[z] = data[data[:, 1] == z]
         else:
             z1, x1, z2, x2 = interp_dict[z]
-            z_dict[z] = (data[data[:, 2] == z1] * x1
-                         + data[data[:, 2] == z2] * x2)
+            z_dict[z] = (data[data[:, 1] == z1] * x1
+                         + data[data[:, 1] == z2] * x2)
 
     return z_dict
 
@@ -2180,10 +2437,11 @@ def _interp_z(z_available, z_requested):
 
 def _filter_lines(f, zlist, asmlist=None):
     for i, line in enumerate(f):
-        if float(line[50:74]) in zlist:
+        if float(line[25:49]) in zlist:
             if asmlist is None:
                 yield line
             else:
+                # Convert Python (base-0) index --> base-1 index
                 if int(float(line[:24])) in asmlist:
                     yield line
 

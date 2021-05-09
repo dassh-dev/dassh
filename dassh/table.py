@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-12-15
+date: 2021-04-30
 author: matz
 Objects and methods to print ASCII tables in Python
 """
@@ -30,9 +30,9 @@ from dassh import utils
 from dassh.logged_class import LoggedClass
 _OMIT = '---'
 _section_sep = '\n\n\n'
-_formatted_temp_units = {'Celsius': '˚C',
-                         'Fahrenheit': '˚F',
-                         'Kelvin': 'K'}
+_formatted_temp_units = {'celsius': '˚C',
+                         'fahrenheit': '˚F',
+                         'kelvin': 'K'}
 
 
 class DASSH_Table(object):
@@ -182,30 +182,6 @@ class DASSH_Table(object):
 def _echo_value(value):
     """To use when no unit conversion is desired"""
     return value
-
-
-def _sorted_assemblies_idx(reactor_obj):
-    if reactor_obj._options['dif3d_idx']:
-        return [a.dif3d_id for a in reactor_obj.assemblies]
-    else:
-        return [a.id for a in reactor_obj.assemblies]
-
-
-def _sorted_assemblies_attr(reactor_obj):
-    # Pregenerate a bunch of temporary objects: this is necessary
-    # in order to get proper indexing of assemblies, which varies
-    # depending on whether the user asked for DIF3D indexing or
-    # DASSH indexing.
-    re_index = _sorted_assemblies_idx(reactor_obj)
-    assemblies = [reactor_obj.assemblies[i] for i in re_index]
-    if reactor_obj._options['dif3d_idx']:
-        asm_id = [a.dif3d_id for a in assemblies]
-        asm_loc = [a.dif3d_loc for a in assemblies]
-    else:
-        assemblies = reactor_obj.assemblies
-        asm_id = [a.id for a in assemblies]
-        asm_loc = [a.loc for a in assemblies]
-    return assemblies, asm_id, asm_loc
 
 
 def _fmt_idx(idx):
@@ -543,7 +519,7 @@ class PositionAssignmentTable(LoggedClass, DASSH_Table):
 The axial mesh size constraint required for each assembly is reported
 as "dz".
 
-"Desc." refers to the type of subchannel that constrains the axial mesh
+"Limiting SC" refers to the type of subchannel that constrains the axial mesh
 size. The subchannel ID is the first number; the subchannels to which it
 is connected are the second set of numbers. Subchannel IDs are (1) interior;
 (2) edge; (3) corner; (6) bypass edge; (7); bypass corner. If a bypass
@@ -553,6 +529,11 @@ channel resides in.
 Example: "3-22" identifies corner subchannel connected to two edge subchannels
 Example: "7-66-0" indicates a bypass corner subchannel connected to two
     bypass edge channels in the first (innermost) bypass gap.
+
+Gr* is the modified Grashof number, which indicates whether buoyancy effects
+are important in the pin bundle. If the assembly has a pin bundle region and
+Gr* >= 0.02, buoyancy effects should be important and the forced convection
+representation of the flow is not accurate.
 """
 
     def __init__(self, col_width=9, col0_width=4, sep='  '):
@@ -563,7 +544,7 @@ Example: "7-66-0" indicates a bypass corner subchannel connected to two
         # Float formatting option
         self._ffmt = '{' + f':.{self.dp}E' + '}'
         # Inherit from DASSH_Table
-        DASSH_Table.__init__(self, 6, col_width, col0_width, sep)
+        DASSH_Table.__init__(self, 8, col_width, col0_width, sep)
 
     def make(self, r_obj):
         """Create the table
@@ -579,35 +560,45 @@ Example: "7-66-0" indicates a bypass corner subchannel connected to two
         len_unit = r_obj.units['length']
         mfr_conv = self._get_mfr_conv(fr_unit)
         len_conv = self._get_len_conv(len_unit)
-        self.add_row('', ['', '', 'Flow rate', 'Power', 'dz', ''])
+        self.add_row('', ['', '', 'Flow rate', 'Power', 'dz',
+                          'Limiting', '', 'Forced'])
         self.add_row('Asm.', ['Name',
                               'Loc.',
                               f'({fr_unit})',
                               '(W)',
                               f'({len_unit})',
-                              'Desc.'])
+                              'SC',
+                              'Gr*',
+                              'Conv Repr'])
         self.add_horizontal_line()
-
-        # Pregenerate a bunch of temporary objects: this is necessary
-        # in order to get proper indexing of assemblies, which varies
-        # depending on whether the user asked for DIF3D indexing or
-        # DASSH indexing.
-        assemblies, asm_id, asm_loc = _sorted_assemblies_attr(r_obj)
-        re_index = _sorted_assemblies_idx(r_obj)
-        asm_dz = [r_obj.min_dz['dz'][i] for i in re_index]
-        asm_dz_sc = [r_obj.min_dz['sc'][i] for i in re_index]
-        for i in range(len(assemblies)):
-            a = assemblies[i]
+        for i in range(len(r_obj.assemblies)):
+            a = r_obj.assemblies[i]
             fr = mfr_conv(a.flow_rate)
             p = a.total_power
-            dzi = len_conv(asm_dz[i])
-            sci = asm_dz_sc[i]
-            self.add_row(_fmt_idx(asm_id[i]), [a.name,
-                                               _fmt_pos(asm_loc[i]),
-                                               self._ffmt.format(fr),
-                                               self._ffmt.format(p),
-                                               self._ffmt.format(dzi),
-                                               str(sci)])
+            # Calculate Gr_star
+            if a.has_rodded:
+                try:
+                    gr_star, gr_star_crit = \
+                        self._determine_applicability(
+                            a, r_obj.inlet_temp, r_obj.core_length)
+                except (AttributeError, TypeError, AssertionError):
+                    gr_star = _OMIT
+                    gr_star_crit = _OMIT
+            else:
+                gr_star = _OMIT
+                gr_star_crit = _OMIT
+            self.add_row(
+                # _fmt_idx(a.id),
+                _fmt_idx(i),
+                [a.name,
+                 _fmt_pos(a.loc),
+                 self._ffmt.format(fr),
+                 self._ffmt.format(p),
+                 self._ffmt.format(len_conv(r_obj.min_dz['dz'][i])),
+                 str(r_obj.min_dz['sc'][i]),
+                 gr_star,
+                 gr_star_crit]
+            )
         if r_obj.core.model == 'flow':
             core_fr = mfr_conv(r_obj.core.gap_flow_rate)
             core_dz = len_conv(r_obj.min_dz['dz'][-1])
@@ -616,7 +607,92 @@ Example: "7-66-0" indicates a bypass corner subchannel connected to two
                                  self._ffmt.format(core_fr),
                                  _OMIT,
                                  self._ffmt.format(core_dz),
-                                 str(r_obj.min_dz['sc'][-1])])
+                                 str(r_obj.min_dz['sc'][-1]),
+                                 _OMIT,
+                                 _OMIT])
+
+    def _determine_applicability(self, asm, t_inlet, core_len):
+        """x"""
+        pin_power_skew = asm.power.calculate_pin_power_skew()
+        gr_star = self._calc_modified_gr(asm.rodded,
+                                         t_inlet,
+                                         asm._estimated_T_out,
+                                         pin_power_skew,
+                                         core_len)
+        if gr_star >= 0.02:
+            gr_star_crit = 'ERROR'
+        else:
+            gr_star_crit = str(u'\u2713')  # check mark
+        gr_star = self._ffmt.format(gr_star)  # format for table
+        return gr_star, gr_star_crit
+
+    def _calc_modified_gr(self, rr, t_in, t_out, pskew, length):
+        """Calculate modified Grashof number to evaluate importance of
+        buoyancy effects on flow distribution in bundle
+
+        Parameters
+        ----------
+        rr : DASSH RoddedRegion object
+            Contains bundle characteristics
+        t_in : float
+            Bundle inlet temperature (K)
+        t_out : float
+            Estimated bundle outlet temperature (K)
+        pskew : float
+            Ratio of power (skew) between max and average pin power
+        length : float
+            Bundle length (m)
+
+        Returns
+        -------
+        float
+            Modified Grashof number to be evaluated against critical
+            Grashof number (Gr*_C = 0.2)
+
+        Notes
+        -----
+        For reference, see:
+            1. SE2 Manual (1980); Section 4.3.1
+            2. Khan et al, "A Porous Body Model For Predicting Temperature
+               Distributions In Wire Wrapped Fuel and Blanket Assemblies
+               of a LMFBR" (Chapter 4), COO-2245-16TR, 1975
+
+        """
+        # Update coolant properties
+        rr._update_coolant_int_params(0.5 * (t_out + t_in))
+        # pull out some of them
+        Re = (rr.coolant.density
+              * rr.coolant_int_params['vel']
+              * rr.coolant_int_params['fs'][0]
+              * rr.params['de'][0]
+              / rr.coolant.viscosity)
+        # Novendstern's multiplication factor for wire-wrapped bundles
+        M = 1.034 / (rr.pin_pitch / rr.pin_diameter)**0.124
+        M += (29.7 * (rr.pin_pitch / rr.pin_diameter)**6.94 * Re**0.086
+              / (rr.wire_pitch / rr.pin_diameter)**2.239)
+        M = M**0.885
+        # Evaluate some other stuff
+        Pr = (rr.coolant.heat_capacity
+              * rr.coolant.viscosity
+              / rr.coolant.thermal_conductivity)
+        # Dimensionless eddy diffusivity
+        eddy_dimless = rr.corr['mix'](rr)[0]
+        # Gross gamma constant
+        gamma = (16 * ((rr.pin_pitch / rr.pin_diameter) - 1)
+                 * (rr.coolant_int_params['fs'][0] * eddy_dimless
+                    + rr._sf / Re / Pr)
+                 / np.pi / rr.duct_ftf[0][0])
+        # kinematic viscosity
+        kvisc = rr.coolant.viscosity / rr.coolant.density
+        # gross chi constant
+        chi = (pskew - 1) / 2 / M / gamma / length
+        # evaluate Gr and then Gr_star
+        ff = rr.coolant_int_params['ff']
+        g0 = 9.80665
+        beta = rr.coolant.beta
+        Gr = g0 * beta * (t_out - t_in) * rr.params['de'][0]**3 / kvisc**2
+        Gr_star = Gr * chi / ff / Re**2
+        return Gr_star
 
 
 ########################################################################
@@ -695,17 +771,6 @@ Notes
                           'Bundle',
                           'Friction',
                           'Eddy Df.'])
-        # self.add_row('Asm ID', ['Name',
-        #                         'Loc.',
-        #                         'Average',
-        #                         'Interior',
-        #                         'Edge',
-        #                         'Corner',
-        #                         'Bypass',
-        #                         'Swirl',
-        #                         'RE',
-        #                         'Factor',
-        #                         f'({len_unit}**2/s)'])
         self.add_row('Asm.', ['Name',
                               'Pos.',
                               'Avg.',
@@ -718,18 +783,12 @@ Notes
                               'Factor',
                               f'({len_unit}^2/s)'])
         self.add_horizontal_line()
-
-        # Pregenerate a bunch of temporary objects: this is necessary
-        # in order to get proper indexing of assemblies, which varies
-        # depending on whether the user asked for DIF3D indexing or
-        # DASSH indexing.
-        assemblies, asm_id, asm_loc = _sorted_assemblies_attr(reactor_obj)
-        for i in range(len(assemblies)):
-            a = assemblies[i]
+        for i in range(len(reactor_obj.assemblies)):
+            a = reactor_obj.assemblies[i]
             if a.has_rodded:
                 ar = a.rodded
                 params = [a.name,
-                          _fmt_pos(asm_loc[i]),
+                          _fmt_pos(a.loc),
                           self._ffmt3.format(
                               l_conv(ar.coolant_int_params['vel'])),
                           self._ffmt3.format(
@@ -756,7 +815,8 @@ Notes
             else:
                 reg = a.region[0]
                 params = [a.name,
-                          _fmt_pos(asm_loc[i]),
+                          # _fmt_pos(asm_loc[i]),
+                          _fmt_pos(a.loc),
                           self._ffmt3.format(
                               l_conv(reg.coolant_params['vel'])),
                           _OMIT,
@@ -767,8 +827,7 @@ Notes
                           self._ffmt0.format(reg.coolant_params['Re']),
                           self._ffmt.format(reg.coolant_params['ff']),
                           _OMIT]
-
-            self.add_row(_fmt_idx(asm_id[i]), params)
+            self.add_row(_fmt_idx(i), params)
 
 
 ########################################################################
@@ -823,15 +882,9 @@ class PressureDropTable(LoggedClass, DASSH_Table):
         header += [f'Region {i + 1}' for i in range(n_reg)]
         self.add_row('Asm.', header)
         self.add_horizontal_line()
-
-        # Pregenerate a bunch of temporary objects: this is necessary
-        # in order to get proper indexing of assemblies, which varies
-        # depending on whether the user asked for DIF3D indexing or
-        # DASSH indexing.
-        assemblies, asm_id, asm_loc = _sorted_assemblies_attr(reactor_obj)
-        for i in range(len(assemblies)):
-            a = assemblies[i]
-            params = [a.name, _fmt_pos(asm_loc[i])]
+        for i in range(len(reactor_obj.assemblies)):
+            a = reactor_obj.assemblies[i]
+            params = [a.name, _fmt_pos(a.loc)]
 
             # Include total pressure drop
             params.append(self._ffmt5.format(a.pressure_drop / 1e6))
@@ -841,7 +894,8 @@ class PressureDropTable(LoggedClass, DASSH_Table):
             for ri in range(len(a.region)):
                 params[ri + 3] = self._ffmt5.format(
                     a.region[ri].pressure_drop / 1e6)
-            self.add_row(_fmt_idx(asm_id[i]), params)
+            # self.add_row(_fmt_idx(a.id), params)
+            self.add_row(_fmt_idx(i), params)
 
 
 ########################################################################
@@ -853,14 +907,15 @@ class AssemblyEnergyBalanceTable(LoggedClass, DASSH_Table):
     title = "OVERALL ASSEMBLY ENERGY BALANCE" + "\n"
     notes = """Column heading definitions
     A - Heat added to coolant through pins or by direct heating (W)
-    B - Heat added to assembly-interior coolant through duct wall (W)
-    C - Heat added to bypass coolant through duct wall (W)
+    B - Heat added to duct wall (W)
+    C - Heat transferred to assembly-interior coolant through duct wall (W)
+    D - Heat transferred to bypass coolant through duct wall (W) (*)
     E - Assembly coolant mass flow rate (kg/s)
-    D - Assembly axially averaged heat capacity (J/kg-K)
-    F - Assembly coolant temperature rise (K)
-    G - Total assembly coolant heat gain through temp. rise: E * D * F (W)
-    SUM - Assembly energy balance: A + B + C - G (W)
-    ERROR - Error for this assembly: SUM / G""" + "\n"
+    F - Assembly axially averaged heat capacity (J/kg-K)
+    G - Assembly coolant temperature rise (K)
+    SUM - Assembly energy balance: A + C + D - E * F * G (W)
+    ERROR - SUM / (A + B)""" + "\n"
+    # G - Total assembly coolant heat gain through temp. rise: E * D * F (W)
 
     def __init__(self, col_width=11, col0_width=4, sep='  '):
         """Instantiate assembly energy balance summary output table"""
@@ -881,76 +936,168 @@ class AssemblyEnergyBalanceTable(LoggedClass, DASSH_Table):
             Contains the assembly data to print
 
         """
-        # Process units from input_obj: length
-        # fr_unit = r_obj.units['mass_flow_rate']
-        # len_unit = r_obj.units['length']
-        # mfr_conv = self._get_mfr_conv(fr_unit)
-        # len_conv = self._get_len_conv(len_unit)
-        # self.add_row('', ['', '', 'Flow rate', 'Power', 'dz', ''])
         self.add_row('Asm.', ['A', 'B', 'C', 'D', 'E', 'F', 'G',
                               'SUM', 'ERROR'])
         self.add_horizontal_line()
+        ebal = np.zeros((len(r_obj.assemblies), 9))
+        for i in range(len(r_obj.assemblies)):
+            asm = r_obj.assemblies[i]
+            ebal[i, :7] = self._calc_asm_energy_balance(asm, r_obj)
 
-        # Pregenerate a bunch of temporary objects: this is necessary
-        # in order to get proper indexing of assemblies, which varies
-        # depending on whether the user asked for DIF3D indexing or
-        # DASSH indexing.
-        assemblies, asm_id, asm_loc = _sorted_assemblies_attr(r_obj)
-        ebal = np.zeros((len(assemblies), 9))
-        for i in range(len(assemblies)):
-            a = assemblies[i]
-            for reg in a.region:
-                # Energy from direct heating
-                ebal[asm_id[i], 0] += reg.ebal['power_added']
-                # Energy transferred in from duct
-                ebal[asm_id[i], 1] += reg.ebal['from_duct']
-                # Energy from duct wall to bypass coolant
-                if 'from_duct_byp' in reg.ebal:
-                    ebal[asm_id[i], 2] += \
-                        np.sum(reg.ebal['from_duct_byp'])
+        # Use numpy for the calculations based on the preceding data;
+        # calculated energy from temp rise and the sum (ebal[:, 7])
+        e_temp_rise = ebal[:, 4] * ebal[:, 5] * ebal[:, 6]
+        ebal[:, 7] = np.sum(ebal[:, (0, 2, 3)], axis=1) - e_temp_rise
 
-            # Assembly mass flow rate
-            ebal[asm_id[i], 3] = a.flow_rate
-            # Average Cp
-            ebal[asm_id[i], 4] = self._get_avg_cp(a, r_obj.inlet_temp,
-                                                  a.avg_coolant_temp)
-            # Temperature rise
-            ebal[asm_id[i], 5] = a.avg_coolant_temp - r_obj.inlet_temp
-
-        # Use numpy for the calculations based on the preceding data
-        ebal[:, 6] = ebal[:, 3] * ebal[:, 4] * ebal[:, 5]
-        # Sum
-        ebal[:, 7] = np.sum(ebal[:, (0, 1, 2)], axis=1) - ebal[:, 6]
         # Error
-        ebal[:, 8] = ebal[:, 7] / ebal[:, 6]
+        for i in range(len(ebal)):
+            total_power = ebal[i, 0] + ebal[i, 1]
+            if total_power == 0.0:
+                ebal[i, 8] = np.nan
+            else:
+                ebal[i, 8] = ebal[i, 7] / (ebal[i, 0] + ebal[i, 1])
+
+        # Gap energy balance
+        gap_ebal = self._calc_gap_energy_balance(r_obj)
+
+        # Core energy balance
+        core_ebal = self._calc_core_energy_balance(ebal, gap_ebal, r_obj)
 
         # Now add rows to the table
-        for i in range(len(assemblies)):
-            self.add_row(_fmt_idx(asm_id[i]),
-                         [self._ffmt.format(x)
-                          for x in ebal[asm_id[i]]]
-                         )
+        if r_obj._options['ebal']:
+            for i in range(len(r_obj.assemblies)):
+                self.add_row(_fmt_idx(i), [self._ffmt.format(x)
+                                           for x in ebal[i]])
+            # Gap energy balance; add line to differentiate
+            # gap/core balances from assembly balances
+            self.add_horizontal_line()
+            self.add_row('GAP', [self._ffmt.format(x) for x in gap_ebal])
+        else:
+            for i in range(len(r_obj.assemblies)):
+                row = [self._ffmt.format(x) for x in ebal[i]]
+                # Omit B, C, SUM, ERROR
+                row[2] = _OMIT
+                row[3] = _OMIT
+                row[7] = _OMIT
+                row[8] = _OMIT
+                # self.add_row(_fmt_idx(a.id), row)
+                self.add_row(_fmt_idx(i), row)
+            # Add blank line to split off core balance
+            self.add_horizontal_line()
+        self.add_row('CORE', core_ebal)
+
+    def _calc_asm_energy_balance(self, asm, r_obj):
+        """Get energy balance table entries for an assembly"""
+        ebal_asm = np.zeros(7)
+        # Energy from direct heating
+        ebal_asm[0] += (asm._power_delivered['pins']
+                        + asm._power_delivered['cool']
+                        + asm._power_delivered['refl'])
+        # Energy from duct heating
+        ebal_asm[1] = asm._power_delivered['duct']
+        # If energy balance was tracked, add HT term w duct
+        if r_obj._options['ebal']:
+            for reg in asm.region:
+                reg.collect_ebal()
+                # Energy from direct heating
+                # ebal[asm_id[i], 0] += reg.ebal['power']
+                # Energy transferred in from duct
+                ebal_asm[2] += np.sum(reg.ebal['duct'])
+                # Energy from duct wall to bypass coolant
+                if 'duct_byp_in' in reg.ebal:
+                    ebal_asm[3] += np.sum(reg.ebal['duct_byp_in'])
+                    ebal_asm[3] += np.sum(reg.ebal['duct_byp_out'])
+
+        # Assembly mass flow rate
+        ebal_asm[4] = asm.flow_rate
+        # Average Cp
+        ebal_asm[5] = self._get_asm_avg_cp(asm, r_obj)
+        # Temperature rise
+        ebal_asm[6] = asm.avg_coolant_temp - r_obj.inlet_temp
+        return ebal_asm
+
+    def _calc_gap_energy_balance(self, r_obj):
+        """Calculate energy balance on inter-assembly gap coolant"""
+        gap_ebal = np.zeros(9)
+        gap_ebal[3] = np.sum(r_obj.core.ebal['asm'])
+        gap_ebal[4] = r_obj.core.gap_flow_rate
+        gap_ebal[5] = self._get_gap_avg_cp(r_obj)
+        gap_ebal[6] = r_obj.core.avg_coolant_gap_temp - r_obj.inlet_temp
+        gap_ebal[7] = gap_ebal[3] - gap_ebal[4] * gap_ebal[5] * gap_ebal[6]
+        if gap_ebal[3] != 0.0:
+            gap_ebal[8] = gap_ebal[7] / gap_ebal[3]
+        return gap_ebal
+
+    def _calc_core_energy_balance(self, asm_ebal, gap_ebal, r_obj):
+        """Calculate overall energy balance on core"""
+        core_tot = np.zeros(9)
+        core_tot[0] = np.sum(asm_ebal[:, 0])
+        core_tot[1] = np.sum(asm_ebal[:, 1])
+        core_tot[4] = r_obj.flow_rate
+
+        # Flow rate- and axial-average heat capacity
+        numerator = np.sum(asm_ebal[:, 4] * asm_ebal[:, 5])
+        denominator = np.sum(asm_ebal[:, 4])
+        if r_obj.core.model == 'flow':
+            numerator += gap_ebal[4] * gap_ebal[5]
+            denominator += gap_ebal[4]
+        core_tot[5] = numerator / denominator
+
+        # Flow rate- and axial-average temperature change
+        numerator = np.sum(asm_ebal[:, 4] * asm_ebal[:, 6])
+        denominator = np.sum(asm_ebal[:, 4])
+        if r_obj.core.model == 'flow':
+            numerator += gap_ebal[4] * gap_ebal[6]
+            denominator += gap_ebal[4]
+        core_tot[6] = numerator / denominator
+
+        # Calculate total energy change due to temp rise
+        q_dt_tot = np.sum(asm_ebal[:, 4] * asm_ebal[:, 5] * asm_ebal[:, 6])
+        if r_obj.core.model == 'flow':
+            q_dt_tot += gap_ebal[4] * gap_ebal[5] * gap_ebal[6]
+
+        sum1 = (core_tot[0] + core_tot[1]
+                - core_tot[4] * core_tot[5] * core_tot[6])
+        # sum2 = (core_tot[0] + core_tot[1] - q_dt_tot)
+        # print(sum1, sum2, sum1 - sum2)
+        core_tot[7] = sum1
+        total_power = core_tot[0] + core_tot[1]
+        if total_power == 0.0:
+            core_tot[8] = np.nan
+        else:
+            core_tot[8] = core_tot[7] / (core_tot[0] + core_tot[1])
+        core_tot = [self._ffmt.format(x) for x in core_tot]
+        core_tot[2] = _OMIT
+        core_tot[3] = _OMIT
+        return core_tot
 
     @staticmethod
-    def _get_avg_cp(asm, t1, t2):
-        asm.region[0].coolant.update(t1)
+    def _get_asm_avg_cp(asm, r_obj):
+        asm.region[0].coolant.update(r_obj.inlet_temp)
         cp1 = asm.region[0].coolant.heat_capacity
-        asm.region[0].coolant.update(t2)
+        asm.region[0].coolant.update(asm.avg_coolant_temp)
         cp2 = asm.region[0].coolant.heat_capacity
         return np.average([cp1, cp2])
 
+    @staticmethod
+    def _get_gap_avg_cp(r_obj):
+        r_obj.core.gap_coolant.update(r_obj.inlet_temp)
+        cp1 = r_obj.core.gap_coolant.heat_capacity
+        r_obj.core.gap_coolant.update(r_obj.core.avg_coolant_gap_temp)
+        cp2 = r_obj.core.gap_coolant.heat_capacity
+        return np.average([cp1, cp2])
 
 ########################################################################
 
 
-class CoreEnergyBalanceTable(LoggedClass, DASSH_Table):
+class InterasmEnergyXferTable(LoggedClass, DASSH_Table):
     """Assembly energy-balance summary table"""
 
-    title = "INTER-ASSEMBLY ENERGY BALANCE" + "\n"
+    title = "INTER-ASSEMBLY HEAT TRANSFER" + "\n"
     notes = """Notes
 - Tracks energy balance on inter-assembly gap coolant
 - Duct faces are as shown in the key below
-- Reported values include all "side" meshes and 1/2 each corner.
+- Each face includes all "side" meshes and 1/2 each corner.
 - Adjacent assembly ID is shown in parentheses next to each value.
 
 Duct face key                  Face 6    =   Face 1
@@ -991,33 +1138,23 @@ Duct face key                  Face 6    =   Face 1
                               'Face 4', 'Face 5', 'Face 6'])
         self.add_horizontal_line()
 
-        # Pregenerate a bunch of temporary objects: this is necessary
-        # in order to get proper indexing of assemblies, which varies
-        # depending on whether the user asked for DIF3D indexing or
-        # DASSH indexing.
-        assemblies, asm_id, asm_loc = _sorted_assemblies_attr(r_obj)
-        for i in range(len(assemblies)):
-            id = asm_id[i]
-            a = assemblies[i]
-
-            # Get heat transfer total per side
-            tmp = r_obj.core._ebal['interasm'][id].reshape(6, -1).copy()
+        for i in range(len(r_obj.assemblies)):
+            # Get heat transfer total per side - need DASSH ID to pull
+            # data from the interassembly HT array
+            tmp = r_obj.core.ebal['asm'][i].reshape(6, -1).copy()
             tmp2 = np.zeros((6, r_obj.core._sc_per_side + 2))
             tmp2[:, 1:] = tmp
             tmp2[:, 0] = np.roll(tmp[:, -1], 1)
             tmp2[:, (0, -1)] *= 0.5
             eps = np.sum(tmp2, axis=1)
 
-            # Get adjacent assemblies - adjacency array is in DASSH
-            # indexing so need to convert if dif3d_idx is True
-            if r_obj._options['dif3d_idx']:
-                adj_id = [r_obj.assemblies[adji - 1].dif3d_id
-                          if adji > 0 else -1
-                          for adji in r_obj.core.asm_adj[a.id]]
-            else:
-                adj_id = [r_obj.assemblies[adji - 1].id
-                          if adji > 0 else -1
-                          for adji in r_obj.core.asm_adj[a.id]]
+            # Get adjacent assemblies
+            adj_id = []
+            for adji in r_obj.core.asm_adj[i]:
+                if adji > 0 and adji <= len(r_obj.assemblies):
+                    adj_id.append(adji)
+                else:
+                    adj_id.append(-1)
 
             # Create the row
             row = []
@@ -1026,9 +1163,11 @@ Duct face key                  Face 6    =   Face 1
                 if adj_id[col] < 0:
                     entry += f' ({_OMIT})'
                 else:
-                    entry += f' ({(adj_id[col] + 1):03d})'
+                    entry += f' ({(adj_id[col]):03d})'
                 row.append(entry)
-            self.add_row(_fmt_idx(asm_id[i]), row)
+            # self.add_row(_fmt_idx(a.id), row)
+            self.add_row(_fmt_idx(i), row)
+
 
 ########################################################################
 
@@ -1103,19 +1242,8 @@ class CoolantTempTable(LoggedClass, DASSH_Table):
                               f'({len_unit})'])
         self.add_horizontal_line()
 
-        # Pregenerate a bunch of temporary objects: this is necessary
-        # in order to get proper indexing of assemblies, which varies
-        # depending on whether the user asked for DIF3D indexing or
-        # DASSH indexing.
-        assemblies, asm_id, asm_loc = _sorted_assemblies_attr(r_obj)
-
-        # Get averages from reactor_obj; read maximum CSV file
-        # dat_max = np.loadtxt(
-        #     os.path.join(reactor_obj.path, 'temp_maximum.csv'),
-        #     delimiter=',')
-
-        for i in range(len(assemblies)):
-            a = assemblies[i]
+        for i in range(len(r_obj.assemblies)):
+            a = r_obj.assemblies[i]
 
             # Here again, the first column in the dump file is the
             # DASSH ID, so we need to use the assembly.ID attribute
@@ -1134,14 +1262,15 @@ class CoolantTempTable(LoggedClass, DASSH_Table):
                 tc_max_ht = self._ffmt2.format(len_conv(tc_max_ht))
             tc_max_tot = self.temp_conv(tc_max_tot)
 
-            data = [_fmt_pos(asm_loc[i]),
+            data = [_fmt_pos(a.loc),
                     '{:.5E}'.format(a.total_power),
                     '{:.5E}'.format(mfr_conv(a.flow_rate)),
                     self._ffmt2.format(tc_avg),
                     self._ffmt2.format(tc_max_out),
                     self._ffmt2.format(tc_max_tot),
                     tc_max_ht]
-            self.add_row(_fmt_idx(asm_id[i]), data)
+            # self.add_row(_fmt_idx(a.id), data)
+            self.add_row(_fmt_idx(i), data)
 
 
 ########################################################################
@@ -1237,29 +1366,8 @@ Duct face key                  Face 6    =   Face 1
                               f'({len_unit})'])
         self.add_horizontal_line()
 
-        # Pregenerate a bunch of temporary objects: this is necessary
-        # in order to get proper indexing of assemblies, which varies
-        # depending on whether the user asked for DIF3D indexing or
-        # DASSH indexing.
-        assemblies, asm_id, asm_loc = _sorted_assemblies_attr(r_obj)
-
-        # for i in range(len(assemblies)):
-        #     a = assemblies[i]
-        #     face_temps = self.temp_conv(self._get_avg_duct_face_temp(a))
-        #     try:
-        #         td_max_tot, td_max_ht = a._peak['duct']
-        #     except TypeError:
-        #         td_max_tot = a._peak['duct']
-        #         td_max_ht = _OMIT
-        #     else:  # only format height as float if you get one
-        #         td_max_ht = self._ffmt2.format((len_conv(td_max_ht)))
-        #     td_max_tot = self.temp_conv(td_max_tot)
-        #     data = [_fmt_pos(asm_loc[i])]
-        #     data += [self._ffmt2.format(td) for td in face_temps]
-        #     data += [self._ffmt2.format(td_max_tot), td_max_ht]
-        #     self.add_row(_fmt_idx(asm_id[i]), data)
-        for i in range(len(assemblies)):
-            a = assemblies[i]
+        for i in range(len(r_obj.assemblies)):
+            a = r_obj.assemblies[i]
             # nduct = len(a._peak['duct'])
             face_temps = self.temp_conv(
                 self._get_avg_duct_face_temp(a))
@@ -1272,31 +1380,11 @@ Duct face key                  Face 6    =   Face 1
                 else:  # only format height as float if you get one
                     td_max_ht = self._ffmt2.format((len_conv(td_max_ht)))
                 td_max_tot = self.temp_conv(td_max_tot)
-                data = [_fmt_pos(asm_loc[i]), str(d + 1)]
+                data = [_fmt_pos(a.loc), str(d + 1)]
                 data += [self._ffmt2.format(td) for td in face_temps[d]]
                 data += [self._ffmt2.format(td_max_tot), td_max_ht]
-                self.add_row(_fmt_idx(asm_id[i]), data)
-
-    # @staticmethod
-    # def _get_avg_duct_face_temp(asm):
-    #     """Average the duct hex face temperatures"""
-    #     # temps = np.zeros(6)
-    #     nd = asm.region[-1].temp['duct_mw'].shape[1]
-    #     if nd == 6:
-    #         temps = np.average(
-    #             [asm.region[-1].temp['duct_mw'][0],
-    #              np.roll(asm.region[-1].temp['duct_mw'][0], 1)
-    #              ],
-    #             axis=0)
-    #     else:
-    #         ndps = int(nd / 6)
-    #         tmp = asm.region[-1].temp['duct_mw'][0].copy()
-    #         tmp.shape = (6, ndps)
-    #         tmp2 = np.zeros((6, ndps + 1))
-    #         tmp2[:, 1:] = tmp
-    #         tmp2[:, 0] = np.roll(tmp[:, -1], 1)
-    #         temps = np.average(tmp2, axis=1)
-    #     return temps
+                # self.add_row(_fmt_idx(a.id), data)
+                self.add_row(_fmt_idx(i), data)
 
     @staticmethod
     def _get_avg_duct_face_temp(asm):
@@ -1341,9 +1429,9 @@ class PeakPinTempTable(LoggedClass, DASSH_Table):
 
     """
 
-    col_id = {'clad': 6, 'fuel': -1}
-    col_id = {'clad': {'od': 5, 'mw': 6, 'id': 7},
-              'fuel': {'od': 8, 'cl': 9}}
+    col_id = {'clad': 5, 'fuel': -1}
+    col_id = {'clad': {'od': 4, 'mw': 5, 'id': 6},
+              'fuel': {'od': 7, 'cl': 8}}
 
     def __init__(self, col_width=9, col0_width=4, sep=' ', ffmt2=2):
         """Instantiate flow parameters output table"""
@@ -1416,20 +1504,6 @@ class PeakPinTempTable(LoggedClass, DASSH_Table):
                               'Fuel CL'])
         self.add_horizontal_line()
 
-        # Pregenerate a bunch of temporary objects: this is necessary
-        # in order to get proper indexing of assemblies, which varies
-        # depending on whether the user asked for DIF3D indexing or
-        # DASSH indexing.
-        assemblies, asm_id, asm_loc = _sorted_assemblies_attr(reactor_obj)
-
-        # Load pin temps; if none, skip table
-        # filepath = os.path.join(reactor_obj.path, 'temp_pin.csv')
-        # with warnings.catch_warnings():
-        #     warnings.simplefilter("ignore")
-        #     dat = np.loadtxt(filepath, delimiter=',')
-        # if dat.size == 0:
-        #     self.clear()
-        #     return
         keys = {'clad': {'od': 'clad_od',
                          'mw': 'clad_mw',
                          'id': 'clad_id'},
@@ -1437,13 +1511,13 @@ class PeakPinTempTable(LoggedClass, DASSH_Table):
                          'cl': 'fuel_cl'}}
         # Get peak temperatures @ height of peak component temp
         tab = []
-        for i in range(len(assemblies)):
-            row = [_fmt_idx(asm_id[i]), _fmt_pos(asm_loc[i])]
-            if 'pin' in assemblies[i]._peak.keys():
-                poop = keys[component][region]
-                row += self._get_temps(
-                    assemblies[i],
-                    assemblies[i]._peak['pin'][poop][2])
+        for i in range(len(reactor_obj.assemblies)):
+            a = reactor_obj.assemblies[i]
+            # row = [_fmt_idx(a.id), _fmt_pos(a.loc)]
+            row = [_fmt_idx(i), _fmt_pos(a.loc)]
+            if 'pin' in a._peak.keys():
+                xx = keys[component][region]
+                row += self._get_temps(a, a._peak['pin'][xx][2])
                 tab.append(row)
             else:
                 continue
@@ -1455,112 +1529,20 @@ class PeakPinTempTable(LoggedClass, DASSH_Table):
     def _get_temps(self, asm_obj, data):
         """Get cladding/fuel temperatures at the requested height
         for the requested pin"""
-        # Get pin (data[3]) and height (z = data[2])
+        # Get pin (data[2]) and height (z = data[1])
         temps = [str(int(data[3])),
-                 self._ffmt2.format(self.len_conv(data[2]))]
+                 self._ffmt2.format(self.len_conv(data[1]))]
 
         # Get power
-        plin = asm_obj.power.get_power(data[2])
-        plin = plin['pins'][int(data[3])] / self.len_conv(1)
+        plin = asm_obj.power.get_power(data[1])
+        plin = plin['pins'][int(data[2])] / self.len_conv(1)
         temps.append(self._ffmt2.format(plin))
 
         # Add temperatures
         temps += [self._ffmt2.format(self.temp_conv(x))
-                  for x in data[4:]]
+                  for x in data[3:]]
 
         return temps
-
-
-########################################################################
-
-
-class AvgTempTable(LoggedClass, DASSH_Table):
-    """Create table
-
-    Parameters
-    ----------
-
-    Attributes
-    ----------
-
-    Methods
-    -------
-    make : Generate table
-
-    """
-    def __init__(self, col_width=15, col0_width=6, sep=' '):
-        """Instantiate flow parameters output table"""
-        # Decimal places for rounding, where necessary
-        self.dp = col_width - 6
-        # Float formatting option
-        self._ffmt = '{' + f':.{self.dp}e' + '}'
-        self._ffmt2 = '{' + f':.{2}f' + '}'
-
-        # Inherit from DASSH_Table
-        DASSH_Table.__init__(self, 6, col_width, col0_width, sep)
-
-    def make(self, reactor_obj):
-        """Create the table
-
-        Parameters
-        ----------
-        reactor_obj : DASSH Reactor object
-            Contains the assembly data to print
-        component : str {'clad', 'fuel'}
-            Report clad/fuel temperatures at height of peak
-            temperature for this component
-            - 'clad': Clad midwall
-            - 'fuel': Fuel centerline
-
-        """
-        # Erase any existing data in the table
-        self.clear()
-        # Process units from input_obj: temp, length
-        temp_unit = reactor_obj.units['temperature']
-        self.temp_conv = self._get_temp_conv(temp_unit)
-        self.add_row('Asm ID', ['Name',
-                                'Loc.',
-                                f'Avg Coolant',
-                                f'Peak Coolant',
-                                f'Avg Duct MW',
-                                f'Peak Duct MW'])
-        self.add_horizontal_line()
-
-        # Pregenerate a bunch of temporary objects: this is necessary
-        # in order to get proper indexing of assemblies, which varies
-        # depending on whether the user asked for DIF3D indexing or
-        # DASSH indexing.
-        assemblies, asm_id, asm_loc = _sorted_assemblies_attr(reactor_obj)
-
-        # Get averages from reactor_obj; read maximum CSV file
-        # dat_max = np.loadtxt(
-        #     os.path.join(reactor_obj.path, 'temp_maximum.csv'),
-        #     delimiter=',')
-
-        for i in range(len(assemblies)):
-            a = assemblies[i]
-
-            # Here again, the first column in the dump file is the
-            # DASSH ID, so we need to use the assembly.ID attribute
-            # to locate the rows we want to search
-
-            # Coolant temperatures
-            tc_avg = self.temp_conv(a.avg_coolant_temp)
-            tc_max = self.temp_conv(a._peak['cool'])
-            # tc_pk = self.temp_conv(
-            #     np.max(dat_max[dat_max[:, 0] == a.id][:, 4]))
-
-            # Duct temperatures
-            td_avg = self.temp_conv(a.avg_duct_mw_temp[-1])
-            td_max = self.temp_conv(a._peak['duct'])
-            # td_pk = self.temp_conv(
-            #     np.max(dat_max[dat_max[:, 0] == a.id][:, 5]))
-            self.add_row(str(asm_id[i]), [a.name,
-                                          str(asm_loc[i]),
-                                          self._ffmt2.format(tc_avg),
-                                          self._ffmt2.format(tc_max),
-                                          self._ffmt2.format(td_avg),
-                                          self._ffmt2.format(td_max)])
 
 
 ########################################################################

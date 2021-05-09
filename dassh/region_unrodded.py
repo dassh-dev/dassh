@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-12-23
+date: 2021-03-29
 author: matz
 Methods for unrodded axial regions; to be used within Assembly objects
 """
@@ -32,7 +32,7 @@ from dassh.region_rodded import RoddedRegion
 _sqrt3 = np.sqrt(3)
 
 
-def make_ur_asm(asm_input, mat_dict, flow_rate):
+def make_ur_asm(asm_input, mat_dict, flow_rate, se2geo=False):
     """Process DASSH Assembly input to obtain un-rodded region input
     parameters; to be used when instantiating un-rodded region objects
     in DASSH Assembly object"""
@@ -49,7 +49,8 @@ def make_ur_asm(asm_input, mat_dict, flow_rate):
             mat_dict['duct'],
             asm_input['htc_params_duct']]
     kwargs = {'eps': 0.0,
-              'rr_equiv': _RREquivalent(asm_input, mat_dict, flow_rate)}
+              'rr_equiv': _RREquivalent(asm_input, mat_dict,
+                                        flow_rate, se2geo)}
     if asm_input.get('convection_factor'):
         kwargs['convection_factor'] = asm_input['convection_factor']
     else:
@@ -153,7 +154,7 @@ class SingleNodeHomogeneous(DASSH_Region):
         self.flow_rate = flow_rate
         self.coolant = coolant_mat
         self.duct = duct_mat
-        self._lowflow = lowflow  # duct wall convection approx flag
+        self._conv_approx = lowflow  # duct wall convection approx flag
         self._rr_equiv = rr_equiv  # rod bundle equivalent
 
         # Volume fractions of coolant and structure
@@ -202,6 +203,22 @@ class SingleNodeHomogeneous(DASSH_Region):
 
         # Ratio of interior flow rate in rod bundle to total flow rate
         self._mratio = convection_factor
+
+    def calculate_xbnds(self):
+        """Calculate boundaries between duct elements
+
+        Notes
+        -----
+        First array entry =0 (center of the top corner duct element)
+        Second array entry is 1/2 of the top corner duct element
+        Entries 3-7 are the "upper" bounds of the next 5 corner ducts
+        The final entry (8) is the center of the top corner duct
+            (equals duct outer perimeter)
+
+        """
+        hex_side = self.duct_ftf[1] / np.sqrt(3)
+        x_bnds = np.array([0, 0.5, 1.5, 2.5, 3.5, 4.5, 5.5, 6.0])
+        return hex_side * x_bnds
 
     def clone(self, new_flowrate=None):
         """Make a clone of the unrodded region"""
@@ -339,7 +356,7 @@ class SingleNodeHomogeneous(DASSH_Region):
         """
         self.temp['coolant_int'] += self._calc_coolant_temp(
             dz, power, adiabatic_duct, ebal)
-        self._calc_duct_temp(dz, t_gap, htc_gap, adiabatic_duct)
+        self._calc_duct_temp(t_gap, htc_gap, adiabatic_duct)
 
         # Update pressure drop
         self._pressure_drop += self.calculate_pressure_drop(dz)
@@ -369,7 +386,7 @@ class SingleNodeHomogeneous(DASSH_Region):
 
         # Do some heat transfer to/from the ducts
         if not adiabatic:
-            if self._lowflow:
+            if self._conv_approx:
                 R = (0.5 * self.duct_thickness
                      / self.duct.thermal_conductivity)
                 R += 1 / self.coolant_params['htc']
@@ -391,14 +408,12 @@ class SingleNodeHomogeneous(DASSH_Region):
 
         return dT * dz / self.flow_rate / self.coolant.heat_capacity
 
-    def _calc_duct_temp(self, dz, temp_gap, htc_gap, adiabatic=False):
+    def _calc_duct_temp(self, temp_gap, htc_gap, adiabatic=False):
         """Calculate the duct wall temperatures based on the adjacent
         coolant temperatures with no heat generation (q''' = 0)
 
         Parameters
         ----------
-        dz : float
-            Axial step size (m)
         temp_gap : numpy.ndarray
             Interassembly gap temperatures around the assembly at the
             j+1 axial level (array length = n_sc['duct']['total'])
@@ -579,7 +594,7 @@ class MultiNodeHomogeneous(SingleNodeHomogeneous, DASSH_Region):
         """
         self.temp['coolant_int'] += \
             self._calc_coolant_temp(dz, power, adiabatic_duct, ebal)
-        self._calc_duct_temp(dz, t_gap, htc_gap, adiabatic_duct)
+        self._calc_duct_temp(t_gap, htc_gap, adiabatic_duct)
 
         # Update pressure drop
         self._pressure_drop += self.calculate_pressure_drop(dz)
@@ -601,7 +616,8 @@ class MultiNodeHomogeneous(SingleNodeHomogeneous, DASSH_Region):
 
         """
         # Update coolant parameters and material properties
-        self._update_coolant_params(self.avg_coolant_int_temp)
+        T_avg = self.avg_coolant_int_temp
+        self._update_coolant_params(T_avg)
 
         # Calculate change in temperature from heat generation
         # Don't to divide by 6 because the proportion of power and
@@ -618,7 +634,7 @@ class MultiNodeHomogeneous(SingleNodeHomogeneous, DASSH_Region):
 
         # Do some heat transfer to/from the ducts
         if not adiabatic:
-            if self._lowflow:
+            if self._conv_approx:
                 R = (0.5 * self.duct_thickness
                      / self.duct.thermal_conductivity)
                 R += 1 / self.coolant_params['htc']
@@ -637,9 +653,9 @@ class MultiNodeHomogeneous(SingleNodeHomogeneous, DASSH_Region):
 
         if ebal:
             if adiabatic:
-                self.update_ebal(dz * power['refl'], np.zeros(6))
+                self.update_ebal(power['refl'] * dz, np.zeros(6)),
             else:
-                self.update_ebal(dz * power['refl'], dz * dT_duct)
+                self.update_ebal(power['refl'] * dz, dT_duct * dz)
 
         return dT * dz / self._scfr / self.coolant.heat_capacity
 
@@ -661,7 +677,6 @@ class _RREquivalent(RoddedRegion):
                      'wire_diameter',
                      'params',
                      'bundle_params',
-                     'bare_params',
                      'subchannel',
                      'coolant_int_params',
                      'corr_constants',
@@ -670,10 +685,10 @@ class _RREquivalent(RoddedRegion):
                      'coolant',
                      'int_flow_rate',
                      'total_flow_rate',
-                     '_htc_params',
+                     'htc_params',
                      '_sf']
 
-    def __init__(self, asm_input, mat_dict, fr):
+    def __init__(self, asm_input, mat_dict, fr, se2geo=False):
         """Instantiate RoddedRegion object and pull out useful attr"""
         # Instantiate RoddedRegion object
         RoddedRegion.__init__(
@@ -697,7 +712,8 @@ class _RREquivalent(RoddedRegion):
             asm_input['bypass_gap_flow_fraction'],
             asm_input['bypass_gap_loss_coeff'],
             asm_input['wire_direction'],
-            asm_input['shape_factor'])
+            asm_input['shape_factor'],
+            se2geo)
 
         # Delete everything we don't want
         to_delete = []
@@ -811,7 +827,7 @@ class _RREquivalent(RoddedRegion):
 ########################################################################
 
 
-def calculate_min_dz(reg, temp_lo, temp_hi):
+def calculate_min_dz(reg, temp_lo, temp_hi, adiabatic_duct=False):
     """Evaluate dz for the bundle at the assembly inlet and outlet
     temperatures; minimum value is taken to be the constraint
 
@@ -842,45 +858,49 @@ def calculate_min_dz(reg, temp_lo, temp_hi):
         # Interior coolant parameters and dz requirement
         reg._update_coolant_params(temp)
         if reg.model == 'simple':
-            if reg._lowflow:
-                R = (0.5 * reg.duct_thickness
-                     / reg.duct.thermal_conductivity)
-                # R += 1 / reg.coolant_params['htc'] / reg._params['xhtc']
-                R += 1 / reg.coolant_params['htc']
-                dz = (reg.flow_rate
-                      * reg.coolant.heat_capacity
-                      * R
-                      / reg.duct_perim
-                      / reg.mratio)
+            if not adiabatic_duct:
+                if reg._conv_approx:
+                    R = (0.5 * reg.duct_thickness
+                         / reg.duct.thermal_conductivity)
+                    R += 1 / reg.coolant_params['htc']
+                    dz = (reg.flow_rate
+                          * reg.coolant.heat_capacity
+                          * R
+                          / reg.duct_perim
+                          / reg.mratio)
+                else:
+                    # dz = (reg.flow_rate * reg.coolant.heat_capacity
+                    #       / reg.coolant_params['htc'] / reg._params['xhtc']
+                    #       / reg.duct_perim)
+                    dz = (reg.flow_rate * reg.coolant.heat_capacity
+                          / reg.coolant_params['htc'] / reg.duct_perim
+                          / reg.mratio)
             else:
-                # dz = (reg.flow_rate * reg.coolant.heat_capacity
-                #       / reg.coolant_params['htc'] / reg._params['xhtc']
-                #       / reg.duct_perim)
-                dz = (reg.flow_rate * reg.coolant.heat_capacity
-                      / reg.coolant_params['htc'] / reg.duct_perim
-                      / reg.mratio)
+                dz = 1.0  # 1 meter is v big
         elif reg.model == '6node':
             term1 = (2 * reg.coolant.thermal_conductivity
                      * reg._cond['const']
                      / reg._scfr
                      / reg.coolant.heat_capacity)
-            if reg._lowflow:
-                reg.duct.update(temp)
-                R = (0.5 * reg.duct_thickness
-                     / reg.duct.thermal_conductivity)
-                # R += 1 / reg.coolant_params['htc'] / reg._params['xhtc']
-                R += 1 / reg.coolant_params['htc']
-                term2 = (reg.duct_perim_over_6
-                         * reg.mratio
-                         / R
-                         / reg._scfr
-                         / reg.coolant.heat_capacity)
-            else:
-                term2 = (reg.duct_perim_over_6
-                         * reg.coolant_params['htc']
-                         * reg.mratio
-                         / reg._scfr
-                         / reg.coolant.heat_capacity)
+            term2 = 0.0
+            if not adiabatic_duct:
+                if reg._conv_approx:
+                    reg.duct.update(temp)
+                    R = (0.5 * reg.duct_thickness
+                         / reg.duct.thermal_conductivity)
+                    # R += 1 / reg.coolant_params['htc'] / reg._params['xhtc']
+                    R += 1 / reg.coolant_params['htc']
+                    term2 = (reg.duct_perim_over_6
+                             * reg.mratio
+                             / R
+                             / reg._scfr
+                             / reg.coolant.heat_capacity)
+                else:
+                    term2 = (reg.duct_perim_over_6
+                             * reg.coolant_params['htc']
+                             * reg.mratio
+                             / reg._scfr
+                             / reg.coolant.heat_capacity)
             dz = 1 / (term1 + term2)
         else:
             raise NotImplementedError('yolo')

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-09-22
+date: 2021-04-29
 author: matz
 Containers to hold and update material properties
 """
@@ -97,9 +97,9 @@ class Material(LoggedClass):
         # Tabulated data has cols ['temperature', prop 1, prop 2, ...]
         line1 = data[0].split(',')
         line1 = [l.lower() for l in line1]
-        print(line1)
-        print(line1[0] == 'temperature')
-        print('thermal_conductivity' in line1)
+        # print(line1)
+        # print(line1[0] == 'temperature')
+        # print('thermal_conductivity' in line1)
         if line1[0] == 'temperature' and 'thermal_conductivity' in line1:
             self._define_from_table(path)
         else:
@@ -149,8 +149,10 @@ class Material(LoggedClass):
             coeff_dict = globals()[self.name.lower()]
         self._data = {}
         for property in coeff_dict.keys():
+            # self._data[property.lower()] = \
+            #     np.poly1d(coeff_dict[property.lower()][::-1])
             self._data[property.lower()] = \
-                np.poly1d(coeff_dict[property.lower()][::-1])
+                _MatPoly(coeff_dict[property.lower()][::-1])
 
     @property
     def name(self):
@@ -175,6 +177,24 @@ class Material(LoggedClass):
     @property
     def viscosity(self):
         return self._viscosity
+
+    # @property
+    # def beta(self):
+    #     """Volume expansion coefficient for constant-property materials"""
+    #     return self._beta
+
+    @property
+    def beta(self):
+        """Calculate volume expansion coefficient; used only in
+        modified Grashof number calculation"""
+        if hasattr(self, '_beta'):  # return constant property
+            return self._beta
+        else:  # otherwise, calculate two densities
+            rho1 = self._data['density'](self.temperature)
+            rho2 = self._data['density'](self.temperature - 1)
+            beta = -1 * (rho1 - rho2) / rho1
+            assert beta != 0.0
+            return beta
 
     @name.setter
     def name(self, name):
@@ -203,7 +223,7 @@ class Material(LoggedClass):
 
     @thermal_conductivity.setter
     def thermal_conductivity(self, thermal_conductivity):
-        if not thermal_conductivity > 0:
+        if not thermal_conductivity >= 0:
             self.log('error', 'Thermal conductivity must be greater than 0')
         self._thermal_conductivity = thermal_conductivity
 
@@ -212,6 +232,11 @@ class Material(LoggedClass):
         if not viscosity > 0:
             self.log('error', 'Dynamic viscosity must be greater than 0')
         self._viscosity = viscosity
+
+    @beta.setter
+    def beta(self, beta):
+        # Only used for constant-property materials
+        self._beta = beta
 
     def update(self, temperature):
         """Update material properties based on new bulk temperature"""
@@ -224,6 +249,8 @@ class Material(LoggedClass):
         if requested"""
         clone = copy.copy(self)
         clone._temperature = copy.deepcopy(self._temperature)
+        # clone._data = {k: v for k, v in self._data.items()}
+        clone._data = copy.deepcopy(self._data)
         if new_temperature is not None:
             clone.update(new_temperature)
         return clone
@@ -239,6 +266,29 @@ class _MatInterp(object):
     def __call__(self, x):
         """Return the interpolated result"""
         return np.interp(x, self.x, self.y)
+
+
+class _MatPoly(object):
+    """Polynomial evaluator for material properties"""
+
+    def __init__(self, coeffs):
+        self.coeffs = coeffs
+        # Flag if constant mat properties - just return, don't eval
+        if len(coeffs) == 1:
+            self.const = True
+        else:
+            self.const = False
+
+    def __call__(self, x):
+        """Evaluate the polynomial at the given x"""
+        if self.const:
+            return self.coeffs[0]
+        else:
+            y = 0.0
+            for i, v in enumerate(self.coeffs):
+                y *= x
+                y += v
+            return y
 
 
 ########################################################################
@@ -343,12 +393,24 @@ ht9_se2anl_425 = {'thermal_conductivity': [26.4683395]}
 # correlated values based on the non-polynomial SE2ANL equation; the
 # two give reasonably close results between 250 - 900C
 sodium_se2anl = {'thermal_conductivity': [109.7452, -0.064508, 1.173e-5],
-                 'density': [950.1, -0.22976, -1.46e-5, 5.638e-9],
+                 # 'density': [950.1, -0.22976, -1.46e-5, 5.638e-9],
+                 'density': [1011.654722241015, -0.220522050856835,
+                             -1.92200591e-05, 5.638e-09],
                  'viscosity': [8.64078249e-03, -5.00659539e-05,
                                1.14361017e-07, -1.16194739e-10,
                                4.37629969e-14],
-                 'heat_capacity': [1437.16542, -0.58026129, 4.62348e-04]}
+                 'heat_capacity': [1630.16, -0.832842, 0.0004625424]}
+
+
 sodium_se2anl_425 = {'thermal_conductivity': [70.42623125],
                      'density': [850.2476796],
                      'viscosity': [0.000271272],
-                     'heat_capacity': [1274.160732]}
+                     'heat_capacity': [1274.160732],
+                     'beta': [0.00028122098689669706]}
+#
+# sodium_se2anl = {'thermal_conductivity': [109.7452, -0.064508, 1.173e-5],
+#                  'density': [1011.654722241015, -0.220522050856835,
+#                              -1.92200591e-05, 5.638e-9],
+#                  'viscosity': [8.64078249e-03, -5.00659539e-05,
+#                                1.14361017e-07, -1.16194739e-10,
+#                                4.37629969e-14],

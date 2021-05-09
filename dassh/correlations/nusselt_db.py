@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-12-03
+date: 2021-04-01
 author: matz
 Dittus-Boelter correlation for Nusselt number, used to calculate the
 heat transfer coefficient (W/m2K)
@@ -39,39 +39,10 @@ def calculate_sc_Nu(coolant_obj, sc_Re, consts=[]):
     if consts == []:
         consts = _DEFAULT_DB_CONSTS
     Pr = _calc_prandtl(coolant_obj)
-    Nu = np.zeros(len(sc_Re))
-    for i in range(len(Nu)):
-        Nu[i] = _dittus_boelter(sc_Re[i], Pr, consts)
+    Nu = _dittus_boelter(sc_Re, Pr, consts)
+    # for i in range(len(Nu)):
+    #     Nu[i] = _dittus_boelter(sc_Re[i], Pr, consts)
     return Nu
-
-
-# def calculate_bypass_Nu(asm_obj, consts=[]):
-#     """."""
-#     if consts == []:
-#         consts = _DEFAULT_DB_CONSTS
-
-
-# def calculate_interasm_gap_sc_Nu(core_obj, consts=[]):
-#     """Calculate the Nusselt numbers for the edge and corner inter-
-#     assembly gap subchannels with the Dittus-Boelter correlation"""
-#     if consts == []:
-#         consts = _DEFAULT_DB_CONSTS
-#
-#     Pr = _calc_prandtl(core_obj.gap_coolant)
-#     v_gap = (core_obj.gap_flow_rate
-#              / core_obj.gap_coolant.density
-#              / core_obj.gap_params['area'])
-#
-#     # Nu = np.zeros(2)
-#     # for i in range(len(Nu)):
-#     #     Re = (core_obj.gap_coolant.density * v_gap
-#     #           * core_obj.gap_params['de'][i]
-#     #           / core_obj.gap_coolant.viscosity)
-#     #     Nu[i] = _dittus_boelter(Re, Pr, consts)
-#     Re = (core_obj.gap_coolant.density * v_gap
-#           * core_obj.gap_params['de']
-#           / core_obj.gap_coolant.viscosity)
-#     return _dittus_boelter(Re, Pr, consts)
 
 
 def _calc_prandtl(coolant_obj):

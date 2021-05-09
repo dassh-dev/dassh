@@ -14,20 +14,18 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-01-05
+date: 2021-05-04
 author: matz
 Generate power distributions in assembly components based on neutron
 flux; object to assign to individual assemblies
 """
 ########################################################################
 import numpy as np
-import py4c
 import sys
-# import subprocess
-# import os
-# from scipy.interpolate import interp1d
 import logging
+import dassh
 from dassh.logged_class import LoggedClass
+from dassh import py4c
 
 
 np.set_printoptions(threshold=sys.maxsize)
@@ -119,10 +117,12 @@ class Power(LoggedClass):
         finemesh_to_activenode = np.zeros((geodst.fine_dims[2],
                                            geodst.fine_dims[1]))
         activenode = 0
+        # for j in range(geodst.fine_dims[1]):
+        #     for i in range(geodst.fine_dims[2]):
         for j in range(geodst.fine_dims[1]):
             for i in range(geodst.fine_dims[2]):
                 activenode += 1
-                if geodst.reg_assignments[0, i, j] != 0.0:
+                if geodst.reg_assignments[0, j, i] != 0.0:
                     finemesh_to_activenode[i, j] = activenode
         for ij in range(len(varpow.itrmap)):
             ireg = varpow.itrmap[ij]
@@ -135,18 +135,34 @@ class Power(LoggedClass):
         # --------------------------------------------------------------
         # Calculate assembly total power; rearrange material power dens
         n_asm = len(finemesh_to_activenode[finemesh_to_activenode != 0])
-        self.power = np.zeros((n_asm, geodst.fine_dims[0], 6))
-        self.power_density = np.zeros((n_asm, geodst.fine_dims[0], 6))
+        n_pos = int(np.max(-finemesh_to_activenode))
+        n_ring = dassh.core.count_rings(n_pos)
+        if n_ring == 1:
+            n_avail = 1
+        else:
+            n_avail = 3 * (n_ring - 1) * n_ring + 1
+        asm_idx = finemesh_to_activenode.flatten()
+        asm_idx = np.sort(-asm_idx)
+        asm_idx = asm_idx[asm_idx != 0]
+
+        # --------------------------------------------------------------
+        # Calculate assembly total power; rearrange material power dens
+        self.power = np.zeros((n_avail, geodst.fine_dims[0], 6))
+        self.power_density = np.zeros((n_avail, geodst.fine_dims[0], 6))
         vols = geodst.calc_volumes()
         for k in range(geodst.fine_dims[0]):
-            power_dens_k = mat_powerdens[k * n_asm:(k + 1) * n_asm, :]
+            # power_dens_k = mat_powerdens[k * n_asm:(k + 1) * n_asm, :]
+            power_dens_k = mat_powerdens[k * n_avail:(k + 1) * n_avail, :]
             for i in range(geodst.fine_dims[2]):
                 for j in range(geodst.fine_dims[1]):
                     asm_ij = int(-finemesh_to_activenode[i, j])
                     if asm_ij > 0:
+                        # asm_id = np.where(asm_idx == asm_ij)[0][0]
                         self.power[asm_ij - 1, k, :] += \
-                            power_dens_k[asm_ij - 1, :] * vols[k, i, j]
-            for asm in range(n_asm):
+                            power_dens_k[asm_ij - 1, :] * vols[k, j, i]
+                    # else:
+                    #     assert np.all(power_dens_k[asm_ij - 1, :] == 0)
+            for asm in range(n_avail):
                 self.power_density[asm][k] = power_dens_k[asm]
 
         # --------------------------------------------------------------
@@ -193,17 +209,17 @@ class Power(LoggedClass):
         # --------------------------------------------------------------
         # Split up the power shape functions by assembly
         self.mono_coeffs = {}
-        self.mono_coeffs['n'] = np.zeros((n_asm, geodst.fine_dims[0],
+        self.mono_coeffs['n'] = np.zeros((n_avail,
+                                          geodst.fine_dims[0],
                                           self.n_terms))
-        self.mono_coeffs['g'] = np.zeros((n_asm, geodst.fine_dims[0],
-                                          self.n_terms))
-        self.mono_coeffs['ff'] = np.zeros((n_asm, geodst.fine_dims[0],
-                                           self.n_terms))
+        self.mono_coeffs['g'] = self.mono_coeffs['n'].copy()
+        self.mono_coeffs['ff'] = self.mono_coeffs['n'].copy()
         for k in range(geodst.fine_dims[0]):
             for i in range(geodst.fine_dims[2]):
                 for j in range(geodst.fine_dims[1]):
                     asm_ij = int(-finemesh_to_activenode[i, j])
                     if asm_ij > 0:
+                        # asm_ij = np.where(asm_idx == asm_ij)[0][0]
                         self.mono_coeffs['n'][asm_ij - 1, k] = \
                             varpow.flux[0][k][asm_ij - 1]
                         self.mono_coeffs['g'][asm_ij - 1, k] = \
@@ -685,7 +701,7 @@ class AssemblyPower(object):
         # Axial mesh points that bound the power profile regions
         self.z_finemesh = np.array([np.around(zfi, 10)
                                    for zfi in z_finemesh])
-
+        self.n_region = len(self.z_finemesh) - 1
         # Axial mesh points that bound the rod bundle axial region
         self.rod_zbnds = np.array(rod_bundle_zbnds)  # cm
         if np.abs(self.rod_zbnds[0] == 0.0):
@@ -737,6 +753,13 @@ class AssemblyPower(object):
         z = z * 100  # m -> cm
         p_lin = {'pins': None, 'cool': None, 'duct': None, 'refl': None}
         kf = self.get_kfint(z)  # z given in meters
+
+        # For some unit conversions, the core length given to DASSH may
+        # be longer than that stored in the GEODST finemesh. Compensate
+        # by just preserving the last region as long as necessary
+        if kf == self.n_region:  # n_regions but python indexing
+            kf -= 1
+
         # When z = rod_zbnds[0] (lower boundary), we're still sweeping
         # through non-bundle space, return average power
         # When z = rod_zbnds[1] (upper boundary), we're still sweeping
@@ -793,7 +816,7 @@ class AssemblyPower(object):
             z_hi = self.z_finemesh[k_fint + 1]
         dz = z_hi - z_lo
         const = -0.5 - (z_lo / dz)
-        assert np.isclose(const, 0.5 - (z_hi / dz))
+        # assert np.isclose(const, 0.5 - (z_hi / dz))
         # Because VARPOW spits out the power densities backwards with
         # respect to z in each region, we want to invert the relative
         # z-coordinate
@@ -898,6 +921,27 @@ class AssemblyPower(object):
                                self.coolant_power, self.n_terms)
         return np.sum(dz_finemesh * avg_power)
 
+    def calculate_pin_power_skew(self):
+        """Calculate the radial pin power peaking for use in calculating
+        the modified critical Grashoff number"""
+        # Integrate pin powers
+        z_bnds = np.array([-0.5, 0.5])
+        z_bnds = z_bnds.reshape(2, 1)
+        int_exponents = np.arange(1, self.n_terms + 1)
+        z_int = np.power(z_bnds, int_exponents)
+        # Integrate in each region, evaluate at lower/upper bound
+        # shape is n_region x n_pin x 2 (upper/lower bound)
+        integrated = np.dot(self.pin_power / int_exponents, z_int.T)
+        # Take the difference across the region
+        # shape is n_region x n_pin
+        diff_across_region = integrated[:, :, 1] - integrated[:, :, 0]
+        # multiply linear power by z-bounds and sum to get total power
+        # in each pin
+        dz_finemesh = self.z_finemesh[1:] - self.z_finemesh[:-1]
+        power_per_pin = np.dot(dz_finemesh, diff_across_region)
+        # Now can evaluate skew
+        return np.max(power_per_pin) / np.average(power_per_pin)
+
     def save_to_file(self, path, asm_id, pin=True, duct=True, cool=True):
         """Save power profiles to CSV"""
         s = ''
@@ -945,7 +989,7 @@ def _from_file(fpath):
 
     """
     test = np.loadtxt(fpath, delimiter=',')
-    components = ['pin_power', 'duct_power', 'coolant_power']
+    components = ['pins', 'duct', 'cool']
     assembly_power_params = []
 
     # For every assembly
@@ -958,16 +1002,16 @@ def _from_file(fpath):
 
             # Z-finemesh for component: if not yet defined in dict,
             # add it; otherwise, check against it
-            dim1 = len(np.unique(tmp2[:, 3]))
+            dim1 = len(np.unique(tmp2[:, 2]))
             z_finemesh = np.zeros(dim1 + 1)
-            z_finemesh[1:] = np.unique(tmp2[:, 3])
+            z_finemesh[1:] = np.unique(tmp2[:, 2])
             if 'zfm' not in params.keys():
                 params['zfm'] = z_finemesh
             else:
                 _check_axial_reg_defns(params['zfm'], z_finemesh, a)
 
-            dim2 = len(np.unique(tmp2[:, 4]))  # Component index
-            dim3 = tmp2.shape[1] - 5  # Number of terms
+            dim2 = len(np.unique(tmp2[:, 3]))  # Component index
+            dim3 = tmp2.shape[1] - 4  # Number of terms
 
             # Add data to dictionary
             params[c] = tmp2[:, -dim3:].reshape(dim1, dim2, dim3)
@@ -976,9 +1020,9 @@ def _from_file(fpath):
             _check_for_negative_power(params[c], c, a)
 
         # If they pass, integrate to get average power
-        params['avg_power'] = _integrate(params['pin_power'],
-                                         params['duct_power'],
-                                         params['coolant_power'],
+        params['avg_power'] = _integrate(params['pins'],
+                                         params['duct'],
+                                         params['cool'],
                                          dim3)
 
         # Then assign to list for return

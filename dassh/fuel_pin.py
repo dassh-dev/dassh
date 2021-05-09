@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-08-18
+date: 2021-05-06
 author: matz
 Cladding and fuel pin heat transfer model
 """
@@ -24,7 +24,7 @@ from dassh.logged_class import LoggedClass
 _SBCONST = 5.670374419e-8
 _ERROR_MSG = """{0} temperature calculation did not converge;
 iterations = {1}
-max error = {5} K
+max error = {2} K
 """
 
 
@@ -128,6 +128,9 @@ class FuelPin(LoggedClass):
             self.fuel['r'][-1] = [fuel_params['r_frac'][-1], 1.0]
 
         self.fuel['r'] *= radius_out_fuel
+        # 2021-05-06 NEW SHIT
+        self.fuel['drsq_over_4'] = 0.25 * (self.fuel['r'][:, 1]**2
+                                           - self.fuel['r'][:, 0]**2)
         # Distances between mesh boundaries (Eq. 3.3-17 - 3.3-19)
         self.fuel['dr'] = self.fuel['r'][:, 1] - self.fuel['r'][:, 0]
         # Fuel cross-sectional area
@@ -202,23 +205,27 @@ class FuelPin(LoggedClass):
             fuel OD and CL temperatures
 
         """
-        temps = np.zeros((len(q_lin), 6))
-        temps[:, 0] = T_cool
+        t = np.zeros((len(q_lin), 6))
+        t[:, 0] = T_cool
 
         # Distribute power
-        qsums = self._distribute_power(q_lin, dz)
-
+        # qsums = self._distribute_power(q_lin, dz)
+        q_tot = q_lin * dz  # W/m --> W
+        q_dens = q_lin / self.fuel['area']  # W/m --> W/m3
         # Calculate cladding inner surface, midwall temperatures
-        temps[:, 1:4] = self.calc_clad_temps(
-            qsums[:, -1], dz, T_cool, htc, atol)
+        # temps[:, 1:4] = self.calc_clad_temps(
+        #     qsums[:, -1], dz, T_cool, htc, atol)
+        t[:, 1:4] = self.calc_clad_temps(q_tot, dz, T_cool, htc, atol)
 
         # Calculate fuel surface temperature
-        temps[:, 4] = self.calc_fuel_surf_temp(
-            qsums[:, -1], dz, temps[:, 3], atol)
+        # temps[:, 4] = self.calc_fuel_surf_temp(
+        #     qsums[:, -1], dz, temps[:, 3], atol)
+        t[:, 4] = self.calc_fuel_surf_temp(q_tot, dz, t[:, 3], atol)
 
         # Calculate fuel centerline temperatures
-        temps[:, 5] = self.calc_fuel_temps(qsums, dz, temps[:, 4], atol)
-        return temps
+        # temps[:, 5] = self.calc_fuel_temps(qsums, dz, temps[:, 4], atol)
+        t[:, 5] = self.calc_fuel_temps(q_dens, t[:, 4], atol)
+        return t
 
     def _distribute_power(self, q_lin, dz):
         """Distribute the power among the fuel nodes
@@ -269,7 +276,7 @@ class FuelPin(LoggedClass):
         # Calculate the power sum at each radial node (Eq. 3.4-9)
         return np.cumsum(q_node, axis=1)
 
-    def calc_clad_temps(self, q, dz, T_cool, htc, atol=1e-6, iter=20):
+    def calc_clad_temps(self, q, dz, T_cool, htc, atol=1e-6, ilim=20):
         """Calculate the change in temperature across the cladding
 
         Parameters
@@ -285,7 +292,10 @@ class FuelPin(LoggedClass):
         atol (optional) : float
             Convergence criteria (absolute) for the temperature /
             thermal conductivity iterations at each radial node
-
+            (default = 1e-6)
+        ilim (optional) : int
+            Iteration limit before nonconvergence error is raised
+            (default = 20)
         Returns
         -------
         nump.ndarray
@@ -314,20 +324,22 @@ class FuelPin(LoggedClass):
         while np.max(np.abs(T_in1 - T_in2)) > atol:
 
             # Estimate k(i) and calculate average
-            k = self._avg_cond(self.clad['k'](T_in1), k_ip1)
+            # k = self._avg_cond(self.clad['k'](T_in1), k_ip1)
+            k = 0.5 * (self.clad['k'](T_in1) + k_ip1)
 
             # Calculate T(i); shuffle placeholder tmperatures so
             # they can be compared for convergence
             T_in2 = T_in1
             T_in1 = T[:, 2] + dT / k
             idx += 1
-            if idx > iter:
+            if idx > ilim:
                 self.log('error', _ERROR_MSG.format(
                     'Clad', idx, np.max(T_in1 - T_in2)))
             # T_in1 = T[i + 1] + C[i] / k
         # print(idx)
         T[:, 0] = T_in1
-        T[:, 1] = np.average(T[:, (0, 2)], axis=1)
+        # T[:, 1] = np.average(T[:, (0, 2)], axis=1)
+        T[:, 1] = T[:, 2] + C * self.clad['ln_r2r_2node'][1] / k
         # Return the cladding inner surface and midwall temperatures
         return np.fliplr(T)
 
@@ -370,7 +382,8 @@ class FuelPin(LoggedClass):
             Tf2 = T_clad
             idx = 0
             while np.max(np.abs(Tf1 - Tf2)) > atol:
-                k = self._avg_cond(self.gap['k'](Tf1), k2)
+                # k = self._avg_cond(self.gap['k'](Tf1), k2)
+                k = 0.5 * (self.gap['k'](Tf1) + k2)
                 # Calculate surface temp; shuffle placeholder temps
                 # so they can be compared for convergence
                 Tf2 = Tf1
@@ -382,15 +395,13 @@ class FuelPin(LoggedClass):
                         'Fuel-clad gap', idx, np.max(Tf1 - Tf2)))
             return Tf1
 
-    def calc_fuel_temps(self, q_sum, dz, T_out, atol=1e-6, iter=10):
+    def calc_fuel_temps(self, q_dens, T_out, atol=1e-6, iter=10):
         """Calculate the fuel centerline temperature
 
         Parameters
         ----------
-        q_sum : numpy.ndarray
-            Power (W) at each radial node in the pellet for each pin
-        dz : float
-            Axial mesh step size
+        q_dens : numpy.ndarray
+            Power density (W/m3) for each pin
         T_out : numpy.ndarray
             Fuel surface temperature (K) for each pin
         atol (optional) : float
@@ -411,12 +422,13 @@ class FuelPin(LoggedClass):
         radial-node-averaged temperature (Eq. 3.3.-26)
 
         """
-        # Define constant
-        for i in reversed(range(q_sum.shape[1] - 1)):
+        # for i in reversed(range(q_sum.shape[1] - 1)):
+        for i in reversed(range(self.fuel['drsq_over_4'].shape[0])):
             # Set up some constants (do not require iteration)
             # T_i = T_ip1 + dT/k; need to iterate on k
-            dT = (self.fuel['dr'][i] * q_sum[:, i] / 2 / np.pi
-                  / self.fuel['rm'][i + 1] / dz)
+            # dT = (self.fuel['dr'][i] * q_sum[:, i] / 2 / np.pi
+            #       / self.fuel['rm'][i + 1] / dz)
+            dT = self.fuel['drsq_over_4'][i] * q_dens
             k_ip1 = self._fuel_cond(i, T_out)
             T_in1 = T_out + dT / k_ip1
             T_in2 = T_out
@@ -424,7 +436,11 @@ class FuelPin(LoggedClass):
             while np.max(np.abs(T_in1 - T_in2)) > atol:
                 # Estimate k(i) and calculate average
                 k_i = self._fuel_cond(i, T_in1)
-                k = self._avg_cond(k_i, k_ip1)
+                # k = self._avg_cond(k_i, k_ip1,
+                #                    self.fuel['dr'][i - 1],
+                #                    self.fuel['dr'][i])
+                # k = self._fuel_cond(i, 0.5 * (T_in1 + T_in2))
+                k = 0.5 * (k_i + k_ip1)
                 # Calculate T(i); shuffle placeholder tmperatures so
                 # they can be compared for convergence
                 T_in2 = T_in1
@@ -435,13 +451,14 @@ class FuelPin(LoggedClass):
                         'Fuel CL', idx, np.max(T_in1 - T_in2)))
 
             # Set T_out (T(i+1)) equal to T(i) and move to next step
+            print(iter)
             T_out = T_in1
 
         # Once the for loop is done, T_in1 is the centerline temp
         return T_in1
 
     @staticmethod
-    def _avg_cond(k_i, k_ip1):
+    def _avg_cond(k_i, k_ip1, dr_i=0.5, dr_ip1=0.5):
         """Weighted harmonic average of thermal conductivity values for
         two adjacent nodes (ANL-FRA-1996-3 Volume 1 Eq. 3.3.-26)
 
@@ -451,6 +468,10 @@ class FuelPin(LoggedClass):
             Thermal conductivity (W/m-K) of radial node index i
         k_ip1 : float
             Thermal conductivity (W/m-K) of radial node index i + 1
+        dr_i : float
+            Width (m) of radial node index i
+        dr_ip1 : float
+            Width (m) of radial node index i + 1
 
         Returns
         -------
@@ -458,7 +479,8 @@ class FuelPin(LoggedClass):
             Average conductivity between nodes i and i + 1
 
         """
-        return 2 * k_i * k_ip1 / (k_i + k_ip1)
+        return (k_i * k_ip1 * (dr_i + dr_ip1)
+                / (k_i * dr_ip1 + k_ip1 * dr_i))
 
     def _fuel_cond(self, i, T):
         """Calculate the thermal conductivity in a radial fuel node

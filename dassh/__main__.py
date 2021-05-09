@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-11-20
+date: 2021-02-18
 author: matz
 Main DASSH calculation procedure
 """
@@ -75,7 +75,7 @@ def main():
     dassh_logger.log(_log_info, 'Temperature sweep complete')
     if args.save_reactor and sys.version_info >= (3, 7):
         reactor.save()
-    elif dassh_input.data['Setup']['Plot']:
+    elif dassh_input.data['Plot']:
         reactor.save()  # just in case figure generation fails
     else:
         pass

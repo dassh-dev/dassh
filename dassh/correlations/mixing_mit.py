@@ -14,13 +14,14 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-06-12
+date: 2021-03-31
 author: matz
 MIT (Chiu-Rohsenow-Todreas) mixing correlations: eddy diffusivity and
 swirl velocity (1978)
 """
 ########################################################################
 import numpy as np
+from . import corr_utils
 
 
 # Application ranges of correlations (No info given in SE2 manual)
@@ -29,7 +30,7 @@ applicability['Nr'] = np.array([19, 900])
 applicability['bare rod'] = False
 
 
-def calculate_mixing_params(asm_obj):
+def calculate_mixing_params(asm_obj, shortcut=True):
     """Calculate the eddy diffusivity and swirl velocity based
     on the MIT (Chiu-Rohsenow-Todreas) 1978 correlations.
 
@@ -48,41 +49,38 @@ def calculate_mixing_params(asm_obj):
     -----
 
     """
+    if shortcut:
+        try:
+            return (asm_obj.corr_constants['mix']['eddy'],
+                    asm_obj.corr_constants['mix']['swirl'])
+        except (KeyError, AttributeError):
+            pass  # continue onward and do the calculation
+
     # Eddy diffusivity
     # Just spell these out, this is only called once anyway
     P = asm_obj.pin_pitch
     D = asm_obj.pin_diameter
     Dw = asm_obj.wire_diameter
     H = asm_obj.wire_pitch
-    AS1 = np.sqrt(3) * P**2 / 4 - np.pi * D**2 / 8
-    AR1 = np.pi * (P - 0.5 * D)**2 / 6 - np.pi * D**2 / 24
+    AS = corr_utils.calculate_bare_rod_sc_area('mit', P, D, Dw)
+    AR = corr_utils.calculate_wproj('mit', P, D, Dw)
+    # AS1 = np.sqrt(3) * P**2 / 4 - np.pi * D**2 / 8
+    # AR1 = np.pi * (P - 0.5 * D)**2 / 6 - np.pi * D**2 / 24
     e = (0.128
          * np.sqrt(P / (P - D))
-         * np.sqrt(AR1 / AS1)
+         * np.sqrt(AR[0] / AS[0])
          * (D + Dw) * P**2
-         / AS1 / np.sqrt(np.pi**2 * (D + Dw)**2 + H**2))
-    # e = (0.128
-    #      * np.sqrt(asm_obj.pin_pitch
-    #                / (asm_obj.pin_pitch - asm_obj.pin_diameter))
-    #      * np.sqrt(asm_obj.params['wproj'][0]
-    #                / asm_obj.bare_params['area'][0])
-    #      * (asm_obj.pin_diameter + asm_obj.wire_diameter)
-    #      * asm_obj.pin_pitch**2
-    #      / np.sqrt((np.pi**2 * (asm_obj.pin_diameter
-    #                             + asm_obj.wire_diameter)**2
-    #                 + asm_obj.wire_pitch**2))
-    #      / asm_obj.bare_params['area'][0])
+         / AS[0] / np.sqrt(np.pi**2 * (D + Dw)**2 + H**2))
     e *= asm_obj.params['de'][0]
 
     # Swirl velocity
-    s = (10.5 * (asm_obj.pin_pitch - asm_obj.pin_diameter)**0.35
-         * (asm_obj.pin_diameter + asm_obj.wire_diameter)
-         * np.sqrt(asm_obj.params['wproj'][1]))
-    s /= (asm_obj.pin_pitch**0.35
-          * np.sqrt(asm_obj.params['area'][1]
-                    * (np.pi**2 * (asm_obj.pin_diameter
-                                   + asm_obj.wire_diameter)**2
-                       + asm_obj.wire_pitch**2)))
+    # AS2 = P * (0.5 * D + Dw) - 0.125 * np.pi * D**2
+    # AR2 = np.pi * (0.25 * (0.5 * D + Dw)**2 - 0.0625 * D**2)
+    s = (10.5
+         * ((P - D) / P)**0.35
+         * (AR[1] / AS[1])**0.5
+         * (D + Dw)
+         / np.sqrt(np.pi**2 * (D + Dw)**2 + H**2))
     return e, s
 
 

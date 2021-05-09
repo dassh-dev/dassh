@@ -14,25 +14,16 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-12-14
+date: 2021-05-03
 author: matz
 Methods to describe the layout of assemblies in the reactor core and
 the coolant in the gap between them
 """
-# Next steps:
-# 1. For each assembly:
-
-# - map subchannels around reactor core
-# - assign XY coords to assembly centroids
-# - instantiate assembly objects for each assembly type/ID
-# - interpolation between inter-assembly gap subchannels
 ########################################################################
 import numpy as np
 import copy
 from dassh.logged_class import LoggedClass
 from dassh.correlations import nusselt_db
-
-# from py4c import geodst
 
 
 _sqrt3 = np.sqrt(3)
@@ -77,18 +68,11 @@ class Core(LoggedClass):
 
     """
 
-    def __init__(self, geodst_obj, gap_flow_rate, coolant_obj,
-                 inlet_temperature=273.15, model='flow',
+    def __init__(self, asm_list_input, asm_pitch, gap_flow_rate,
+                 coolant_obj, inlet_temperature=273.15, model='flow',
                  test=False):
         """Instantiate Core object."""
         LoggedClass.__init__(self, 4, 'dassh.core.Core')
-        # Check that all region maps in GEODST are square
-        if not all(reg_xy.shape[0] == reg_xy.shape[1]
-                   for reg_xy in geodst_obj.reg_assignments):
-            self.log('error', 'Was expecting all axial MR (region map) '
-                              + 'arrays from GEODST py4c object to be '
-                              + 'square')
-
         if model not in ['flow', 'no_flow', 'duct_average', None]:
             msg = 'Do not understand input inter-assembly gap model: '
             self.log('error', msg + model)
@@ -96,11 +80,10 @@ class Core(LoggedClass):
         # --------------------------------------------------------------
         # Identify GEODST periodicity: if not full core, it can be
         # either 60 or 120 degree
-        self.hex_option = self._identify_periodicity(geodst_obj)
-        self.n_ring = self._calc_nring(geodst_obj.reg_assignments[0])
-        self.asm_pitch = ((geodst_obj.xmesh[1] - geodst_obj.xmesh[0])
-                          / geodst_obj.ifints[0])
-        self.asm_pitch /= 100.0  # cm -> m
+        self.n_ring = count_rings(len(asm_list_input))
+        self.n_asm = np.sum(~np.isnan(asm_list_input))
+        self.hex_option = 0  # full core only, no periodicity
+        self.asm_pitch = asm_pitch  # m
         self.gap_coolant = coolant_obj
         self.gap_coolant.update(inlet_temperature)
         self.gap_flow_rate = gap_flow_rate
@@ -126,384 +109,15 @@ class Core(LoggedClass):
         # meshes, the filled positions will not. Therefore, this
         # map only needs to be made for one axial mesh.
         # Sets attribute self.asm_map
-        self.asm_map = self.map_asm(geodst_obj.reg_assignments[0])
+        self.asm_map = map_asm(asm_list_input)
 
         # Map neighbors for each assembly based on problem symmetry
         # Again, only one map needed for all axial meshes
         # Sets attribute self.asm_adj
-        self.asm_adj = self.map_adjacent_assemblies()
-
-        # Get list of region values corresponding to each assembly
-        # ID; this allows us to connect each assembly ID to a type
-        # of assembly. This needs to be done for every axial mesh.
-        self.regions = self.list_regions(geodst_obj)
+        self.asm_adj = map_adjacent_assemblies(self.asm_map)
 
     ####################################################################
     # SETUP METHODS
-    ####################################################################
-
-    def _identify_periodicity(self, geodst_obj):
-        """Identify periodic surface setup (symmetry) in hex geom"""
-        hex_option = 0  # full core; no work to do
-        if geodst_obj.geom_type in ['hex', 'hex-z']:  # igom
-            if geodst_obj.bcs[2, 0] == 4:  # imb4
-                hex_option = 1  # 120 symmetry/periodic:
-                if geodst_obj.triangle_option == "rhomb-60":  # ntriag
-                    hex_option = 2  # 60 symmetry/periodic
-        return hex_option
-
-    def _calc_nring(self, geodst_regmap):
-        """Calculate the number of assembly rings
-
-        Parameters
-        ----------
-        geodst_regmap : numpy.ndarray
-            Region assignments (N x N) array from a py4c GEODST object
-
-        Returns
-        -------
-        int
-            Number of assembly rings in the core
-
-        """
-        if self.hex_option == 2:  # 60 degree periodic
-            gmap = np.rot90(geodst_regmap)
-            i = 1
-            while not all(np.diagonal(gmap, offset=i - len(gmap)) == 0):
-                i += 1
-            nring = int(i - 1)
-        elif self.hex_option == 1:  # 120 degree periodic
-            nring = geodst_regmap.shape[0]
-        else:
-            nring = int((geodst_regmap.shape[0] + 1) / 2)
-        return nring
-
-    # ASSEMBLY MAP -----------------------------------------------------
-
-    def map_asm(self, regmap):
-        r"""Map the assembly locations in the core.
-
-        Parameters
-        ----------
-        regmap : numpy.ndarray
-            Map of the regions at one axial level obtained by
-            processing the GEODST binary file using py4c
-
-        Returns
-        -------
-        numpy.ndarray
-            Map of assemblies in the core
-
-        Notes
-        -----
-        The assemblies are numbered starting at the center assembly
-        (1) and continuing outward around each of the rings. The
-        first assembly of the next ring is that located on the
-        diagonal immediately above the center assembly. The
-        assemblies in each ring are labeled by traveling clockwise
-        around the ring.
-
-        A regular hexagon can be divided by three straight lines along
-        the long diagonals that pass through the corners and intersect
-        at the center. One of these runs straight up and down; the
-        second has an angle of 30 degrees from horizontal; the third
-        has an angle of 150 degrees from horizontal.
-
-        This assembly numbering scheme and division of the hexagon can
-        be used to map the assembly labels from the hexagon to a square
-        matrix, which uses mimics the three long diagonals in the pin
-        with the rows, columns, and one diagonal.
-
-        Example
-        -------
-        If the center assembly is labeled "1", then the second ring of
-        pins may be labeled:
-
-        NORTH (y)
-           \\                EAST (x)
-            \\              .#
-              2 _____ 3  .#
-              /\    / \ #
-           7 /___\1/___\ 4
-             \   / \   /
-              \/_____\/
-              6       5
-
-        The map for this 7-assembly core would be:
-                             ____
-        | 2 3 0 |           | 2 3  \
-        | 7 1 4 |   (note:  | 7 1 4 | looks like a hexagon!)
-        | 0 6 5 |            \ _6_5_|
-
-        Periodicity
-        -----------
-        The GEODST file may only specify 1/6 or 1/3 of the core,
-        which implies 60 or 120 degree periodicity. In that case,
-        the array obtained from the GEODST region map is only of
-        the partial core. These cases and the full core case are
-        handled separately within this method.
-
-        """
-        # Directions turning clockwise around a hexagon
-        # First entry is step from an inner ring to the top of an
-        # outer ring; the remaining steps are the turns around the
-        # hexagon corners
-        _dirs = [(-1, -1), (0, 1), (1, 1), (1, 0),
-                 (0, -1), (-1, -1), (-1, 0)]
-        asm_map = np.zeros((self.n_ring * 2 - 1,
-                            self.n_ring * 2 - 1), dtype=int)
-        asm_idx = 1
-        center = self.n_ring - 1
-
-        # Expand periodic region maps to match size of full core map
-        if self.hex_option != 0:
-            temp = asm_map
-            regmap[1:, 0] = 0  # remove duplicated diagonal
-            if self.hex_option == 2:  # 60 degree periodic
-                # 60 degree regmap is not necessarily nring x nring
-                # Need to explicitly account for that missing space
-                regmap = np.rot90(regmap)
-                temp[(center - len(regmap) + 1):(center + 1),
-                     center:(len(regmap) + center)] = regmap
-                regmap = temp
-                assert len(np.nonzero(np.diag(regmap))) <= 1
-            else:  # 120 degree periodic; self.hex_option == 1
-                # 120 degree regmap should be nring x nring
-                temp[(self.n_ring - 1):, (self.n_ring - 1):] = regmap
-                regmap = temp
-                assert len(np.nonzero(np.diag(np.rot90(regmap)))) <= 1
-
-        # Fill the first position at the center assembly
-        if regmap[self.n_ring - 1, self.n_ring - 1] != 0:
-            asm_map[self.n_ring - 1, self.n_ring - 1] = asm_idx
-            asm_idx += 1
-
-        # Loop clockwise around the rings to identify the assemblies
-        for ring in range(2, int(self.n_ring + 1)):
-            row = self.n_ring - ring
-            col = self.n_ring - ring
-            positions = 6 * (ring - 1)  # all positions on active ring
-            corners = np.arange(0, positions, ring - 1)
-            d = 1  # first direction
-            for pos in range(0, int(positions)):
-                # The active position may be 0 in reg_assignments,
-                # meaning that there's no region there. In that case,
-                # skip; otherwise, fill empty map entry.
-                if regmap[row, col] != 0:
-                    asm_map[row, col] = asm_idx
-                    asm_idx += 1
-                if pos > 0 and pos in corners:
-                    d += 1  # change directions at corner
-                row, col = row + _dirs[d][0], col + _dirs[d][1]
-
-        # Trim zero rows and columns from periodic cases
-        return self._strip_asm_map_zeros(asm_map)
-
-    def _strip_asm_map_zeros(self, asm_map):
-        r"""Remove the zero rows and columns from the assembly maps
-        generated for the periodic cases
-
-        Notes
-        -----
-        The zero regions in the hexagon are:
-        60 degree periodic          120 degree periodic
-        [   _____       ]           [   _____       ]
-        [ | \ 0 | \     ]           [ | \ 0 | \     ]
-        [ |  \  |  \ 0  ]           [ |  \  |  \ 0  ]
-        [ | 0 \ | x \   ]           [ | 0 \ | 0 \   ]
-        [ |____\|____\  ]           [ |____\|____\  ]
-        [  \    | \ 0 | ]           [  \    | \ x | ]
-        [   \ 0 |  \  | ]           [   \ 0 |  \  | ]
-        [ 0  \  | 0 \ | ]           [ 0  \  | x \ | ]
-        [     \ |____\| ]           [     \ |____\| ]
-
-        """
-        if self.hex_option == 2:
-            asm_map = asm_map[0:self.n_ring, (self.n_ring - 1):]
-        elif self.hex_option == 1:
-            asm_map = asm_map[(self.n_ring - 1):, (self.n_ring - 1):]
-        else:
-            pass
-        return asm_map
-
-    # FIND NEIGHBORS (Adjacent assemblies) -----------------------------
-
-    def map_adjacent_assemblies(self):
-        r"""Identify assembly neighbors for each assembly in the core.
-
-        Parameters
-        ----------
-        geodst_regmap : numpy.ndarray
-            Map of the regions at one axial level obtained by
-            processing the GEODST binary file using py4c
-
-        Returns
-        -------
-        numpy.ndarray
-            Adjacent assemblies for each assembly in the core
-
-        Notes
-        -----
-        Array returned has shape (n_asm x 6). Empty positions
-        along the core edges are returned as zeros. The below shows
-        the neighbor index and the assembly number in parentheses
-
-            7(6)  /\  2(7)
-                /    \
-         6(5)  | 1(1) |  3(2)
-               |      |
-                \    /      y
-            5(4)  \/  4(3)  |__x
-
-        Relative to the assembly map array we made, that order is:
-
-            2 - 3
-            | \ |  \
-            1 - x - 4
-             \  | \ |
-                6 - 5
-
-        ...where "x" is the "active assembly" of interest.
-
-        """
-        adj = np.zeros((np.max(self.asm_map), 6), dtype=int)
-        if self.hex_option == 2:  # 60 DEGREE PERIODIC
-            raise NotImplementedError()
-            adj[0] = np.ones(6) * 2
-            asm_map = self._expand_periodic_asm_map()
-            for row in range(0, self.n_ring - 1):
-                for col in range(1, self.n_ring):
-                    id = asm_map[row, col]
-                    if id != 0:
-                        adj[id - 1] = self._get_neighbors(asm_map,
-                                                          (row, col))
-
-        elif self.hex_option == 1:  # 120 DEGREE PERIODIC
-            raise NotImplementedError()
-            adj[0] = np.array([2, 3] * 3)
-            asm_map = self._expand_periodic_asm_map()
-            for row in range(1, self.n_ring + 1):
-                for col in range(1, self.n_ring):
-                    id = asm_map[row, col]
-                    if id != 0:
-                        adj[id - 1] = self._get_neighbors(asm_map,
-                                                          (row, col))
-
-        else:  # FULL CORE
-            for row in range(0, len(self.asm_map)):
-                for col in range(0, len(self.asm_map[row])):
-                    id = self.asm_map[row, col]
-                    if id != 0:
-                        adj[id - 1] = self._get_neighbors(self.asm_map,
-                                                          (row, col))
-        # 2020-09-25: This change "rotates" the way in which adjacent
-        # assemblies are counted to line up the X-Y axes in DASSH with
-        # those in DIF3D
-        # adj = adj[:, [5, 0, 1, 2, 3, 4]]
-        return adj
-
-    def _get_neighbors(self, asm_map, loc):
-        """Identify the neighbors for one assembly
-
-        Parameters
-        ----------
-        asm_map : numpy.ndarray
-            Map (expanded if periodic case) of the assemblies at one
-            axial level obtained by processing the GEODST binary file
-            using py4c
-        loc : tuple
-            Row, column location of active assembly ID in asm_map
-
-        Returns
-        -------
-        numpy.ndarray
-            IDs for the assemblies adjacent to the active assembly
-
-        Notes
-        -----
-        Array returned has shape (1 x 6). Empty positions
-        along the core edges are returned as zeros.
-
-        """
-        adjacent_asm = np.zeros(6, dtype=int)
-        # The order in which neighbors are counted is different for
-        # each periodicity case depending on the orientation of the
-        # assembly map - want to be counting out along the major
-        # diagonal onto the next rings.
-        # dirs = {}
-        # dirs[0] = [(-1, -1), (-1, 0), (0, 1), (1, 1), (1, 0), (0, -1)]
-        # dirs[2] = dirs[0][1:] + [dirs[0][0]]
-        # dirs[1] = dirs[0][2:] + dirs[0][:2]
-        for i in range(0, len(_dirs[self.hex_option])):
-            address = tuple(sum(x) for x in
-                            zip(loc, _dirs[self.hex_option][i]))
-            if all(idx >= 0 for idx in address):
-                try:
-                    adjacent_asm[i] = asm_map[address]
-                except IndexError:
-                    pass
-        return adjacent_asm
-
-    def _expand_periodic_asm_map(self):
-        """Expand a periodic assembly map to show assemblies
-        in the next segment
-
-        Notes
-        -----
-        This method enables the mapping of neighbors by expanding
-        the periodic assembly ID map beyond the bounds of the
-        mapped segment into the adjacent ones, allowing the mapping
-        method to handle those assemblies that are on the segment
-        border.
-
-        """
-        asm_map = copy.deepcopy(self.asm_map)
-        to_add = np.zeros(len(asm_map), dtype=int)
-        if self.hex_option == 2:  # 60 degree periodic
-            asm_map[-1, :] = asm_map[:, 0][::-1]
-            to_add[:(len(asm_map) - 1)] = asm_map[:, 1][1:]
-            to_add.shape = (len(to_add), 1)
-            asm_map = np.hstack((to_add, asm_map))
-        elif self.hex_option == 1:  # 120 degree periodic
-            asm_map[:, 0] = asm_map[0, :]
-            to_add[:-1] = asm_map[:, 1][1:]
-            asm_map = np.vstack((to_add, asm_map))
-        else:
-            pass
-        return asm_map
-
-    # CATALOG REGIONS --------------------------------------------------
-
-    def list_regions(self, geodst_obj):
-        """Catalog the GEODST region IDs with the DASSH assembly IDs.
-        This is done for each axial region map.
-
-        Parameters
-        ----------
-        regmap : numpy.ndarray
-            Region map at an axial level from GEODST py4c object
-
-        """
-        regions = []
-        for rmap_z in geodst_obj.reg_assignments:
-            reg = np.zeros(np.max(self.asm_map), dtype=int)
-            # 60 degree periodic asm_map may need expansion
-            # to be of size n_ring x n_ring
-            if self.hex_option == 2:
-                tmp = np.zeros((self.n_ring, self.n_ring), dtype=int)
-                tmp[(self.n_ring - len(rmap_z)):,
-                    0:len(rmap_z)] = np.rot90(rmap_z)
-                rmap_z = tmp
-            for row in range(0, len(self.asm_map)):
-                for col in range(0, len(self.asm_map[row])):
-                    if self.asm_map[row, col] != 0:
-                        reg[self.asm_map[row, col] - 1] = rmap_z[row,
-                                                                 col]
-            regions.append(reg)
-        return np.vstack(regions)
-
-    ####################################################################
-    # SETUP METHODS (cont); called outside instantiation
     ####################################################################
 
     def load(self, asms):
@@ -527,205 +141,515 @@ class Core(LoggedClass):
         and forth between finer and coarser meshes.
 
         """
-        self.n_asm = len(asms)
-        # Remove the assembly locations that we didn't load
-        self.asm_map[self.asm_map > self.n_asm] = 0
-        # Set up the gap mesh parameters based on the assembly with
-        # the most pins (creates the finest meshing)
-        idx = 0
-        n_pin = 0
-        for ai in range(len(asms)):
-            if asms[ai].has_rodded and asms[ai].rodded.n_pin > n_pin:
-                n_pin = asms[ai].rodded.n_pin
-                idx = ai  # <-- use this assembly
-
-        # Get the "x" coordinates at which the duct temperatures
-        # for each assembly will be given; this is for use *along
-        # each hex side* including corners.
-        self.x_pts = asms[idx]._finest_xpts
-
-        # If it has precalculated least-squares fit params, take 'em
-        if hasattr(asms[idx], '_lstsq_params'):
-            self._lstsq_params = asms[idx]._lstsq_params
-
-        # Pull some parameters from that assembly
-        # Subchannels per asm and per hex side (incl. no corners)
-        self._sc_per_asm = 6 * (len(self.x_pts) - 1)
-        self._sc_per_side = len(self.x_pts) - 2
-
-        # Some things I don't need to store but want to pull out
-        asm_dftf = asms[idx].duct_oftf  # Duct outer FTF
-        asm_pin_pitch = 0.0
-        if asms[idx].has_rodded:
-            asm_pin_pitch = asms[idx].rodded.pin_pitch
-
-        # Set up interassembly gap subchannel adjacency
-        self.asm_sc_adj = self.map_interassembly_sc()
-        self.sc_types = np.array(self.determine_sc_types()) - 1
-        self.sc_adj = self.find_adjacent_sc()
-
+        assert len(asms) == self.n_asm
+        self.duct_oftf = asms[0].duct_oftf  # Duct outer FTF
+        self.hex_side_len = self.duct_oftf / _sqrt3
         # Set up inter-assembly gap subchannel sizes and dimensions
-        self.d = {}
-        self.d['gap'] = self.asm_pitch - asm_dftf  # Gap "width"
-        hex_side = asm_dftf / _sqrt3  # Hex side length
-        # duct exterior "wall corner" length
-        self.d['wcorner'] = 0.5 * (hex_side - (asm_pin_pitch
-                                               * self._sc_per_side))
+        self.d_gap = self.asm_pitch - self.duct_oftf  # Gap "width"
 
-        # Subchannel to subchannel centroid distances
-        self.L = [[0.0, 0.0], [0.0, 0.0]]
-        self.L[0][0] = asm_pin_pitch  # edge - edge
-        # Edge-corner includes (1) half edge-edge, (2) wall-corner
-        # distance, and (3) the dist to the centroid of the lil
-        # equilateral triangle at the center of the corner subchannel
-        # (edge length = d_gap), which is 1/3 of its height
-        self.L[0][1] = (0.5 * self.L[0][0] + self.d['wcorner']
-                        + _sqrt3 * self.d['gap'] / 2 / 3)
-        self.L[1][0] = self.L[0][1]
-        # Corner-corner distance is similar to edge corner (w/o term 1)
-        self.L[1][1] = self.d['wcorner'] + _sqrt3 * self.d['gap'] / 6
+        # Set up interassembly gap subchannel attributes
 
-        # Gap subchannel overall params
+        # (1) Geometric parameters of assembly with which subchannels
+        # are aligned: pin pitch, corner perimeter, side sc per hex side
+        self._geom_params = self._collect_sc_geom_params(asms)
+
+        # (2) assembly-subchannel adjacency - return as nested lists
+        # for later use; store as numpy array
+        asm_adj_sc = self._map_asm_gap_adjacency()
+        # Combine nested lists: a little ugly bc not all same length
+        max_scpa = max([sum([len(x) for x in y]) for y in asm_adj_sc])
+        self._asm_sc_adj = np.zeros((self.n_asm, max_scpa), dtype=int)
+        for a in range(self.n_asm):
+            tmp = np.array([x for l in asm_adj_sc[a] for x in l])
+            tmp = tmp.flatten()
+            self._asm_sc_adj[a, :tmp.shape[0]] = tmp
+
+        # (3) boundaries betwee assembly-adjacent subchannels
+        self._asm_sc_xbnds = self._calculate_gap_xbnds()
+
+        # (4) types of assembly-adjacent subchannels
+        # (5) global array of subchannel types
+        tmp = self._determine_gap_sc_types()
+        self._asm_sc_types = [np.array(
+            [li for l in x for li in l]).flatten() for x in tmp[0]]
+        self._sc_types = np.array(tmp[1])
+
+        # Calculate some follow-up parameters:
+        # Number of subchannels
+        self.n_sc = np.max(self._asm_sc_adj)
+
+        # Number of subchannels adjacent to each assembly
+        self._n_sc_per_asm = np.count_nonzero(self._asm_sc_adj, axis=1)
+
+        # Global subchannel-subchannel adjacency
+        self._sc_adj = self._find_adjacent_sc(asm_adj_sc)
+        # Subchannel area, hydraulic diameter, distances to neighbors
         self.gap_params = {}
-        # Subchannel area - corner includes the lil triangle formed
-        # between three assemblies
-        self.gap_params['area'] = np.zeros(2)
-        self.gap_params['area'][0] = self.L[0][0] * self.d['gap']
-        self.gap_params['area'][1] = (3 * self.d['wcorner']
-                                      * self.d['gap']
-                                      + self.d['gap']**2 * _sqrt3 / 4)
-        self.gap_params['de'] = np.zeros(2)
-        if self.L[0][0] != 0.0:
-            self.gap_params['de'][0] = (4 * self.gap_params['area'][0]
-                                        / 2 / self.L[0][0])
-        self.gap_params['de'][1] = (4 * self.gap_params['area'][1]
-                                    / 6 / self.d['wcorner'])
+        self.gap_params['wp'] = self._calculate_sc_wp()
+        self.gap_params['asm wp'] = self._calculate_asm_sc_wp()
+        self.gap_params['area'] = self._calculate_sc_area()
+        self.gap_params['L'] = self._calculate_dist_between_sc()
+        self.gap_params['de'] = self._calculate_sc_de()
 
-        # Total area calculation: split into pieces
-        # # 1. Length along to assembly hex sides
-        # A1 = self.n_asm * hex_side * 6 * self.d['gap']
-        # # 2. "little triangle" formed between every 3 assemblies
-        # A2 = np.floor(self.n_asm / 3.0) * self.d['gap']**2 * _sqrt3 / 4
-        # self.gap_params['total area'] = A1 + A2
-        self.gap_params['total area'] = 0.0
-        for sc in range(len(self.sc_types)):
-            self.gap_params['total area'] += \
-                self.gap_params['area'][self.sc_types[sc]]
-
-        # Hydraulic diameter = 4*A/wp (wetted perim)
-        self.gap_params['total wp'] = 6 * hex_side * self.n_asm
+        # Core-total parameters
+        self.gap_params['total area'] = np.sum(self.gap_params['area'])
+        self.gap_params['total wp'] = 6 * self.hex_side_len * self.n_asm
         self.gap_params['total de'] = (4 * self.gap_params['total area']
                                        / self.gap_params['total wp'])
 
-        # Interior coolant temperatures; shape = n_axial_mesh x n_sc
-        self.coolant_gap_temp = (np.ones(len(self.sc_adj))
-                                 * self.gap_coolant.temperature)
-        # Update coolant gap params based on inlet temperature
-        self._update_coolant_gap_params(self.gap_coolant.temperature)
+        # Fractional area
+        self.gap_params['area frac'] = (self.gap_params['area']
+                                        / self.gap_params['total area'])
 
-        # --------------------------------------------------------------
-        # HEAT TRANSFER CONSTANTS - set up similarly to self.L
+        # Flow parameters
+        self._sc_mfr = self.gap_flow_rate * self.gap_params['area frac']
         if self.model == 'flow':
-            self.ht_consts = [[0.0, 0.0, 0.0], [0.0, 0.0, 0.0]]
-            # Conduction between coolant channels
-            for i in range(2):
-                for j in range(2):
-                    if self.L[i][j] != 0.0:
-                        self.ht_consts[i][j] = \
-                            (self.d['gap']
-                             * self.gap_params['total area']
-                             / self.L[i][j]
-                             / self.gap_flow_rate
-                             / self.gap_params['area'][i])
-            # Convection from coolant to duct wall (units: m-s/kg)
-            # Edge -> wall 1
-            if self.gap_params['area'][0] != 0:
-                self.ht_consts[0][2] = (self.L[0][0]
-                                        * self.gap_params['total area']
-                                        / self.gap_flow_rate
-                                        / self.gap_params['area'][0])
-            # Corner -> wall 1
-            self.ht_consts[1][2] = (2 * self.d['wcorner']
-                                    * self.gap_params['total area']
-                                    / self.gap_flow_rate
-                                    / self.gap_params['area'][1])
+            self._inv_sc_mfr = 1 / self._sc_mfr
+
+        # Reynolds number constant
+        self.coolant_gap_params['_Re_sc'] = \
+            self._sc_mfr * self.gap_params['de'] / self.gap_params['area']
+
+        # Interior coolant temperatures; shape = n_axial_mesh x n_sc
+        self.coolant_gap_temp = np.ones(self.n_sc)
+        self.coolant_gap_temp *= self.gap_coolant.temperature
 
         # Set up convection/conduction utility attributes
         self._make_conv_mask()
         self._make_cond_mask()
 
-        # Set up energy balance attribute
-        self._ebal = {}
+        # Update coolant gap params based on inlet temperature
+        self._update_coolant_gap_params(self.gap_coolant.temperature)
 
-        # Keep two energy balances:
-        # 1) Track the energy given from the assemblies to the gap
-        #    coolant; this should match roughly with what the assembly
-        #    energy balance reports is lost through the outermost duct.
-        #    The match won't be exact because the assembly calculation
-        #    assumes heat from the corner subchannels is transferred
-        #    through an area equal to that at the midplane of the duct,
-        #    whereas here it is transferred through the area at the
-        #    outside of the duct, since that is the same for all
-        #    assemblies. I have confirmed that adjusting for this gives
-        #    the matching result. This array will not sum to zero.
-        self._ebal['asm'] = np.zeros((self.n_asm, self._sc_per_asm))
+        # Track the energy given from the assemblies to the gap
+        # coolant; this should match roughly with what the assembly
+        # energy balance reports is lost through the outermost duct.
+        # The match won't be exact because the assembly calculation
+        # assumes heat from the corner subchannels is transferred
+        # through an area equal to that at the midplane of the duct,
+        # whereas here it is transferred through the area at the
+        # outside of the duct, since that is the same for all
+        # assemblies. I have confirmed that adjusting for this gives
+        # the matching result. This array will not sum to zero.
+        # self.ebal = np.zeros(())
+        self.ebal = {}
+        self.ebal['asm'] = np.zeros(self._asm_sc_adj.shape)
 
-        # 2) Track the energy balance on the gap coolant itself. Even
-        #    if both assemblies are giving heat the the gap coolant,
-        #    the assembly with higher temperatures will give more /
-        #    accept less. Therefore, this balance will sum to zero and
-        #    will reflect the transfer of heat between assemblies.
-        self._ebal['interasm'] = np.zeros((self.n_asm, self._sc_per_asm))
+    # MAP INTER-ASSEMBLY GAP; DEFINE GEOMETRY --------------------------
 
-    # MAP INTER-ASSEMBLY GAP -------------------------------------------
+    def _collect_sc_geom_params(self, asm_list):
+        """Save attributes from assemblies that define gap subchannel
+        geometry
 
-    def map_interassembly_sc(self):
+        Parameters
+        ----------
+        asm_list : list
+            List of DASSH Assembly objects
+
+        Returns
+        -------
+        dict
+            Dict contains two items:
+            - 'dims': numpy.ndarray, N_asm x 6 x 2
+                Pin pitch and corner perimter for gap subchannels on
+                each hex side of each assembly
+            - 'sc_per_side': numpy.ndarray, N_asm x 6
+                Number of gap edge subchannels on each hex side of
+                each assembly
+
+        """
+        dims = np.zeros((self.n_asm, 6, 2))
+        edge_sc_per_side = np.zeros((self.n_asm, 6), dtype=int)
+        for asm in range(self.n_asm):
+            for side in range(6):
+                # Figure out from which assembly to get mesh params
+                if self.asm_adj[asm][side] - 1 >= 0:
+                    adj = asm_list[self.asm_adj[asm][side] - 1]
+                    asm_with_mesh_params, sc_per_side = \
+                        _which_asm_has_finer_mesh(asm_list[asm], adj)
+                else:
+                    asm_with_mesh_params, sc_per_side = \
+                        _which_asm_has_finer_mesh(asm_list[asm], None)
+
+                # Save the defining pin-pitch and corner perimeter
+                pin_pitch = 0.0
+                if asm_with_mesh_params.has_rodded:
+                    pin_pitch = asm_with_mesh_params.rodded.pin_pitch
+                    dwc = asm_with_mesh_params.rodded.d['wcorner'][-1, -1]
+                else:
+                    pin_pitch = 0.0
+                    dwc = 0.5 * asm_with_mesh_params.duct_oftf / _sqrt3
+                dims[asm, side] = [pin_pitch, dwc]
+                # Save the defining edge_sc_per_side
+                edge_sc_per_side[asm, side] = sc_per_side
+        return {'dims': dims, 'sc_per_side': edge_sc_per_side}
+
+    def _map_asm_gap_adjacency(self):
         """Map the interassembly gap subchannels that surround each
         assembly in the core.
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        list
+            Nested list-of-lists containing assembly-subchannel
+            adjacency per-hex-side
+
+        """
+        sc_idx = 0            # running subchannel index
+        asm_adj_sc = []       # subchannels adjacent to each asm
+        for asm in range(self.n_asm):
+            # pre-allocate temp arrays to fill with values when counting
+            tmp_asm_adj_sc = []
+            for side in range(6):
+
+                # Index the subchannels along this hex side
+                tmp, sc_idx = self._index_gap_sc(
+                    asm,
+                    side,
+                    sc_idx,
+                    self._geom_params['sc_per_side'][asm][side],
+                    asm_adj_sc)
+                tmp_asm_adj_sc.append(tmp)
+
+            # Add the temporary arrays to main arrays
+            asm_adj_sc.append(tmp_asm_adj_sc)
+
+        return asm_adj_sc
+
+    def _calculate_gap_xbnds(self):
+        """Calculate the boundaries between the subchannels along each
+        assembly hex side
+
+        Parameters
+        ----------
+        None
 
         Returns
         -------
         numpy.ndarray
-            Contains the indices for the interassembly gap subchannels
+            Boundaries for the interassembly gap subchannels
             that surround each assembly (sc_per_side+1 x 6)
 
-        Notes
-        ----------
-        sc_per_side : int
-            Number of *side* subchannels per side; equal to the total
-            number of subchannels surrounding the assembly minus the
-            six corners and divided by the six sides.
         """
-        sc_idx = 0
-        asm_adj_sc = []  # subchannels adjacent to each asm
-        for asm in range(np.max(self.asm_map)):
-            # pre-allocate array to fill with subchannel indices
-            # this array is for the whole assembly
-            adj_sc = np.zeros((6, self._sc_per_side + 1), dtype=int)
+        asm_sc_xbnds = []  # 1D (along hex side) coords of gap SC bnds
+        for asm in range(self.n_asm):
+            tmp_sc_xbnds = []
             for side in range(6):
+                # Figure out from which assembly to get mesh params
+                # if self.asm_adj[asm][side] - 1 > 0:
+                #     adj = asm_list[self.asm_adj[asm][side] - 1]
+                #     asm_with_mesh_params, sc_per_side = \
+                #         _which_asm_has_finer_mesh(asm_list[asm], adj)
+                # else:
+                #     asm_with_mesh_params, sc_per_side = \
+                #         _which_asm_has_finer_mesh(asm_list[asm], None)
+                #
+                # Get the boundaries of the subchannels
+                hex_side_len = self.duct_oftf / _sqrt3
+                starting_x = hex_side_len * side
+                # Edge length = pin pitch
+                # Corner "half-perimeter"
+                pp, dwc = self._geom_params['dims'][asm, side]
+                # Add corner-edge boundary based on starting point
+                tmp_sc_xbnds.append(starting_x + dwc)
+                # Add subsequent edge boundaries
+                sc_per_side = self._geom_params['sc_per_side'][asm, side]
+                for sci in range(sc_per_side):
+                    tmp_sc_xbnds.append(tmp_sc_xbnds[-1] + pp)
+
+            # Add the temporary arrays to main arrays
+            asm_sc_xbnds.append(tmp_sc_xbnds)
+
+        # Convert to numpy array and return
+        # max_scpa = max([len(x) for x in asm_sc_xbnds])
+        # _asm_sc_xbnds = np.zeros((self.n_asm, max_scpa))
+        _asm_sc_xbnds = np.zeros(self._asm_sc_adj.shape)
+        for a in range(self.n_asm):
+            tmp = np.array(asm_sc_xbnds[a])
+            _asm_sc_xbnds[a, :tmp.shape[0]] = tmp
+        return _asm_sc_xbnds
+
+    def _calculate_gap_xpts(self, asm_list):
+        """Determine the center point of each gap/duct subchannel
+        connection for each assembly
+
+        Parameters
+        ----------
+        asm_list : list
+            List of DASSH Assembly objects
+
+        Notes
+        -----
+        Currently not used. May refine and active in the future
+
+        """
+        asm_sc_xpts = []  # 1D (along hex side) coords of gap SC
+        for a in range(self.n_asm):
+            tmp_sc_xpts = []
+            for side in range(6):
+                # Figure out from which assembly to get mesh params
+                if self.asm_adj[a][side] - 1 > 0:
+                    adj = asm_list[self.asm_adj[a][side] - 1]
+                    asm, scps = _which_asm_has_finer_mesh(asm_list[a], adj)
+                else:
+                    asm, scps = _which_asm_has_finer_mesh(asm_list[a], adj)
+
+                xpts = [r.x_pts for r in asm.region]
+                len_of_xpts = [len(x) for x in xpts]
+                max_len = max(len_of_xpts)
+                matching_xpts = [x for x in xpts if len(x) == max_len]
+                tmp_sc_xpts.append(matching_xpts[0])
+            # Add the temporary arrays to main arrays
+            asm_sc_xpts.append(tmp_sc_xpts)
+        return asm_sc_xpts
+
+    def _determine_gap_sc_types(self):
+        """Determine the gap subchannel types around each assembly
+        and globally
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        tuple
+            Tuple of two lists containing (1) the subchannel types
+            relative to each loaded assembly and (2) relative to the
+            global subchannel indexing, respectively
+
+        """
+        sc_types = []         # Global (1D) gap SC types
+        asm_sc_types = []     # Assembly adjacent gap SC types
+        for asm in range(self.n_asm):
+            # pre-allocate temp arrays to fill with values when counting
+            tmp_asm_sc_types = []
+            for side in range(6):
+                to_add = []
+                scps = self._geom_params['sc_per_side'][asm][side]
+                # If newly indexed subchannels: count new types
                 if self._need_to_count_side(asm, side):
-                    adj_sc[side][0:self._sc_per_side] = \
-                        np.arange(sc_idx + 1,
-                                  sc_idx + 1 + self._sc_per_side)
-                    sc_idx += self._sc_per_side  # update the sc index
+                    # Newly counted edge subchannels along that side
+                    to_add = [0 for i in range(scps)]
                     # Check if you need to count the trailing corner
                     if self._need_to_count_corner(asm, side):
-                        sc_idx += 1
-                        adj_sc[side][-1] = sc_idx
-                    # If you don't need to count a new corner sc, get
-                    # the existing corner from the adjacent assembly
-                    else:
-                        adj_sc[side][-1] = \
-                            self._find_corner_sc(asm, side, asm_adj_sc)
+                        to_add.append(1)
+                sc_types += to_add
+
+                # Add assembly-adjacent subchannel types to asm list
+                tmp_asm_sc_types.append([0 for i in range(scps)])
+                tmp_asm_sc_types[-1].append(1)
+
+            # Add the temporary arrays to main arrays
+            asm_sc_types.append(tmp_asm_sc_types)
+        return asm_sc_types, sc_types
+
+    def _calculate_dist_between_sc_OLD(self):
+        """Calculate distance between subchannel centroids
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        numpy.ndarray
+            Array (N_sc x 3) of distances to adjacent subchannels
+
+        Notes
+        -----
+        Carried out in three loops:
+        1. Determine distances per assembly, per hex side
+        2. Combine hex sides --> distances per assembly
+        3. Globalize --> distances between all subchannels
+
+        """
+        asm_sc_dist = []
+        for asm in range(self.n_asm):
+            tmp_asm_sc_dist = []
+            for side in range(6):
+                # Figure out from which assembly to get mesh params
+                # if self.asm_adj[asm][side] - 1 > 0:
+                #     adj = asm_list[self.asm_adj[asm][side] - 1]
+                #     asm_with_mesh_params, scps = \
+                #         _which_asm_has_finer_mesh(asm_list[asm], adj)
+                # else:
+                #     asm_with_mesh_params, scps = \
+                #         _which_asm_has_finer_mesh(asm_list[asm], None)
+                scps = self._geom_params['sc_per_side'][asm, side]
+                pp = self._geom_params['dims'][asm, side, 0]
+                # Get the distances between subchannels
+                gap_side_len = self.duct_oftf / _sqrt3
+                # (add lil extra beyond duct surface corner to reach
+                # center of corner channel along middle of gap)
+                gap_side_len += _sqrt3 * self.d_gap / 3
+                # print(gap_side_len, self.duct_oftf, self.d_gap)
+                L = np.zeros((scps + 1, 3))
+                if scps >= 1:  # At least one edge SC
+                    # Will for sure have edge-corner connection
+                    L11 = pp
+                    L12 = 0.5 * (gap_side_len - scps * L11) + 0.5 * L11
+                    L[0, 0] = L12  # First edge, look back: edge-corner
+                    L[-2, 1] = L12  # Last edge, look fwd: edge-corner
+                    L[-1, 0] = L12  # Last corner, look back: edge-corner
+                    if scps > 1:  # More than one edge SC: L11 too
+                        L[1:-1, 0] = L11  # other edge look back: edge-edge
+                        L[:-2, 1] = L11  # other edge SC look fwd: edge-edge
+                else:  # Corner-corner connection
+                    L[0, 2] = gap_side_len
+                # print(asm, side, L)
+                tmp_asm_sc_dist.append(L)
+
+            # Add the temporary arrays to main arrays: need second loop
+            # because relies on result from first loop
+            for side in range(6):
+                # Need to fill in the trailing corner "looking forward" dist
+                # Example: hex side 1 traiing corner does not have a value
+                # filled in to look forward to the next side. Need to take
+                # the first edge subchannel on hex side 2 "looking back"
+                # distance and pass it to the hex side 1 trailing corner.
+                L12_prev = tmp_asm_sc_dist[side][0, 0]
+                tmp_asm_sc_dist[side - 1][-1, 1] = L12_prev
+            tmp_asm_sc_dist = np.vstack(tmp_asm_sc_dist)
+            asm_sc_dist.append(tmp_asm_sc_dist)
+
+        # Now globalize - relies on previously assigned attributes
+        L_global = np.zeros((self.n_sc, 3))
+        # print('n_sc', self.n_sc)
+        for a in range(self.n_asm):
+            # print(a, asm_sc_dist[a].shape, self._asm_sc_adj[a].shape)
+            for i in range(self._asm_sc_adj[a].shape[0]):
+                sci = self._asm_sc_adj[a][i] - 1
+                if sci < 0:
+                    continue
+                if np.all(L_global[sci] == 0):
+                    L_global[sci] = asm_sc_dist[a][i]
                 else:
-                    # get the subchannels that live here, including
-                    # the trailing corner, which must already be
-                    # defined if these side subchannels are defined.
-                    adj_sc[side] = \
-                        self._find_side_sc(asm, side, asm_adj_sc)
-            # Add the assembly subchannel array to the bulk array
-            asm_adj_sc.append(adj_sc)
-        return np.array(asm_adj_sc)
+                    if self._asm_sc_types[a][i] == 0:
+                        continue
+                    else:
+                        # If all values filled, no need to replace any
+                        if not np.any(L_global[sci] == 0):
+                            continue
+                        else:  # Fill in remaining corner value
+                            s = np.count_nonzero(
+                                self._asm_sc_types[a][:i])
+                            L12 = (self._geom_params['dims'][a, s, 1]
+                                   + _sqrt3 * self.d_gap / 6)
+                            L12 += 0.5 * self._geom_params['dims'][a, s, 0]
+                            L_global[sci, 2] = L12
+                            # L_global[sci, 2] = asm_sc_dist[a][i, 1]
+        return L_global
+
+    def _calculate_dist_between_sc(self):
+        """Calculate distance between subchannel centroids
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        numpy.ndarray
+            Array (N_sc x 3) of distances to adjacent subchannels
+
+        Notes
+        -----
+        Carried out in three loops:
+        1. Determine distances per assembly, per hex side
+        2. Combine hex sides --> distances per assembly
+        3. Globalize --> distances between all subchannels
+
+        """
+        gap_side_len = self.duct_oftf / _sqrt3
+        gap_side_len += _sqrt3 * self.d_gap / 3
+        lil_bit = _sqrt3 * self.d_gap / 6
+        L_global = np.zeros((self.n_sc, 3))
+        for i in range(self.n_sc):
+            # SKIP IF DONE: if all cols filled, don't need to write more
+            filled_pos = np.count_nonzero(L_global[i])
+            if filled_pos - self._sc_types[i] == 2:
+                continue
+            ip1 = i + 1
+            asm, loc = np.where(self._asm_sc_adj == ip1)
+            # Edge subchannels: adj asm share properties, so just use
+            # those from the first in the lookup list
+            if self._sc_types[i] == 0:
+                side = np.count_nonzero(self._asm_sc_types[asm[0]][:loc[0]])
+                pp, dwc = self._geom_params['dims'][asm[0], side]
+                for j in range(3):
+                    sc_adj = self._sc_adj[i, j] - 1
+                    if sc_adj < 0:
+                        continue
+                    if self._sc_types[sc_adj] == 1:
+                        L_global[i, j] = 0.5 * pp + dwc + lil_bit
+                    else:
+                        L_global[i, j] = pp
+            # Corner subchannels: look to neighbors
+            else:
+                for j in range(3):
+                    sc_adj = self._sc_adj[i, j] - 1
+                    if sc_adj < 0:
+                        continue
+                    asm_adj, loc_adj = \
+                        np.where(self._asm_sc_adj == self._sc_adj[i, j])
+                    side_adj = np.count_nonzero(
+                        self._asm_sc_types[asm_adj[0]][:loc_adj[0]])
+                    pp, dwc = self._geom_params['dims'][asm_adj[0], side_adj]
+                    if self._sc_types[sc_adj] == 1:
+                        L_global[i, j] = gap_side_len
+                    else:
+                        L_global[i, j] = 0.5 * pp + dwc + lil_bit
+        return L_global
+
+    def _index_gap_sc(self, asm, side, sc_id, sc_per_side, already_idx):
+        """Count gap subchannel indices along an assembly side
+
+        Parameters
+        ----------
+        asm : int
+            Active assembly index
+        side : int
+            Active hex side
+        sc_id : int
+            Active gap subchannel index
+        sc_per_side : int
+            Number of gap edge subchannels along this hex side
+        already_idx : list
+            List of lists containing the already-indexed adjacency
+            between previous assemblies and gap subchannels
+
+        Returns
+        -------
+        list
+            Subchannel indices along the active hex side of the
+            active assembly
+
+        """
+        if self._need_to_count_side(asm, side):
+            # Count edge subchannels along that side
+            to_add = list(np.arange(sc_id + 1, sc_id + 1 + sc_per_side))
+            sc_id += sc_per_side  # update the sc index
+            # Check if you need to count the trailing corner
+            if self._need_to_count_corner(asm, side):
+                sc_id += 1
+                to_add.append(sc_id)
+            # If you don't need to count a new corner sc, get
+            # the existing corner from the adjacent assembly
+            else:
+                to_add.append(
+                    self._find_corner_sc(
+                        asm, side, already_idx))
+        else:
+            # get the subchannels that live here, including
+            # the trailing corner, which must already be
+            # defined if these side subchannels are defined.
+            to_add = self._find_side_sc(asm, side, already_idx)
+        return to_add, sc_id
 
     def _find_side_sc(self, asm, side, asm_adj_sc):
         r"""Find existing side subchannels
@@ -964,58 +888,316 @@ class Core(LoggedClass):
         else:
             return True
 
-    # FIND ADJACENT INTERASSEMBLY GAP SUBCHANNELS ----------------------
-
-    def determine_sc_types(self):
-        """Determine whether interassembly gap subchannels are edge
-        or corner type based on where they occur in the asm_adj_sc
-        array"""
-        n_gap_sc = np.max(self.asm_sc_adj)
-        sc_types = [1 for i in range(n_gap_sc)]
-        for ai in range(len(self.asm_sc_adj)):
-            for side in range(len(self.asm_sc_adj[ai])):
-                corner_sc = self.asm_sc_adj[ai][side, -1]
-                if not sc_types[corner_sc - 1] == 2:
-                    sc_types[corner_sc - 1] = 2
-        return sc_types
-
-    def find_adjacent_sc(self):
+    def _find_adjacent_sc(self, asm_sc_adj):
         """Use the array mapping interassembly gap subchannels to
         adjacent assemblies to identify which subchannels are adjacent
-        to each other"""
-        n_gap_sc = np.max(self.asm_sc_adj)
-        sc_adj = np.zeros((n_gap_sc, 3), dtype='int')
+        to each other
 
-        for ai in range(len(self.asm_sc_adj)):
-            asm_sc = self.asm_sc_adj[ai]
+        Parameters
+        ----------
+        asm_sc_adj : list
+            Nested lists containing subchannel indices (base 1)
+            adjacent to each assembly; size = N_asm x 6 x N_sc_on_side
+            (note that "N_sc_on_side" can vary)
+
+        Returns
+        -------
+        numpy.ndarray
+            Array (N_gap_sc x 3) indicating adjacency between gap
+            subchannels
+
+        """
+        sc_adj = np.zeros((self.n_sc, 3), dtype='int')
+        for ai in range(len(asm_sc_adj)):
+            asm_sc = asm_sc_adj[ai]
             for side in range(len(asm_sc)):
                 for sci in range(len(asm_sc[side]) - 1):
-
                     # Look to trailing corner on previous side
                     if sci == 0:
-                        sc = asm_sc[side, sci]
-                        if asm_sc[side - 1, -1] not in sc_adj[sc - 1]:
-                            idx_to_fill = np.where(sc_adj[sc - 1] == 0)[0][0]
-                            sc_adj[sc - 1, idx_to_fill] = asm_sc[side - 1, -1]
-
-                        sc = asm_sc[side - 1, -1]
-                        if asm_sc[side, sci] not in sc_adj[sc - 1]:
-                            idx_to_fill = np.where(sc_adj[sc - 1] == 0)[0][0]
-                            sc_adj[sc - 1, idx_to_fill] = asm_sc[side, sci]
-
+                        # Fill trailing corner's value into active index
+                        sc = asm_sc[side][sci]
+                        if asm_sc[side - 1][-1] not in sc_adj[sc - 1]:
+                            idx = np.where(sc_adj[sc - 1] == 0)[0][0]
+                            sc_adj[sc - 1, idx] = asm_sc[side - 1][-1]
+                        # Fill active index into trailing corner
+                        sc = asm_sc[side - 1][-1]
+                        if asm_sc[side][sci] not in sc_adj[sc - 1]:
+                            # ADDED 2021-04-22
+                            # Wanted to make side 0 trailing corner
+                            # adjacency order of the rest of the SC
+                            if side == 0:
+                                idx = 1
+                            else:
+                                idx = np.where(sc_adj[sc - 1] == 0)[0][0]
+                            sc_adj[sc - 1, idx] = asm_sc[side][sci]
                     # For the sc in current index: map the sc in next index
-                    sc = asm_sc[side, sci]
-                    if asm_sc[side, sci + 1] not in sc_adj[sc - 1]:
-                        idx_to_fill = np.where(sc_adj[sc - 1] == 0)[0][0]
-                        sc_adj[sc - 1, idx_to_fill] = asm_sc[side, sci + 1]
-
+                    sc = asm_sc[side][sci]
+                    if asm_sc[side][sci + 1] not in sc_adj[sc - 1]:
+                        idx = np.where(sc_adj[sc - 1] == 0)[0][0]
+                        sc_adj[sc - 1, idx] = asm_sc[side][sci + 1]
                     # For the sc in next index; map the sc in current index
-                    sc = asm_sc[side, sci + 1]
-                    if asm_sc[side, sci] not in sc_adj[sc - 1]:
-                        idx_to_fill = np.where(sc_adj[sc - 1] == 0)[0][0]
-                        sc_adj[sc - 1, idx_to_fill] = asm_sc[side, sci]
-
+                    sc = asm_sc[side][sci + 1]
+                    if asm_sc[side][sci] not in sc_adj[sc - 1]:
+                        idx = np.where(sc_adj[sc - 1] == 0)[0][0]
+                        sc_adj[sc - 1, idx] = asm_sc[side][sci]
         return sc_adj
+
+    def _calculate_sc_wp(self):
+        """Calculate wetted perimeter of each gap subchannel
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        numpy.ndarray
+            Wetted perimeter (m) of each subchannel (N_sc x 1)
+
+        """
+        # Loop over all assemblies to calculate WP of adjacent SC
+        wp = np.zeros(self.n_sc)
+        hex_perim = self.duct_oftf * 6 / np.sqrt(3)
+        for a in range(self.n_asm):
+            xtmp = self._asm_sc_xbnds[a]
+            xtmp = xtmp[self._asm_sc_adj[a] > 0]
+            for i in range(len(xtmp) - 1):
+                sci = self._asm_sc_adj[a][i]  # <-- remember, base-1 idx
+                if sci < 1:
+                    continue
+                # Just duct wetted perimeter; mult by width later
+                wp[sci - 1] += xtmp[i + 1] - xtmp[i]
+            # WP of the last one needs to wrap around to the first
+            sci = self._asm_sc_adj[a][i + 1]
+            wp[sci - 1] += hex_perim - xtmp[-1] + xtmp[0]
+
+        # Corrections for outermost subchannels.
+        # Edge subchannels need WP0 x 2
+        for i in range(self.n_sc):
+            asm, loc = np.where(self._asm_sc_adj == i + 1)
+            if self._sc_types[i] == 0:
+                if len(asm) == 1:  # <-- this means it's an outer SC
+                    wp[i] *= 2  # haven't counted "non-asm" wall
+            else:  # Treat corners adjacent one or two assemblies
+                if len(asm) == 1:
+                    wp[i] *= 2
+                    wp[i] += 2 * self.d_gap / _sqrt3
+                elif len(asm) == 2:
+                    x = np.zeros((2, 2))
+                    for a in range(2):
+                        scps = self._geom_params['sc_per_side'][asm[a]]
+                        tmp = np.cumsum(scps)
+                        tmp += np.arange(0, 6, 1)
+                        s1 = np.where(tmp == loc[a])[0][0]
+                        if s1 == 5:
+                            s2 = 0
+                        else:
+                            s2 = s1 + 1
+                        x[a, 0] = self._geom_params['dims'][asm[a]][s1][1]
+                        x[a, 1] = self._geom_params['dims'][asm[a]][s2][1]
+                    # Choose the nonshared ones
+                    dwc = np.zeros(2)
+                    for a in range(2):
+                        if x[a, 0] in x[a - 1]:
+                            dwc[a] = x[a, 1]
+                        else:
+                            dwc[a] = x[a, 0]
+                    wp[i] += dwc[0] + dwc[1]
+                else:
+                    continue
+        return wp
+
+    def _calculate_asm_sc_wp(self):
+        """Calculate wetted perimeter of each gap subchannel relative
+        to its adjacent assembly
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        numpy.ndarray
+            Wetted perimeter (m) of each subchannel (N_asm x N_scpa)
+
+        """
+        # Loop over all assemblies to calculate WP of adjacent SC
+        wp = np.zeros((self._asm_sc_xbnds.shape))
+        hex_perim = self.duct_oftf * 6 / np.sqrt(3)
+        for a in range(self.n_asm):
+            xtmp = self._asm_sc_xbnds[a]
+            xtmp = xtmp[self._asm_sc_adj[a] > 0]
+            for i in range(len(xtmp) - 1):
+                if self._asm_sc_adj[a][i] < 1:  # <-- remember, base-1 idx
+                    continue
+                # Just duct wetted perimeter; mult by width later
+                wp[a, i] = xtmp[i + 1] - xtmp[i]
+            # WP of the last one needs to wrap around to the first
+            wp[a, i + 1] += hex_perim - xtmp[-1] + xtmp[0]
+        return wp
+
+    def _calculate_sc_area(self):
+        """Calculate the flow area of each gap subchannel
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        numpy.ndarray
+            Area (m^2) of each gap subchannel (N_sc x 1)
+
+        """
+        # Already have WP, which includes all adjacency. If adjacent
+        # to 2 or 3 neighbors, need: WP / 2 as the "length" of the SC
+        # otherwise: use WP
+        # Width is the gap width
+        # NOTE: for corners, need to add that lil center triangle if
+        # next to a neighbor; if alone, add different thing
+        corner_neighbor = self.d_gap**2 * _sqrt3 / 4
+        corner_no_neighbor = self.d_gap**2 * _sqrt3 / 3
+        area = self.gap_params['wp'] * self.d_gap
+        for i in range(self.n_sc):
+            asm, loc = np.where(self._asm_sc_adj == i + 1)
+            if self._sc_types[i] == 0:
+                area[i] *= 0.5
+            else:
+                if len(asm) == 1:
+                    area[i] = self.gap_params['asm wp'][asm[0], loc[0]]
+                    area[i] *= self.d_gap
+                    area[i] += corner_no_neighbor
+                else:
+                    area[i] *= 0.5
+                    area[i] += corner_neighbor
+        return area
+
+    def _calculate_sc_de(self):
+        """Calculate hydraulic diameter of each gap subchannel
+
+        Parameters
+        ----------
+        None
+
+        Returns
+        -------
+        numpy.ndarray
+            Hydraulic diameter (m) of each subchannel (N_sc x 1)
+
+        """
+        # De = 4A / WP; already calculated area, WP
+        return 4 * self.gap_params['area'] / self.gap_params['wp']
+
+    def _make_conv_mask(self):
+        """Create masks to quickly handle the subchannel-duct adjacency
+
+        Notes
+        -----
+        Each gap coolant subchannel will touch either:
+        - 1 duct (if it's at the edge of the problem);
+        - 2 ducts (if an edge gap between two assemblies);
+        - or 3 ducts (if it's a corner gap between 3 assemblies).
+
+        We already have an array that links the subchannels to the
+        adjacent assemblies, and from that, we can figure out which
+        duct meshes each subchannel is in contact with. Because this
+        is static throughout the problem, we can precompute this
+        relationship and save it in the form of a mask: a set of 1s
+        and 0s that indicate whether to keep or discard a value.
+
+        We will have 3 masks, one for each possible adjacency that a
+        subchannel can have. We'll naively grab duct temperatures that
+        appear to match with the subchannel, but then we'll apply these
+        masks to ensure that they're only added if the adjacency exists
+
+        """
+        self._conv_util = {}
+        # Collect assembly, hex-side, and side-location indices for
+        # each duct mesh; if no match, use -1 as a placeholder; this
+        # is what we'll filter on later.
+        a = [[], [], []]
+        # Collect convection constants in array: need "wetted perimeter"
+        # of subchannel connection with each adjacent assembly (up to 3)
+        self._conv_util['const'] = np.zeros((self.n_sc, 3))
+        for sci in range(self.n_sc):
+            asm, loc = np.where(self._asm_sc_adj == sci + 1)
+#            asm = [ai for ai in range(len(self._asm_sc_adj))
+#                   if sci + 1 in self._asm_sc_adj[ai]]
+#            loc = [np.where(self._asm_sc_adj[ai] == sci + 1)[0][0]
+#                   for ai in asm]
+            # calculate "duct index" based on hex-side and side-loc
+            # new = side * (self._sc_per_side + 1) + loc
+            # Connection 0: always at least one gap-duct connection
+            a[0].append((asm[0], loc[0]))
+            # Try the remaining two possible connections
+            for i in range(2):
+                try:
+                    a[i + 1].append((asm[i + 1], loc[i + 1]))
+                except IndexError:
+                    a[i + 1].append((-1, -1))
+
+            # Calculate convection constant based on sc-duct connections
+            for i in range(len(asm)):
+                self._conv_util['const'][sci, i] = \
+                    self.gap_params['asm wp'][asm[i], loc[i]]
+
+        # Now we're going to collect the indices where gap and duct
+        # match up; these are where we will go pull out temperatures
+        # from the incoming duct array. Note that because we used -1
+        # as a placeholder and -1 is shorthand for the last value in
+        # the array, we'll be pulling some bad values. Anywhere that
+        # a = (-1, -1), the indices will also equal -1. This is what
+        # the masks will handle.
+        inds = []
+        for i in range(3):
+            inds.append(np.moveaxis(np.array(a[i]), -1, 0))
+        self._conv_util['inds'] = inds
+
+        # Now let's create the masks. Anywhere that self._inds = -1,
+        # we will set the mask equal to 0 so that any values captured
+        # by that index are eliminated. There are only two masks bc
+        # the first temperature returned is always valid (since there
+        # is always at least one duct-gap connection)
+        self._conv_util['mask1'] = self._conv_util['inds'][1][0] >= 0
+        self._conv_util['mask2'] = self._conv_util['inds'][2][0] >= 0
+
+        # Poop
+        if self.model == 'no_flow':
+            self._conv_util['const'] = \
+                2 * self._conv_util['const'] / self.d_gap
+
+    def _make_cond_mask(self):
+        """Just like for the convection lookup, make a mask that can
+        accelerate the adjacent subchannel conduction lookup
+
+        Notes
+        -----
+        This doubles as a shortcut to storing the constant parts of
+        the conduction resistance
+
+        """
+        # as stored, min(self.sc_adj) is 1. This is not useful for
+        # Python indexing, so we'll subtract 1 to make the values
+        # useful as Python indices. There are 3 subchannel adjacencies
+        # possible, but most subchannels only have 2. These are stored
+        # as 0s but will become -1s after the subtraction. We need a
+        # mask to filter them out.
+        # tmp = self._sc_adj - 1  # N_subchannel x 3 (max 3 adj possible)
+        # adj_types = self.sc_types[tmp]  # Adjacent types!
+        # old_L = np.array(self.L)  # old L
+        # new_L = np.zeros((len(self.sc_types), 3))  # what L will become
+        # For each gap subchannel i
+        # type_i = self.sc_types[i]
+        # type_a = adj_types[i] (up to 3)
+        # for i in range(3):
+        #     new_L[:, i] = old_L[self.sc_types, adj_types[:, i]]
+        self._Rcond = np.divide(self.d_gap, self.gap_params['L'],
+                                out=np.zeros_like(self.gap_params['L']),
+                                where=(self.gap_params['L'] != 0))
+        # Since new_L had some bad values due to the -1s in tmp, we
+        # will now filter them out of our array before we store it
+        # tmp = tmp >= 0
+        # self._Rcond = self._Rcond * tmp
 
     ####################################################################
     # TEMPERATURE PROPERTIES
@@ -1025,11 +1207,15 @@ class Core(LoggedClass):
     def avg_coolant_gap_temp(self):
         """Return the average temperature of the gap coolant
         subchannels at the last axial level"""
-        tot = 0.0
-        for i in range(len(self.coolant_gap_temp)):
-            tot += (self.gap_params['area'][self.sc_types[i]]
-                    * self.coolant_gap_temp[i])
-        return tot / self.gap_params['total area']
+        # tot = 0.0
+        # for i in range(len(self.coolant_gap_temp)):
+        #     tot += (self.gap_params['area'][self.sc_types[i]]
+        #             * self.coolant_gap_temp[i])
+        # return tot / self.gap_params['total area']
+        # return np.sum(self.coolant_gap_temp
+        #               * self.gap_params['area frac'])
+        return np.dot(self.coolant_gap_temp,
+                      self.gap_params['area frac'])
 
     def adjacent_coolant_gap_temp(self, id):
         """Return the coolant temperatures in gap subchannels
@@ -1046,7 +1232,22 @@ class Core(LoggedClass):
         gap mesh to the assembly duct mesh.
 
         """
-        return self.coolant_gap_temp[self.asm_sc_adj[id] - 1].flatten()
+        return self.coolant_gap_temp[self._asm_sc_adj[id] - 1].flatten()
+
+    def adjacent_coolant_gap_htc(self, id):
+        """Return heat transfer coefficients in gap subchannels
+        around a specific assembly
+
+        Parameters
+        ----------
+        id : int
+            Assembly ID
+
+        """
+        # return self.coolant_gap_params['htc'][
+        #     self.sc_types[self.asm_sc_adj[id] - 1]].flatten()
+        return self.coolant_gap_params['htc'][
+            self._asm_sc_adj[id] - 1].flatten()
 
     ####################################################################
     # UPDATE GAP COOLANT PARAMS
@@ -1064,13 +1265,13 @@ class Core(LoggedClass):
         """
         self.gap_coolant.update(temp)
 
-        # Bypass velocity
+        # Inter-assembly gap average velocity
         self.coolant_gap_params['vel'] = \
             (self.gap_flow_rate
              / self.gap_coolant.density
              / self.gap_params['total area'])
 
-        # Bypass reynolds number
+        # Gap-average Reynolds number
         self.coolant_gap_params['Re'] = \
             (self.gap_flow_rate
              * self.gap_params['total de']
@@ -1079,23 +1280,30 @@ class Core(LoggedClass):
 
         # Subchannel Reynolds numbers
         self.coolant_gap_params['Re_sc'] = \
-            (self.gap_coolant.density * self.gap_params['de']
-             * self.coolant_gap_params['vel']
+            (self.coolant_gap_params['_Re_sc']  # <-- = m_i * De_i / A_i
              / self.gap_coolant.viscosity)
 
-        # Heat transfer coefficient (via Nusselt number); Nu is equal
-        # for all duct walls b/c they are the same material and coolant
-        # properties are the same everywhere. The only difference is
-        # surface area (accounted for in the temperature calculation).
+        # Heat transfer coefficient (via Nusselt number)
+        # Although coolant properties are global and velocity is the
+        # same everywhere, the subchannels do not have equal hydraulic
+        # diameter. Therefore will all have unique Nu
         if self.model is None:
-            self.coolant_gap_params['htc'] = 0.0
-        else:
+            self.coolant_gap_params['htc'] = np.zeros(self.n_sc)
+        elif self.model == 'flow':
             nu = nusselt_db.calculate_sc_Nu(
                 self.gap_coolant,
                 self.coolant_gap_params['Re_sc'])
             self.coolant_gap_params['htc'] = \
                 (self.gap_coolant.thermal_conductivity
                  * nu / self.gap_params['de'])
+        else:  # Nu == 1
+            # self.coolant_gap_params['htc'] = \
+            #     (self.gap_coolant.thermal_conductivity
+            #      / self.gap_params['de'])
+            self.coolant_gap_params['htc'] = np.ones(self.n_sc)
+            self.coolant_gap_params['htc'] *= 0.5 * self.d_gap
+        # self.coolant_gap_params['htc'] = np.array([4e4, 4e4])
+        #self._Rcond[:, 1:] *= 0.0
 
     ####################################################################
     # COOLANT TEMPERATURE CALCULATION
@@ -1117,48 +1325,40 @@ class Core(LoggedClass):
         None
 
         """
-        self._update_coolant_gap_params(self.avg_coolant_gap_temp)
-        # asm_duct_temps = self.approximate_duct_temps(asm_duct_temps)
-        # asm_duct_temps = np.array(asm_duct_temps)
-        # print(asm_duct_temps.shape)
-
-        # Update energy balance
-        self._ebal['asm'] += \
-            self._update_energy_balance(dz, asm_duct_temps)
+        T_avg = self.avg_coolant_gap_temp
+        self._update_coolant_gap_params(T_avg)
+        self._update_energy_balance(dz, asm_duct_temps)
 
         # Calculate new coolant gap temperatures
         if self.model == 'flow':
-            dT = self._convection_model(dz, asm_duct_temps)
+            dT = self._flow_model(dz, asm_duct_temps)
             self.coolant_gap_temp += dT
 
         elif self.model == 'no_flow':
-            self.coolant_gap_temp = self._conduction_model(asm_duct_temps)
+            self.coolant_gap_temp = self._noflow_model(asm_duct_temps)
 
         elif self.model == 'duct_average':
-            self.coolant_gap_temp = self._duct_avg_model(asm_duct_temps)
+            self.coolant_gap_temp = self._duct_average_model(asm_duct_temps)
 
         else:  # self.model == None:
             # No change to coolant gap temp, do nothing
             pass
-
-        # Update energy balance
-        self._ebal['interasm'] += \
-            self._update_energy_balance(dz, asm_duct_temps)
 
     def _update_energy_balance(self, dz, approx_duct_temps):
         """Track the energy added to the coolant from each duct wall
         mesh cell; summarize at the end for assembly-assembly energy
         balance"""
         # Convection constant
-        C = (np.array([self.L[0][0], 2 * self.d['wcorner']])
-             * dz
-             * self.coolant_gap_params['htc'])
-        C = C[self.sc_types[:self._sc_per_asm]]
-        adj_cool = self.coolant_gap_temp[self.asm_sc_adj - 1]
-        adj_cool = adj_cool.reshape(adj_cool.shape[0], -1)
-        return C * (approx_duct_temps - adj_cool)
+        h = self.coolant_gap_params['htc'][self._asm_sc_adj - 1]
+        # Adj_cool = N_asm x 6 x n_sc
+        adj_cool = self.coolant_gap_temp[self._asm_sc_adj - 1]
+        # Smush to be N_asm x (6 * n_sc)
+        # adj_cool = adj_cool.reshape(adj_cool.shape[0], -1)
+        # adj_cool[self.asm_sc_adj < 1] = 0.0
+        self.ebal['asm'] += (h * self.gap_params['asm wp']
+                             * dz * (approx_duct_temps - adj_cool))
 
-    def _convection_model(self, dz, approx_duct_temps):
+    def _flow_model(self, dz, t_duct):
         """Inter-assembly gap convection model
 
         Parameters
@@ -1176,64 +1376,57 @@ class Core(LoggedClass):
             Temperature change in the inter-assembly gap coolant
 
         """
-        dT = np.zeros(len(self.sc_adj))
-        for sci in range(len(self.sc_adj)):
-            dT_cond = 0.0
-            dT_conv = 0.0
-            type_i = self.sc_types[sci]
+        # CONVECTION TO/FROM DUCT WALL
+        # conv_const = np.array([
+        #     self.coolant_gap_params['htc'][0] * self.L[0][0],
+        #     self.coolant_gap_params['htc'][1] * (2 * self.d['wcorner'])
+        # ])
+        # conv_const = conv_const[self.sc_types]
 
-            # Convection to/from duct wall
-            # identify adjacent assemblies to find duct wall temps
-            asm, side, loc = np.where(self.asm_sc_adj == sci + 1)
-            for i in range(len(asm)):
-                duct_temp_idx = side[i] * (self._sc_per_side + 1) + loc[i]
-                # adj_duct_temp = approx_duct_temps[asm[i], duct_temp_idx]
-                adj_duct_temp = approx_duct_temps[asm[i]][duct_temp_idx]
+        # Look up temperatures, take difference with gap mesh, mask
+        # as necessary, and add to total dT
+        # dT = (approx_duct_temps[tuple(self._conv_util['inds'][0])]
+        #       - self.coolant_gap_temp)
+        # dT += (self._conv_util['mask1']
+        #        * (approx_duct_temps[tuple(self._conv_util['inds'][1])]
+        #           - self.coolant_gap_temp))
+        # dT += (self._conv_util['mask2']
+        #        * (approx_duct_temps[tuple(self._conv_util['inds'][2])]
+        #           - self.coolant_gap_temp))
+        # dT *= self._conv_util['const']  # Scale by the HTC and HT area
+        C = (self._conv_util['const']
+             * self.coolant_gap_params['htc'][:, None])
+        dT = C[:, 0] * (t_duct[tuple(self._conv_util['inds'][0])]
+                        - self.coolant_gap_temp)
+        dT += C[:, 1] * (t_duct[tuple(self._conv_util['inds'][1])]
+                         - self.coolant_gap_temp)
+        dT += C[:, 2] * (t_duct[tuple(self._conv_util['inds'][2])]
+                         - self.coolant_gap_temp)
 
-                # if sci == 0:
-                #     print(adj_duct_temp)
-                dT[sci] += \
-                    (self.coolant_gap_params['htc'][type_i]
-                     * dz * self.ht_consts[type_i][2]
-                     * (adj_duct_temp - self.coolant_gap_temp[sci])
-                     / self.gap_coolant.heat_capacity)
-                if sci == 1:
-                    dT_conv += (self.coolant_gap_params['htc'][type_i]
-                                * dz * self.ht_consts[type_i][2]
-                                * (adj_duct_temp
-                                   - self.coolant_gap_temp[sci])
-                                / self.gap_coolant.heat_capacity)
+        # tmp = [t_duct[tuple(self._conv_util['inds'][0])][54],
+        #        t_duct[tuple(self._conv_util['inds'][1])][54],
+        #        t_duct[tuple(self._conv_util['inds'][2])][54]]
+        # print('new model C', C[54])
+        # print('new model Tw', tmp)
+        # print('new model dT', dT[54])
+        # CONDUCTION TO/FROM OTHER COOLANT CHANNELS
+        dT += (self.gap_coolant.thermal_conductivity
+               * np.sum((self._Rcond *
+                        (self.coolant_gap_temp[self._sc_adj - 1]
+                         - self.coolant_gap_temp[..., None])), axis=1))
 
-            # Conduction to/from adjacent coolant subchannels
-            for adj in self.sc_adj[sci]:
-                if adj == 0:
-                    continue
-                sc_adj = adj - 1
-                type_a = self.sc_types[sc_adj]
+        # Multiply by dz / m_i / Cp and return
+        # poop = dT * dz * self._inv_sc_mfr / self.gap_coolant.heat_capacity
+        # print('new model dT', poop[54])
+        return (dT * dz * self._inv_sc_mfr
+                / self.gap_coolant.heat_capacity)
 
-                dT[sci] += (self.gap_coolant.thermal_conductivity
-                            * dz * self.ht_consts[type_i][type_a]
-                            * (self.coolant_gap_temp[sc_adj]
-                               - self.coolant_gap_temp[sci])
-                            / self.gap_coolant.heat_capacity)
-                if sci == 1:
-                    dT_cond += (self.gap_coolant.thermal_conductivity
-                                * dz * self.ht_consts[type_i][type_a]
-                                * (self.coolant_gap_temp[sc_adj]
-                                   - self.coolant_gap_temp[sci])
-                                / self.gap_coolant.heat_capacity)
-
-            # if sci == 1:
-            #     print('{:.10e}'.format(dT_cond), '{:.10e}'.format(dT_conv))
-
-        return dT
-
-    def _conduction_model(self, approx_duct_temps):
+    def _noflow_model(self, t_duct):
         """Inter-assembly gap conduction model
 
         Parameters
         ----------
-        approx_duct_temps : numpy.ndarray
+        t_duct : numpy.ndarray
             Array of outer duct surface temperatures (K) for each
             assembly in the core (can be any length) on the inter-
             assembly gap subchannel mesh
@@ -1264,33 +1457,27 @@ class Core(LoggedClass):
         #           / self.coolant_gap_params['htc'][1]
         #           + (self.d['gap'] / 2 / (2 * self.d['wcorner'])
         #              / self.gap_coolant.thermal_conductivity))])
-        R_conv = np.array(
-            [1 / (self.d['gap'] / 2 / self.L[0][0]
-                  / self.gap_coolant.thermal_conductivity),
-             1 / (self.d['gap'] / 2 / (2 * self.d['wcorner'])
-                  / self.gap_coolant.thermal_conductivity)])
+        R_conv = (self._conv_util['const']
+                  * self.gap_coolant.thermal_conductivity
+                  / (0.5 * self.d_gap))
         # R_conv = np.array(
         #     [1 / (1 / self.L[0][0] / self.coolant_gap_params['htc'][0]),
         #      1 / (1 / (2 * self.d['wcorner'])
         #           / self.coolant_gap_params['htc'][1])])
-        R_conv = R_conv[self.sc_types]
 
         # if not hasattr(self, '_conv_util'):
         #     self._make_conv_mask()  # creates lookup indices and masks
 
         # Lookup temperatures and mask as necessary
-        T = approx_duct_temps[tuple(self._conv_util['inds'][0])]
-        T += (approx_duct_temps[tuple(self._conv_util['inds'][1])]
-              * self._conv_util['mask1'])
-        T += (approx_duct_temps[tuple(self._conv_util['inds'][2])]
-              * self._conv_util['mask2'])
-        T *= R_conv  # Scale by the convection resistance
-
+        T = R_conv[:, 0] * t_duct[tuple(self._conv_util['inds'][0])]
+        T += R_conv[:, 1] * t_duct[tuple(self._conv_util['inds'][1])]
+        T += R_conv[:, 2] * t_duct[tuple(self._conv_util['inds'][2])]
         # Get the total convection resistance, which will go in the
         # denominator at the end
-        C_conv = copy.deepcopy(R_conv)
-        C_conv += R_conv * self._conv_util['mask1']
-        C_conv += R_conv * self._conv_util['mask2']
+        C_conv = R_conv[:, 0] + R_conv[:, 1] + R_conv[:, 2]
+        # C_conv = copy.deepcopy(R_conv)
+        # C_conv += R_conv * self._conv_util['mask1']
+        # C_conv += R_conv * self._conv_util['mask2']
 
         # CONDUCTION TO/FROM OTHER COOLANT CHANNELS
         # Set up masks, if necessary
@@ -1299,20 +1486,20 @@ class Core(LoggedClass):
 
         # Now do some thangs c'mon
         R_cond = self._Rcond * self.gap_coolant.thermal_conductivity
-        adj_cool_temp = self.coolant_gap_temp[self.sc_adj - 1] * R_cond
-        C_cond = np.sum(R_cond, axis=1)  # will add to denom at the end
-
+        adj_ctemp = self.coolant_gap_temp[self._sc_adj - 1] * R_cond
+        # C_cond = np.sum(R_cond, axis=1)  # will add to denom at the end
+        C_cond = R_cond[:, 0] + R_cond[:, 1] + R_cond[:, 2]
         # Round it out bb
-        T += np.sum(adj_cool_temp, axis=1)
+        T += adj_ctemp[:, 0] + adj_ctemp[:, 1] + adj_ctemp[:, 2]
         return T / (C_cond + C_conv)
 
-    def _duct_avg_model(self, approx_duct_temps):
+    def _duct_average_model(self, t_duct):
         """Inter-assembly gap model that simply averages the adjacent
         duct wall surface temperatures
 
         Parameters
         ----------
-        approx_duct_temps : numpy.ndarray
+        t_duct : numpy.ndarray
             Array of outer duct surface temperatures (K) for each
             assembly in the core (can be any length) on the inter-
             assembly gap subchannel mesh
@@ -1338,105 +1525,15 @@ class Core(LoggedClass):
         #     self._make_conv_mask()  # creates lookup indices and masks
 
         # Lookup temperatures and mask as necessary
-        T0 = approx_duct_temps[tuple(self._conv_util['inds'][0])]
-        T1 = (approx_duct_temps[tuple(self._conv_util['inds'][1])]
+        T0 = t_duct[tuple(self._conv_util['inds'][0])]
+        T1 = (t_duct[tuple(self._conv_util['inds'][1])]
               * self._conv_util['mask1'])
-        T2 = (approx_duct_temps[tuple(self._conv_util['inds'][2])]
+        T2 = (t_duct[tuple(self._conv_util['inds'][2])]
               * self._conv_util['mask2'])
 
         # Average nonzero values
         return (np.sum((T0, T1, T2), axis=0)
                 / np.count_nonzero((T0, T1, T2), axis=0))
-
-    def _make_conv_mask(self):
-        """Create masks to quickly handle the subchannel-duct adjacency
-
-        Notes
-        -----
-        Each gap coolant subchannel will touch either:
-        - 1 duct (if it's at the edge of the problem);
-        - 2 ducts (if an edge gap between two assemblies);
-        - or 3 ducts (if it's a corner gap between 3 assemblies).
-
-        We already have an array that links the subchannels to the
-        adjacent assemblies, and from that, we can figure out which
-        duct meshes each subchannel is in contact with. Because this
-        is static throughout the problem, we can precompute this
-        relationship and save it in the form of a mask: a set of 1s
-        and 0s that indicate whether to keep or discard a value.
-
-        We will have 3 masks, one for each possible adjacency that a
-        subchannel can have. We'll naively grab duct temperatures that
-        appear to match with the subchannel, but then we'll apply these
-        masks to ensure that they're only added if the adjacency exists
-
-        """
-        self._conv_util = {}
-        # Collect assembly, hex-side, and side-location indices for
-        # each duct mesh; if no match, use -1 as a placeholder; this
-        # is what we'll filter on later.
-        a = [[], [], []]
-        for sci in range(len(self.sc_adj)):
-            asm, side, loc = np.where(self.asm_sc_adj == sci + 1)
-            # calculate "duct index" based on hex-side and side-loc
-            new = side * (self._sc_per_side + 1) + loc
-            a[0].append((asm[0], new[0]))
-            for i in range(2):
-                try:
-                    a[i + 1].append((asm[i + 1], new[i + 1]))
-                except IndexError:
-                    a[i + 1].append((-1, -1))
-
-        # Now we're going to collect the indices where gap and duct
-        # match up; these are where we will go pull out temperatures
-        # from the incoming duct array. Note that because we used -1
-        # as a placeholder and -1 is shorthand for the last value in
-        # the array, we'll be pulling some bad values. Anywhere that
-        # a = (-1, -1), the indices will also equal -1. This is what
-        # the masks will handle.
-        inds = []
-        for i in range(3):
-            inds.append(np.moveaxis(np.array(a[i]), -1, 0))
-        self._conv_util['inds'] = inds
-
-        # Now let's create the masks. Anywhere that self._inds = -1,
-        # we will set the mask equal to 0 so that any values captured
-        # by that index are eliminated. There are only two masks bc
-        # the first temperature returned is always valid (since there
-        # is always at least one duct-gap connection)
-        self._conv_util['mask1'] = self._conv_util['inds'][1][0] >= 0
-        self._conv_util['mask2'] = self._conv_util['inds'][2][0] >= 0
-
-    def _make_cond_mask(self):
-        """Just like for the convection lookup, make a mask that can
-        accelerate the adjacent subchannel conduction lookup
-
-        Notes
-        -----
-        This doubles as a shortcut to storing the constant parts of
-        the conduction resistance
-
-        """
-        # as stored, min(self.sc_adj) is 1. This is not useful for
-        # Python indexing, so we'll subtract 1 to make the values
-        # useful as Python indices. There are 3 subchannel adjacencies
-        # possible, but most subchannels only have 2. These are stored
-        # as 0s but will become -1s after the subtraction. We need a
-        # mask to filter them out.
-        tmp = self.sc_adj - 1  # N_subchannel x 3 (max 3 adj possible)
-        adj_types = self.sc_types[tmp]  # Adjacent types!
-        old_L = np.array(self.L)  # old L
-        new_L = np.zeros((len(self.sc_types), 3))  # what L will become
-        # For each gap subchannel i
-        # type_i = self.sc_types[i]
-        # type_a = adj_types[i] (up to 3)
-        for i in range(3):
-            new_L[:, i] = old_L[self.sc_types, adj_types[:, i]]
-        self._Rcond = self.d['gap'] / new_L
-        # Since new_L had some bad values due to the -1s in tmp, we
-        # will now filter them out of our array before we store it
-        tmp = tmp >= 0
-        self._Rcond = self._Rcond * tmp
 
     ####################################################################
     # MAP ASSEMBLY XY COORDINATES
@@ -1459,13 +1556,17 @@ class Core(LoggedClass):
 
         """
         xy = np.zeros((np.max(self.asm_map), 2))
-        normals = [4 * np.pi / 3, np.pi, 2 * np.pi / 3,
-                   np.pi / 3, 0.0, 5 * np.pi / 3]
+        normals = [2 * np.pi / 3,
+                   np.pi,
+                   4 * np.pi / 3,
+                   5 * np.pi / 3,
+                   0.0,
+                   np.pi / 3]
         # loc = (0.0, 0.0)
-        # Directions turning clockwise around a hexagon
+        # Directions turning counterclockwise around a hexagon
         # First entry is step from an inner ring to the top of an outer ring
         # The remaining steps are the turns around the hexagon corners
-        _turns = [(0, 1), (1, 1), (1, 0), (0, -1), (-1, -1), (-1, 0)]
+        _turns = [(1, 0), (1, 1), (0, 1), (-1, 0), (-1, -1), (0, -1)]
         idx = 1
         loc = (0.0, 0.0)
         for ring in range(2, int(self.n_ring + 1)):
@@ -1478,7 +1579,7 @@ class Core(LoggedClass):
                 xy[idx] = loc
                 idx += 1
             # next steps walk around the ring
-            col += 1  # already did first step
+            row += 1  # already did first step
             positions = 6 * (ring - 1)  # all positions on active ring
             corners = np.arange(0, positions, ring - 1)
             for pos in range(1, int(positions)):
@@ -1495,8 +1596,281 @@ class Core(LoggedClass):
                     d += 1
                 # update row and column for next position
                 row, col = row + _turns[d][0], col + _turns[d][1]
-
         return xy
+
+
+########################################################################
+# CORE MAPPING METHODS
+########################################################################
+
+
+def count_rings(n_asm):
+    """Identify number of rings given list of assembly
+    ring/position inputs"""
+    nr = int(np.ceil(0.5 * (1 + np.sqrt(1 + 4 * (n_asm - 1) // 3))))
+    return nr
+
+
+def map_asm(asm_list):
+    r"""Map the assembly locations in the core.
+
+    Parameters
+    ----------
+    asm_list : list
+        List of assembly assignments to positions, by position.
+        Length is equal to the total number of positions possible
+        in the core hexagon
+
+    Returns
+    -------
+    numpy.ndarray
+        Map of assemblies in the core
+
+    Notes
+    -----
+    The assemblies are numbered starting at the center assembly
+    (1) and continuing outward around each of the rings. The
+    first assembly of the next ring is that located on the
+    diagonal immediately above the center assembly. The
+    assemblies in each ring are labeled by traveling clockwise
+    around the ring.
+
+    A regular hexagon can be divided by three straight lines along
+    the long diagonals that pass through the corners and intersect
+    at the center. One of these runs straight up and down; the
+    second has an angle of 30 degrees from horizontal; the third
+    has an angle of 150 degrees from horizontal.
+
+    This assembly numbering scheme and division of the hexagon can
+    be used to map the assembly labels from the hexagon to a square
+    matrix, which uses mimics the three long diagonals in the pin
+    with the rows, columns, and one diagonal.
+
+    Example
+    -------
+    If the center assembly is labeled "1", then the second ring of
+    assemblies may be labeled:
+
+      (y)                    (x)
+          \     7          .#
+           \  _____      #.
+        6   /\    / \   2
+           /___\1/___\
+           \   / \   /
+        5   \/_____\/   3
+                4
+
+    The map for this 7-assembly core would be as shown below; note
+    the rotation so that the first assembly in the new ring starts
+    at the top left position.
+                         ____
+    | 2 3 0 |           | 2 3  \
+    | 7 1 4 |   (note:  | 7 1 4 | looks like a hexagon!)
+    | 0 6 5 |            \ _6_5_|
+
+    Periodicity
+    -----------
+    The GEODST file may only specify 1/6 or 1/3 of the core,
+    which implies 60 or 120 degree periodicity. In that case,
+    the array obtained from the GEODST region map is only of
+    the partial core. These cases and the full core case are
+    handled separately within this method.
+
+    """
+    # Directions turning clockwise around a hexagon
+    # First entry is step from an inner ring to the top of an
+    # outer ring; the remaining steps are the turns around the
+    # hexagon corners
+    # _dirs = [(-1, -1), (0, 1), (1, 1), (1, 0),
+    #          (0, -1), (-1, -1), (-1, 0)]
+    _dirs = [(-1, -1), (1, 0), (1, 1),  (0, 1), (-1, 0), (-1, -1), (0, -1)]
+    nr = count_rings(len(asm_list))
+    asm_map = np.zeros((nr * 2 - 1, nr * 2 - 1), dtype=int)
+    asm_idx = 1
+    pos_idx = 1
+    # Fill center position
+    if not np.isnan(asm_list[0]):
+        asm_map[nr - 1, nr - 1] = asm_idx
+        asm_idx += 1
+    pos_idx += 1
+    # Fill rings
+    for ring in range(2, int(nr + 1)):
+        row = nr - ring
+        col = nr - ring
+        positions = 6 * (ring - 1)  # all positions on active ring
+        corners = np.arange(0, positions, ring - 1)
+        d = 1  # first direction
+        for pos in range(0, int(positions)):
+            if not np.isnan(asm_list[pos_idx - 1]):
+                asm_map[row, col] = asm_idx
+                asm_idx += 1
+            pos_idx += 1
+            if pos > 0 and pos in corners:
+                d += 1  # change directions at corner
+            row, col = row + _dirs[d][0], col + _dirs[d][1]
+    return asm_map
+
+
+def map_adjacent_assemblies(asm_map):
+    r"""Identify assembly neighbors for each assembly in the core.
+
+    Parameters
+    ----------
+    geodst_regmap : numpy.ndarray
+        Map of the regions at one axial level obtained by
+        processing the GEODST binary file using py4c
+
+    Returns
+    -------
+    numpy.ndarray
+        Adjacent assemblies for each assembly in the core
+
+    Notes
+    -----
+    Array returned has shape (n_asm x 6). Empty positions
+    along the core edges are returned as zeros. The below shows
+    the neighbor index and the assembly number in parentheses
+
+        7(6)  /\  2(7)
+            /    \
+     6(5)  | 1(1) |  3(2)
+           |      |
+            \    /      y
+        5(4)  \/  4(3)  |__x
+
+    Relative to the assembly map array we made, that order is:
+
+        2 - 3
+        | \ |  \
+        1 - x - 4
+         \  | \ |
+            6 - 5
+
+    ...where "x" is the "active assembly" of interest.
+
+    """
+    adj = np.zeros((np.max(asm_map), 6), dtype=int)
+    _dirs = [(0, -1), (-1, -1), (-1, 0), (0, 1), (1, 1), (1, 0)]
+    for row in range(0, len(asm_map)):
+        for col in range(0, len(asm_map[row])):
+            id = asm_map[row, col]
+            if id != 0:
+                tmp = np.zeros(6, dtype=int)
+                for i in range(0, len(_dirs)):
+                    address = tuple(sum(x) for x in
+                                    zip((row, col), _dirs[i]))
+                    if all(idx >= 0 for idx in address):
+                        try:
+                            tmp[i] = asm_map[address]
+                        except IndexError:
+                            pass
+                adj[id - 1] = tmp
+    return adj
+
+
+########################################################################
+# GAP SUBCHANNEL MAPPING METHODS
+########################################################################
+
+#
+# def _which_asm_has_finer_mesh(asm, neighbor=None):
+#     """Determine which assembly has finer meshing
+#
+#     Parameters
+#     ----------
+#     asm1 : DASSH Assembly object
+#         Active assembly around which we are creating mesh
+#     asm2 (optional) : DASSH Assembly object
+#         Neighboring assembly across active hex side
+#
+#     Returns
+#     -------
+#     tuple
+#         DASSH Assembly object
+#             One of the two input DASSH Assembly objects with the
+#             finer meshing in its pin bundle region
+#         int
+#             Number of gap edge subchannels per side
+#
+#     """
+#     # Active assembly edge subchannels per hex side
+#     sc_per_side = 0  # Assume unrodded, no side subchannels
+#     if asm.has_rodded:
+#         sc_per_side = asm.rodded.n_ring - 1
+#     if neighbor is None:
+#         return asm, sc_per_side
+#     else:
+#         # Neighbor edge subchannels per hex side
+#         sc_per_side_adj = 0  # Assume unrodded, no side subchannels
+#         if neighbor.has_rodded:
+#             sc_per_side_adj = neighbor.rodded.n_ring - 1
+#         # If both assemblies have same number of sc_per_side:
+#         # Choose the spacing with the smaller pin pitch
+#         if sc_per_side == sc_per_side_adj:
+#             if asm.rodded.pin_pitch < neighbor.rodded.pin_pitch:
+#                 return asm, sc_per_side
+#             else:
+#                 return neighbor, sc_per_side_adj
+#         # Otherwise, choose the meshing with more edge subchannels
+#         elif sc_per_side < sc_per_side_adj:
+#             return neighbor, sc_per_side_adj
+#         else:
+#             return asm, sc_per_side
+#
+
+
+def _which_asm_has_finer_mesh(asm, neighbor=None):
+    """Determine which assembly has finer meshing
+
+    Parameters
+    ----------
+    asm1 : DASSH Assembly object
+        Active assembly around which we are creating mesh
+    asm2 (optional) : DASSH Assembly object
+        Neighboring assembly across active hex side
+
+    Returns
+    -------
+    tuple
+        DASSH Assembly object
+            One of the two input DASSH Assembly objects with the
+            finer meshing in its pin bundle region
+        int
+            Number of gap edge subchannels per side
+
+    """
+    if neighbor is None:  # Use active asm parameters on this hex side
+        sc_per_side = 0
+        if asm.has_rodded:
+            sc_per_side = asm.rodded.n_ring - 1
+        return asm, sc_per_side
+
+    else:  # Need to compare them
+        # If one asm is rodded and the other isn't, use the rodded asm
+        if asm.has_rodded and not neighbor.has_rodded:
+            return asm, asm.rodded.n_ring - 1
+        elif not asm.has_rodded and neighbor.has_rodded:
+            return neighbor, neighbor.rodded.n_ring - 1
+        # If both unrodded, trivial
+        elif not asm.has_rodded and not neighbor.has_rodded:
+            return asm, 0
+        # If both rodded, need to compare
+        else:
+            sc_per_side = asm.rodded.n_ring - 1
+            sc_per_side_adj = neighbor.rodded.n_ring - 1
+
+            # If both assemblies have same number of sc_per_side:
+            # Choose the spacing with the smaller pin pitch
+            if sc_per_side == sc_per_side_adj:
+                if asm.rodded.pin_pitch < neighbor.rodded.pin_pitch:
+                    return asm, sc_per_side
+                else:
+                    return neighbor, sc_per_side_adj
+            # Otherwise, choose the meshing with more edge subchannels
+            elif sc_per_side < sc_per_side_adj:
+                return neighbor, sc_per_side_adj
+            else:
+                return asm, sc_per_side
 
 
 ########################################################################
@@ -1540,70 +1914,83 @@ def calculate_min_dz(core_obj, temp_lo, temp_hi):
 
     for temp in [temp_lo, temp_hi]:
         core_obj._update_coolant_gap_params(temp)
-        # Only corner -> corner interassembly gap subchannels
-        # NOTE: this means that the user ONLY specified 1-pin assemblies
-        # lol, how ridiculous is that?
-        if core_obj._sc_per_asm == 6:
-            return (_cons9_999(
-                sc_mfr[1],
-                core_obj.L[1][1],
-                core_obj.d['gap'],
-                core_obj.d['wcorner'],
-                core_obj.gap_coolant.thermal_conductivity,
-                core_obj.gap_coolant.heat_capacity,
-                core_obj.coolant_gap_params['htc'][1]), '9-999')
+        term1 = (core_obj.coolant_gap_params['htc']
+                 * np.sum(core_obj._conv_util['const'], axis=1)
+                 * core_obj._inv_sc_mfr
+                 / core_obj.gap_coolant.heat_capacity)
+        term2 = (core_obj.gap_coolant.thermal_conductivity
+                 * core_obj.d_gap
+                 * core_obj._inv_sc_mfr
+                 / core_obj.gap_coolant.heat_capacity
+                 / np.sum(core_obj.gap_params['L'], axis=1))
+        dz = 1 / (term1 + term2)
 
-        else:
-            sc_code.append('9-888')
-            dz.append(
-                _cons9_888(sc_mfr[1],
-                           core_obj.L[0][1],
-                           core_obj.d['gap'],
-                           core_obj.d['wcorner'],
-                           core_obj.gap_coolant.thermal_conductivity,
-                           core_obj.gap_coolant.heat_capacity,
-                           core_obj.coolant_gap_params['htc'][1]))
-
-            # Edge subchannel --> corner/corner subchannel
-            if core_obj._sc_per_asm == 12:
-                sc_code.append('8-99')
-                dz.append(
-                    _cons8_99(sc_mfr[0],
-                              core_obj.L[0][0],
-                              core_obj.L[0][1],
-                              core_obj.d['gap'],
-                              core_obj.gap_coolant.thermal_conductivity,
-                              core_obj.gap_coolant.heat_capacity,
-                              core_obj.coolant_gap_params['htc'][0]))
-
-            # Edge subchannel --> edge/corner subchannel
-            else:
-                sc_code.append('8-89')
-                dz.append(
-                    _cons8_89(sc_mfr[0],
-                              core_obj.L[0][0],
-                              core_obj.L[0][1],
-                              core_obj.d['gap'],
-                              core_obj.gap_coolant.thermal_conductivity,
-                              core_obj.gap_coolant.heat_capacity,
-                              core_obj.coolant_gap_params['htc'][0]))
-
-            # Edge subchannel --> edge/edge subchannel
-            if core_obj._sc_per_asm >= 24:
-                sc_code.append('8-88')
-                dz.append(
-                    _cons8_88(sc_mfr[0],
-                              core_obj.L[0][0],
-                              core_obj.d['gap'],
-                              core_obj.gap_coolant.thermal_conductivity,
-                              core_obj.gap_coolant.heat_capacity,
-                              core_obj.coolant_gap_params['htc'][0]))
+        # # Only corner -> corner interassembly gap subchannels
+        # # NOTE: this means that the user ONLY specified 1-pin assemblies
+        # # lol, how ridiculous is that?
+        # # if core_obj._sc_per_asm == 6:
+        # if core_obj._asm_sc_adj.shape[1] == 6:
+        #     return (_cons9_999(
+        #         sc_mfr[1],
+        #         core_obj.L[1][1],
+        #         core_obj.d['gap'],
+        #         core_obj.d['wcorner'],
+        #         core_obj.gap_coolant.thermal_conductivity,
+        #         core_obj.gap_coolant.heat_capacity,
+        #         core_obj.coolant_gap_params['htc'][1]), '9-999')
+        #
+        # else:
+        #     sc_code.append('9-888')
+        #     dz.append(
+        #         _cons9_888(sc_mfr[1],
+        #                    core_obj.L[0][1],
+        #                    core_obj.d['gap'],
+        #                    core_obj.d['wcorner'],
+        #                    core_obj.gap_coolant.thermal_conductivity,
+        #                    core_obj.gap_coolant.heat_capacity,
+        #                    core_obj.coolant_gap_params['htc'][1]))
+        #
+        #     # Edge subchannel --> corner/corner subchannel
+        #     if core_obj._sc_per_asm == 12:
+        #         sc_code.append('8-99')
+        #         dz.append(
+        #             _cons8_99(sc_mfr[0],
+        #                       core_obj.L[0][0],
+        #                       core_obj.L[0][1],
+        #                       core_obj.d['gap'],
+        #                       core_obj.gap_coolant.thermal_conductivity,
+        #                       core_obj.gap_coolant.heat_capacity,
+        #                       core_obj.coolant_gap_params['htc'][0]))
+        #
+        #     # Edge subchannel --> edge/corner subchannel
+        #     else:
+        #         sc_code.append('8-89')
+        #         dz.append(
+        #             _cons8_89(sc_mfr[0],
+        #                       core_obj.L[0][0],
+        #                       core_obj.L[0][1],
+        #                       core_obj.d['gap'],
+        #                       core_obj.gap_coolant.thermal_conductivity,
+        #                       core_obj.gap_coolant.heat_capacity,
+        #                       core_obj.coolant_gap_params['htc'][0]))
+        #
+        #     # Edge subchannel --> edge/edge subchannel
+        #     if core_obj._sc_per_asm >= 24:
+        #         sc_code.append('8-88')
+        #         dz.append(
+        #             _cons8_88(sc_mfr[0],
+        #                       core_obj.L[0][0],
+        #                       core_obj.d['gap'],
+        #                       core_obj.gap_coolant.thermal_conductivity,
+        #                       core_obj.gap_coolant.heat_capacity,
+        #                       core_obj.coolant_gap_params['htc'][0]))
 
     # Reset the coolant temperature
     core_obj._update_coolant_gap_params(_temp_in)
     # print(min_dz)
     min_dz = np.min(dz)
-    return min_dz, sc_code[dz.index(min_dz)]
+    # return min_dz, sc_code[dz.index(min_dz)]
+    return min_dz, 'X-XXX'
 
 
 def _cons8_88(m8, L88, d_gap, k, Cp, h_gap):

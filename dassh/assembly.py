@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-12-23
+date: 2021-04-02
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -56,11 +56,13 @@ class Assembly(LoggedClass):
         User-specified bulk mass flow rate (kg/s) in the assembly
     origin : tuple
         X-Y coordinates of the assembly centroid
-
+    se2geo : bool
+        Indicate whether to use DASSH or SE2 bundle geometry definitions
+        (use only when comparing DASSH and SE2)
     """
 
-    def __init__(self, name, loc, asm_input, mat_dict,
-                 inlet_temp, flow_rate, origin=(0.0, 0.0)):
+    def __init__(self, name, loc, asm_input, mat_dict, inlet_temp,
+                 flow_rate, origin=(0.0, 0.0), se2geo=False):
         """Instantiate Assembly object."""
         # Instantiate Logger
         LoggedClass.__init__(self, 4, 'dassh.Assembly')
@@ -68,8 +70,13 @@ class Assembly(LoggedClass):
         # Assembly attributes
         self._name = name
         self._loc = loc
+        if loc[0] == 0:
+            self._id = 0
+        else:
+            self._id = 3 * (loc[0] - 1) * loc[0] + loc[1] + 1
         self._pressure_drop = 0.0
         self._z = 0.0
+        self._active_region_idx = 0
         self.flow_rate = flow_rate
         self.duct_oftf = max(asm_input['duct_ftf'])
 
@@ -77,10 +84,10 @@ class Assembly(LoggedClass):
         # unrodded region using the bundle parameters
         if asm_input.get('use_low_fidelity_model'):
             self.region = [region_unrodded.make_ur_asm(
-                asm_input, mat_dict, flow_rate)]
+                asm_input, mat_dict, flow_rate, se2geo)]
         else:
             self.region = [region_rodded.make_rr_asm(
-                asm_input, self.name, mat_dict, flow_rate)]
+                asm_input, self.name, mat_dict, flow_rate, se2geo)]
 
         # Create other requested unrodded regions
         for reg in asm_input['AxialRegion']:
@@ -147,10 +154,14 @@ class Assembly(LoggedClass):
                 # (1) the peak temperature value
                 # (2) column in the pin temp array to go look it up
                 # (3) radial pin temp data at height of the peak temp
-                self._peak['pin'][keys[i]] = [0.0, i + 5, []]
+                self._peak['pin'][keys[i]] = [0.0, i + 4, []]
 
         # Energy balance attributes: track total power added
-        self.power_delivered = 0.0
+        self._power_delivered = {
+            'pins': 0.0,
+            'duct': 0.0,
+            'cool': 0.0,
+            'refl': 0.0}
 
     ####################################################################
     # ASSEMBLY INSTANCE GENERAL METHODS
@@ -164,6 +175,11 @@ class Assembly(LoggedClass):
         # objects can simply be pointed to)
         clone = copy.copy(self)
         clone._loc = new_loc
+        if new_loc[0] == 0:
+            new_id = 0
+        else:
+            new_id = 3 * (new_loc[0] - 1) * new_loc[0] + new_loc[1] + 1
+        clone._id = new_id
 
         if new_flowrate is not None:
             clone.flow_rate = new_flowrate
@@ -175,10 +191,11 @@ class Assembly(LoggedClass):
         # Update pin temp array identifiers
         if self.has_rodded and hasattr(self.rodded, 'pin_model'):
             new_regs[self._rodded_idx].pin_temps[:, 0] = clone.id
-            new_regs[self._rodded_idx].pin_temps[:, 1] = clone.dif3d_id
+            # new_regs[self._rodded_idx].pin_temps[:, 1] = clone.dif3d_id
 
         # Update peak temperature object
         clone._peak = copy.deepcopy(self._peak)
+        clone._power_delivered = copy.deepcopy(self._power_delivered)
 
         # Assign copied regions
         clone.region = new_regs
@@ -203,25 +220,24 @@ class Assembly(LoggedClass):
         self._write['coolant_byp'] = np.zeros((1, ncols['coolant_byp']))
         self._write['maximum'] = np.zeros((1, 8))
         self._write['average'] = np.zeros((1, 11))
-        self._write['coolant_gap'] = np.zeros((1, 10))
+        # self._write['coolant_gap'] = np.zeros((1, 10))
+        self._write['coolant_gap'] = np.zeros((1, ncols['coolant_gap']))
 
         # Fill in the assembly ID data
         for key in self._write.keys():
             self._write[key][0, 0] = self.id
-            self._write[key][0, 1] = self.dif3d_id
 
         # These are the values that indicate the fill length of each
         # data field. The data produced by the Assembly object needs
         # to fill the array required by the global array. This dict
         # anticipates the length of the Assembly data arrays to speed
         # up the process of partially filling the global array
-        idc = {'coolant_int': 4,
-               'coolant_byp': 5,
-               'duct_mw': 5,
-               'average': 4,
-               'maximum': 4,
-               'pin': 4,
-               'coolant_gap': 4}
+        idc = {'coolant_int': 3,
+               'coolant_byp': 4,
+               'duct_mw': 4,
+               'average': 3,
+               'maximum': 3,
+               'pin': 3}
         self._fillcols = {}
         for key in self._write.keys():
             self._fillcols[key] = np.zeros(len(self.region), dtype=int)
@@ -229,6 +245,14 @@ class Assembly(LoggedClass):
                 if key in self.region[i].temp.keys():
                     self._fillcols[key][i] = \
                         self.region[i].temp[key].shape[-1] + idc[key]
+
+        # Gap columns handled separately - same number of adjacent
+        # gap channels as duct midwall, so use that as setup basis
+        self._fillcols['coolant_gap'] = \
+            np.zeros(len(self.region), dtype=int)
+        for i in range(len(self.region)):
+            self._fillcols['coolant_gap'][i] = \
+                self.region[i].temp['duct_mw'].shape[-1] + 3
 
     @property
     def name(self):
@@ -243,31 +267,7 @@ class Assembly(LoggedClass):
     @property
     def id(self):
         """Assembly index (python indexing)"""
-        if self.loc[0] == 0:
-            return 0
-        else:
-            return 3 * (self.loc[0] - 1) * self.loc[0] + self.loc[1] + 1
-
-    @property
-    def dif3d_loc(self):
-        """Whereas .loc returns ring-position in a clockwise fashion,
-        DIF3D goes counter-clockwise; so do that"""
-        if self.loc[1] == 0:
-            return self.loc
-        else:
-            asm_in_ring = 6 * self.loc[0]
-            return (self.loc[0], asm_in_ring - self.loc[1])
-
-    @property
-    def dif3d_id(self):
-        """Whereas the 'id' attribute returns the assembly number
-        counting clockwise DIF3D goes counter-clockwise; so do that
-        (python indexing)"""
-        if self.dif3d_loc[0] == 0:
-            return 0
-        else:
-            return (3 * (self.dif3d_loc[0] - 1) * self.dif3d_loc[0]
-                    + self.dif3d_loc[1] + 1)
+        return self._id
 
     @property
     def z(self):
@@ -295,21 +295,20 @@ class Assembly(LoggedClass):
         if len(self.region) > 1:
             return True
         else:
-            # If only one region that is rodded, no unrodded regions
-            if self.has_rodded:
+            if self.has_rodded:  # If only region is rodded
                 return False
-            # Otherwise, entire thing is undrodded
-            else:
+            else:  # Otherwise, entire thing is undrodded
                 return True
 
     @property
     def active_region_idx(self):
         """Return the axial region index you're currently in"""
-        if self.z == 0.0:
-            return 0
-        else:
-            idx = bisect.bisect_left(self.region_bnd, self.z) - 1
-            return self.region_idx[idx]
+        # if self.z == 0.0:
+        #     return 0
+        # else:
+        #     idx = bisect.bisect_left(self.region_bnd, self.z) - 1
+        #     return self.region_idx[idx]
+        return self._active_region_idx
 
     @property
     def active_region(self):
@@ -324,13 +323,22 @@ class Assembly(LoggedClass):
         return self.active_region.x_pts
 
     @property
-    def _lstsq_params(self):
+    def xparams(self):
         """If available, return precalculated arrays for the least-
         squares fitting of data with Legendre polynomials"""
         if self.active_region.is_rodded:
-            return self.active_region._lstsq_params
+            return self.active_region._xparams
         else:
-            return None
+            return {'gap2duct': None, 'duct2gap': None}
+
+    @property
+    def yparams(self):
+        """If available, return precalculated arrays for the least-
+        squares fitting of data with Legendre polynomials"""
+        if self.active_region.is_rodded:
+            return self.active_region._yparams
+        else:
+            return {'gap2duct': None, 'duct2gap': None}
 
     @property
     def pressure_drop(self):
@@ -388,7 +396,7 @@ class Assembly(LoggedClass):
         """Get the entire pin temperature array"""
         if hasattr(self.active_region, 'pin_model'):
             p = self.active_region.pin_temps
-            p[:, 2] = self.z
+            p[:, 1] = self.z
             return p
         else:
             return None
@@ -404,9 +412,44 @@ class Assembly(LoggedClass):
     ####################################################################
     # CALCULATION
     ####################################################################
+    def step0(self, temp_gap, htc_gap, adiabatic=False):
+        """Update duct temperatures prior to the sweep based on inlet
+        coolant temperatures
 
-    def calculate(self, z, dz, temp_gap, htc_gap, adiabatic=False,
-                  ebal=False):
+        Parameters
+        ----------
+        temp_gap : numpy.ndarray
+            Interassembly coolant gap temperatures around the assembly
+            at the j+1 axial level (array len = n_sc['duct']['total'])
+        htc_gap : listtype
+            Heat transfer coefficient for convection between the gap
+            coolant and outer duct wall based on core-average inter-
+            assembly gap coolant temperature; len = 2 (edge and corner
+            meshes)
+        adiabatic : boolean (optional)
+            Indicate whether outer duct has adiabatic BC (default False)
+
+        Notes
+        -----
+        If it's the first step, the duct temperatures need to
+        be determined based on the inlet coolant temperatures.
+        By default, they're set equal to the inlet coolant
+        temperatures, so that when inlet coolant temperatures are
+        the same, this does nothing. However, if inlet coolant
+        temperatures are different across a duct wall, that duct
+        wall temperature needs to be precalculated before the
+        sweep.
+
+        """
+        if self.active_region.is_rodded:
+            p0 = np.zeros(self.active_region.temp['duct_mw'].size)
+            self.active_region._calc_duct_temp(p0, temp_gap, htc_gap,
+                                               adiabatic)
+        else:
+            self.active_region._calc_duct_temp(temp_gap, htc_gap,
+                                               adiabatic)
+
+    def calculate(self, z, dz, t_gap, h_gap, adiabatic=False, ebal=False):
         """Calculate coolant and temperatures at axial level j+1 based
         on coolant and duct wall temperatures at axial level j
 
@@ -416,10 +459,10 @@ class Assembly(LoggedClass):
             Axial mesh cell centerpoint
         dz : float
             Axial step size (m)
-        temp_gap : numpy.ndarray
+        t_gap : numpy.ndarray
             Interassembly coolant gap temperatures around the assembly
             at the j+1 axial level (array len = n_sc['duct']['total'])
-        htc_gap : listtype
+        h_gap : listtype
             Heat transfer coefficient for convection between the gap
             coolant and outer duct wall based on core-average inter-
             assembly gap coolant temperature; len = 2 (edge and corner
@@ -436,15 +479,18 @@ class Assembly(LoggedClass):
         """
         # Calculate power at this axial level (j), calculate
         # temperatures and pin powers (if applicable)
-        power_j = self.power.get_power(z)
-        # power_j = self.power.get_power(z - 0.5 * dz)
-        self.power_delivered += dz * np.sum([np.sum(x) for x in
-                                             power_j.values()
-                                             if x is not None])
+        # power_j = self.power.get_power(z)
+        power_j = self.power.get_power(z - 0.5 * dz)
+        # self._power_delivered += dz * np.sum([np.sum(x) for x in
+        #                                      power_j.values()
+        #                                      if x is not None])
+        for k in power_j.keys():
+            if power_j[k] is not None:
+                self._power_delivered[k] += dz * np.sum(power_j[k])
 
         # Calculate coolant and duct temperatures
-        self.active_region.calculate(dz, power_j, temp_gap,
-                                     htc_gap, adiabatic, ebal)
+        self.active_region.calculate(dz, power_j, t_gap,
+                                     h_gap, adiabatic, ebal)
 
         # Update peak coolant and duct temperatures
         self._update_peak_coolant_duct()
@@ -458,29 +504,35 @@ class Assembly(LoggedClass):
     def check_region_update(self, z):
         """Take an axial step and update the active axial region,
         if necessary; accumulate that region's pressure drop"""
+        active_region_id = self._identify_active_region(z)
         old_region_id = self.active_region_idx
         self._z = z
-
         # If necessary, activate new region
-        if old_region_id != self.active_region_idx:
+        if old_region_id != active_region_id:
+            # Update to new region index
+            self._active_region_idx = active_region_id
             # Update total pressure drop from old region
             self._pressure_drop += \
                 self.region[old_region_id].pressure_drop
+            # Activate new region: now that index is updated,
+            # "active_region" property returns new region
             self.active_region.activate(self.region[old_region_id])
+
+    def _identify_active_region(self, z):
+        """Identify the index of the current axial region"""
+        if z == 0.0:
+            return 0
+        else:
+            return bisect.bisect_left(self.region_bnd, z) - 1
 
     def _update_peak_coolant_duct(self):
         """Update peak coolant and duct temperatures, if necessary"""
         max_cool = np.max(self.temp_coolant)
         if max_cool > self._peak['cool'][0]:
             self._peak['cool'] = (max_cool, self.z)
-
-        # max_duct = np.max(self.temp_duct_mw)
-        # if max_duct > self._peak['duct']:
-        #     self._peak['duct'] = max_duct
-
         max_duct = np.max(self.temp_duct_mw, axis=1)
-        for i in range(len(max_duct)):
-            idx_to_write = len(self._peak['duct']) - len(max_duct) + i
+        for i in range(max_duct.shape[0]):
+            idx_to_write = len(self._peak['duct']) - max_duct.shape[0] + i
             if max_duct[i] > self._peak['duct'][idx_to_write][0]:
                 self._peak['duct'][idx_to_write] = (max_duct[i], self.z)
 
@@ -506,12 +558,12 @@ class Assembly(LoggedClass):
 
         # Update z position, active region index
         for k in write_step.keys():
-            write_step[k][0, 2] = self.z
-            write_step[k][0, 3] = self.active_region_idx
+            write_step[k][0, 1] = self.z
+            write_step[k][0, 2] = self.active_region_idx
 
         # Interior coolant temperatures
         if 'coolant_int' in dfiles.keys():
-            write_step['coolant_int'][0, 4:fill['coolant_int']] = \
+            write_step['coolant_int'][0, 3:fill['coolant_int']] = \
                 self.temp_coolant
             np.savetxt(dfiles['coolant_int'],
                        write_step['coolant_int'],
@@ -520,8 +572,8 @@ class Assembly(LoggedClass):
         # Duct midwall
         if 'duct_mw' in dfiles.keys():
             for i in range(len(self.temp_duct_mw)):
-                write_step['duct_mw'][0, 4] = i
-                write_step['duct_mw'][0, 5:fill['duct_mw']] = \
+                write_step['duct_mw'][0, 3] = i
+                write_step['duct_mw'][0, 4:fill['duct_mw']] = \
                     self.temp_duct_mw[i]
                 np.savetxt(dfiles['duct_mw'],
                            write_step['duct_mw'],
@@ -534,9 +586,9 @@ class Assembly(LoggedClass):
                 # write_step['average'] = \
                 #     self.active_region.avg_coolant_byp_temp[0]
                 for i in range(len(self.temp_bypass)):
-                    write_step['coolant_byp'][0, 4] = i
+                    write_step['coolant_byp'][0, 3] = i
                     (write_step['coolant_byp']
-                               [0, 5:fill['coolant_byp']]) = \
+                               [0, 4:fill['coolant_byp']]) = \
                         self.temp_bypass[i]
                     np.savetxt(dfiles['coolant_byp'],
                                write_step['coolant_byp'],
@@ -546,15 +598,15 @@ class Assembly(LoggedClass):
         if hasattr(self.active_region, 'pin_model'):
             if 'average' in dfiles.keys():
                 # Average clad MW and fuel CL temperatures
-                write_step['average'][0, 9] = \
+                write_step['average'][0, 8] = \
                     np.average(self.active_region.pin_temps[:, 6])
-                write_step['average'][0, 10] = \
+                write_step['average'][0, 9] = \
                     np.average(self.active_region.pin_temps[:, -1])
             if 'maximum' in dfiles.keys():
                 # Maximum clad MW and fuel CL temperatures
-                write_step['maximum'][0, 6] = \
+                write_step['maximum'][0, 5] = \
                     np.max(self.active_region.pin_temps[:, 6])
-                write_step['maximum'][0, 7] = \
+                write_step['maximum'][0, 6] = \
                     np.max(self.active_region.pin_temps[:, -1])
             if 'pin' in dfiles.keys():
                 np.savetxt(dfiles['pin'],
@@ -563,24 +615,25 @@ class Assembly(LoggedClass):
 
         # Update remaining average temperatures
         if 'average' in dfiles.keys():
-            write_step['average'][0, 4] = self.avg_coolant_int_temp
-            write_step['average'][0, 6] = self.avg_coolant_temp
-            write_step['average'][0, 7] = self.avg_duct_mw_temp[0]
-            write_step['average'][0, 8] = self.avg_duct_mw_temp[-1]
+            write_step['average'][0, 3] = self.avg_coolant_int_temp
+            write_step['average'][0, 5] = self.avg_coolant_temp
+            write_step['average'][0, 6] = self.avg_duct_mw_temp[0]
+            write_step['average'][0, 7] = self.avg_duct_mw_temp[-1]
             np.savetxt(dfiles['average'], write_step['average'],
                        delimiter=',')
 
         # Update remaining maximum temperatures
         if 'maximum' in dfiles.keys():
-            write_step['maximum'][0, 4] = np.max(self.temp_coolant)
-            write_step['maximum'][0, 5] = np.max(self.temp_duct_mw[0])
+            write_step['maximum'][0, 3] = np.max(self.temp_coolant)
+            write_step['maximum'][0, 4] = np.max(self.temp_duct_mw[0])
             np.savetxt(dfiles['maximum'], write_step['maximum'],
                        delimiter=',')
 
         # Adjacent gap temperatures: (to do: add them to average?)
         if 'coolant_gap' in dfiles.keys() and gap_temp is not None:
-            gap_temp.shape = (6, int(len(gap_temp) / 6))
-            write_step['coolant_gap'][0, 4:] = np.average(gap_temp, axis=1)
+            write_step['coolant_gap'][0, 3:fill['coolant_gap']] = gap_temp
+            # gap_temp.shape = (6, int(len(gap_temp) / 6))
+            # write_step['coolant_gap'][0, 4:] = np.average(gap_temp, axis=1)
             np.savetxt(dfiles['coolant_gap'],
                        write_step['coolant_gap'],
                        delimiter=',')
@@ -588,16 +641,18 @@ class Assembly(LoggedClass):
 ########################################################################
 
 
-def calculate_min_dz(asm_obj, t1, t2):
+def calculate_min_dz(asm_obj, t1, t2, adiabatic_duct=False):
     """Calculate the minimium dz for each of the axial regions in
     the Assembly, including those without rods."""
     dz = []
     sc = []
     for r in asm_obj.region:
         if r.is_rodded:
-            tmp_dz, tmp_sc = region_rodded.calculate_min_dz(r, t1, t2)
+            tmp_dz, tmp_sc = region_rodded.calculate_min_dz(
+                r, t1, t2, adiabatic_duct)
         else:
-            tmp_dz, tmp_sc = region_unrodded.calculate_min_dz(r, t1, t2)
+            tmp_dz, tmp_sc = region_unrodded.calculate_min_dz(
+                r, t1, t2, adiabatic_duct)
         dz.append(tmp_dz)
         sc.append(tmp_sc)
 
