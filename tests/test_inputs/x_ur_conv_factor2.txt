@@ -1,0 +1,94 @@
+########################################################################
+# author: Milos Atz
+# date: 2021-01-29
+# comment: DASSH input; bad UR convection factor input
+########################################################################
+ # NEUTRONICS AND GEOMETRY FILES
+
+[ARC]
+    pmatrx = ../test_data/empty_cccc/PMATRX
+    geodst = ../test_data/empty_cccc/GEODST1
+    ndxsrf = ../test_data/empty_cccc/NDXSRF1
+    znatdn = ../test_data/empty_cccc/ZNATDN1
+    labels = ../test_data/empty_cccc/LABELS1
+    nhflux = ../test_data/empty_cccc/NHFLUX1
+    ghflux = ../test_data/empty_cccc/GHFLUX1
+
+
+########################################################################
+# CORE DETAILS: Describe characteristics of the reactor core
+
+[Core]
+    coolant_inlet_temp   = 350.0
+    fuel_material        = metal
+    fuel_alloy           = zr
+    coolant_material     = sodium
+    length               = 375.0
+    assembly_pitch       = 12.0
+    bypass_fraction      = 0.005
+    gap_model            = flow
+    power_scaling_factor = 0.1
+
+
+########################################################################
+# ASSEMBLY DETAILS: Describe a group of assemblies
+# NAME identifies a group of assemblies (e.g. "INNER_DRIVER")
+# Can be repeated for as many assemblies as required by the user.
+
+[Assembly]
+
+    [[fuel]]
+        num_rings              = 9
+        pin_pitch              = 0.740
+        pin_diameter           = 0.625
+        clad_thickness         = 0.0500
+        wire_pitch             = 20.000
+        wire_diameter          = 0.110
+        duct_ftf               = 11.10, 11.60
+        duct_material          = HT9
+        use_low_fidelity_model = True
+        convection_factor      = calculate
+
+    [[control]]
+        num_rings      = 4
+        pin_pitch      = 1.57491
+        pin_diameter   = 1.54750
+        clad_thickness = 0.13266
+        wire_pitch     = 20.000
+        wire_diameter  = 0.0274
+        duct_ftf       = 10.10, 10.60, 11.10, 11.60
+        duct_material  = HT9
+        [[[AxialRegion]]]
+            [[[[empty_cr]]]]
+                model      = 6node
+                z_lo       = 0.0
+                z_hi       = 180.0
+                vf_coolant = 1.0
+            [[[[upper_cr]]]]
+                model             = 6node
+                convection_factor = calculate    # Can't use this value here
+                z_lo              = 290.0
+                z_hi              = 375.0
+                vf_coolant        = 0.5
+
+
+########################################################################
+# ASSIGN assemblies to positions in the core; assign fixed
+# flow rates or temperature limits to one or multiple assemblies.
+# Indicate which assemblies must be grouped together in an orificing
+# calculation.
+
+[Assignment]
+    [[ByPosition]]
+        control   = 1, 1, 1, DELTA_TEMP, 150.0
+        fuel      = 2, 1, 6, DELTA_TEMP, 150.0
+
+########################################################################
+# SETUP: Problem setup, user options, etc
+
+[Setup]
+
+    [[Units]]
+        temperature    = Celsius
+        length         = cm
+        mass_flow_rate = kg/s

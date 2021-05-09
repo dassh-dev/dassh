@@ -1,0 +1,78 @@
+########################################################################
+# author: Milos Atz
+# date: 2021-02-11
+# comment: DASSH input example (37 asm positions, no asm in corners)
+########################################################################
+ # NEUTRONICS AND GEOMETRY FILES
+
+[ARC]
+    pmatrx = ../test_data/empty_cccc/PMATRX
+    geodst = ../test_data/empty_cccc/GEODST1
+    ndxsrf = ../test_data/empty_cccc/NDXSRF1
+    znatdn = ../test_data/empty_cccc/ZNATDN1
+    labels = ../test_data/empty_cccc/LABELS1
+    nhflux = ../test_data/empty_cccc/NHFLUX1
+    ghflux = ../test_data/empty_cccc/GHFLUX1
+
+
+########################################################################
+# CORE DETAILS: Describe characteristics of the reactor core
+
+[Core]
+    coolant_inlet_temp   = 350.0
+    fuel_material        = metal
+    fuel_alloy           = zr
+    coolant_material     = sodium
+    length               = 375.0
+    assembly_pitch       = 12.0
+    bypass_fraction      = 0.005
+    gap_model            = flow
+    power_scaling_factor = 0.1
+
+
+########################################################################
+# ASSEMBLY DETAILS: Describe a group of assemblies
+# NAME identifies a group of assemblies (e.g. "INNER_DRIVER")
+# Can be repeated for as many assemblies as required by the user.
+
+[Assembly]
+
+    [[fuel]]
+        num_rings      = 10
+        pin_pitch      = 0.6725
+        pin_diameter   = 0.5590
+        clad_thickness = 0.0500
+        wire_pitch     = 20.000
+        wire_diameter  = 0.100
+        duct_ftf       = 11.25, 11.75
+        duct_material  = HT9
+
+
+########################################################################
+# ASSIGN assemblies to positions in the core; assign fixed
+# flow rates or temperature limits to one or multiple assemblies.
+# Indicate which assemblies must be grouped together in an orificing
+# calculation.
+
+[Assignment]
+    [[ByPosition]]
+        fuel = 1,  1,  1, DELTA_TEMP  = 150.0
+        fuel = 2,  1,  6, OUTLET_TEMP = 500.0
+        fuel = 3,  1, 12, FLOWRATE    = 25.00
+        fuel = 4,  2,  3, DELTA_TEMP  = 150.0
+        fuel = 4,  5,  6, DELTA_TEMP  = 150.0
+        fuel = 4,  8,  9, DELTA_TEMP  = 150.0
+        fuel = 4, 11, 12, DELTA_TEMP  = 150.0
+        fuel = 4, 14, 15, DELTA_TEMP  = 150.0
+        fuel = 4, 17, 18, DELTA_TEMP  = 150.0
+
+
+########################################################################
+# SETUP: Problem setup, user options, etc
+
+[Setup]
+
+    [[Units]]
+        temperature    = Celsius
+        length         = cm
+        mass_flow_rate = kg/s

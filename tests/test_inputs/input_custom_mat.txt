@@ -1,0 +1,69 @@
+########################################################################
+# author: Milos Atz
+# date: 2021-01-29
+# comment: DASSH input example - custom material specification
+########################################################################
+[ARC] # NEUTRONICS AND GEOMETRY FILES
+    pmatrx = ../test_data/single_asm_refl/PMATRX
+    geodst = ../test_data/single_asm_refl/GEODST
+    ndxsrf = ../test_data/single_asm_refl/NDXSRF
+    znatdn = ../test_data/single_asm_refl/ZNATDN
+    labels = ../test_data/single_asm_refl/LABELS
+    nhflux = ../test_data/single_asm_refl/NHFLUX
+    ghflux = ../test_data/single_asm_refl/GHFLUX
+
+
+########################################################################
+# CORE DETAILS: Describe characteristics of the reactor core
+
+[Core]
+    coolant_inlet_temp = 350.0
+    fuel_material      = metal
+    fuel_alloy         = zr
+    coolant_material   = coolant
+    coolant_heating    = sodium
+    length             = 375.0
+    assembly_pitch     = 12.0
+
+
+########################################################################
+[Assembly] # ASSEMBLY DETAILS: Describe a group of assemblies
+# NAME identifies a group of assemblies (e.g. "INNER_DRIVER")
+# Can be repeated for as many assemblies as required by the user.
+    [[driver]]
+        num_rings      = 9
+        pin_pitch      = 0.750
+        pin_diameter   = 0.635
+        clad_thickness = 0.0500
+        wire_pitch     = 20.000
+        wire_diameter  = 0.110
+        duct_ftf       = 11.25, 11.75
+        duct_material = structure
+
+
+########################################################################
+[Assignment] # ASSIGN assemblies to positions in the core; assign fixed
+# flow rates or temperature limits to one or multiple assemblies.
+# Indicate which assemblies must be grouped together in an orificing
+# calculation.
+
+    [[ByPosition]]
+        driver =    1, 1, 1, FLOWRATE=15.0, GROUP=1
+
+
+########################################################################
+[Setup]
+    [[Units]]
+        length      = cm
+        temperature = celsius
+
+
+########################################################################
+[Materials]
+    [[structure]]
+        thermal_conductivity = 6.308, 2.716e-2, -7.301e-6
+        heat_capacity        = 428.6, 0.1816
+        density              = 8000.0,
+
+    [[coolant]]
+	from_file = custom_mat.csv

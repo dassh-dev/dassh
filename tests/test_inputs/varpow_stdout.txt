@@ -1,0 +1,18 @@
+[VARPOW]........................................................................
+[VARPOW]...VARPOW utility program 11.3130  07/31/20
+[VARPOW]...varpow.x <iTypeFuel> <iTypeCool> <PMATRX> <GEODST> <NDXSRF> <ZNATDN> <NHFLUX> <GHFLUX>
+[VARPOW]...  iTypeFuel:  The type of fuel form: 1,2,3,4   = Zr-alloyed,Oxide,Nitride,Alum Alloyed
+[VARPOW]...  iTypeCool:  The type of coolant:   1,2,3,4,5 = Na, NaCl, Pb, Pb-Bi, Sn 
+[VARPOW]...  PMATRX   :  The file name for the PMATRX cross section file
+[VARPOW]...  GEODST   :  The file name for the GEODST file
+[VARPOW]...  NDXSRF   :  The file name for the NDXSRF file
+[VARPOW]...  ZNATDN   :  The file name for the ZNATDN file
+[VARPOW]...  NHFLUX   :  The file name for the DIF3D-VARIANT neutron NHFLUX file
+[VARPOW]...  GHFLUX   :  The file name for the DIF3D-VARIANT gamma   NHFLUX file
+[VARPOW]........................................................................
+[VARPOW]...Output will be two data files: VARPOW and VAREXP
+[VARPOW]...  VARPOW   :  The NHFLUX file containing the neutron and gamma power (w/cc) broken into 3 pieces: fuel/struct/cool
+[VARPOW]...  VAREXP   :  The monomial exponents of the Ritz spatial approximation in the neutron/gamma data set
+[VARPOW]........................................................................
+PMATRX mapping failed for ISOTXS isotope |RDUM1E  |
+PMATRX mapping failed for ISOTXS isotope |RDUM1F  |

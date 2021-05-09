@@ -1,0 +1,87 @@
+########################################################################
+# author: Milos Atz
+# date: 2021-02-22
+# comment: DASSH input example (16 asm positions, absurd layout)
+########################################################################
+ # NEUTRONICS AND GEOMETRY FILES
+
+[ARC]
+    pmatrx = ../test_data/16_asm_silly/PMATRX
+    geodst = ../test_data/16_asm_silly/GEODST
+    ndxsrf = ../test_data/16_asm_silly/NDXSRF
+    znatdn = ../test_data/16_asm_silly/ZNATDN
+    labels = ../test_data/16_asm_silly/LABELS
+    nhflux = ../test_data/16_asm_silly/NHFLX0N
+    ghflux = ../test_data/16_asm_silly/NHFLX0G
+
+
+########################################################################
+# CORE DETAILS: Describe characteristics of the reactor core
+
+[Core]
+    coolant_inlet_temp   = 350.0
+    fuel_material        = metal
+    fuel_alloy           = zr
+    coolant_material     = sodium  #_se2anl_425
+    coolant_heating      = sodium
+    length               = 400.0
+    assembly_pitch       = 12.0
+    bypass_fraction      = 0.01
+    gap_model            = flow
+    total_power          = 3.0e7
+    # power_model          = pin_only
+    # power_scaling_factor = 0.1
+
+
+########################################################################
+# ASSEMBLY DETAILS: Describe a group of assemblies
+# NAME identifies a group of assemblies (e.g. "INNER_DRIVER")
+# Can be repeated for as many assemblies as required by the user.
+
+[Assembly]
+
+    [[fuel]]
+        num_rings      = 10
+        pin_pitch      = 0.6725
+        pin_diameter   = 0.5590
+        clad_thickness = 0.0500
+        wire_pitch     = 20.000
+        wire_diameter  = 0.100
+        duct_ftf       = 11.25, 11.75
+        duct_material  = HT9
+
+
+########################################################################
+# ASSIGN assemblies to positions in the core; assign fixed
+# flow rates or temperature limits to one or multiple assemblies.
+# Indicate which assemblies must be grouped together in an orificing
+# calculation.
+
+[Assignment]
+    [[ByPosition]]
+        fuel = 1,  1,  1, FLOWRATE = 10.0
+        fuel = 2,  1,  6, FLOWRATE = 10.0
+        fuel = 3,  1,  2, FLOWRATE = 10.0
+        fuel = 3,  4,  4, FLOWRATE = 10.0
+        fuel = 3,  6,  7, FLOWRATE = 10.0
+        fuel = 3,  9,  9, FLOWRATE = 10.0
+        fuel = 3, 11, 12, FLOWRATE = 10.0
+        fuel = 4,  2,  2, FLOWRATE = 10.0
+
+
+########################################################################
+# SETUP: Problem setup, user options, etc
+
+[Setup]
+
+    [[Units]]
+        temperature    = Celsius
+        length         = cm
+        mass_flow_rate = kg/s
+    [[Options]]
+        calc_energy_balance = True
+    [[Dump]]
+        coolant = True
+
+
+########################################################################

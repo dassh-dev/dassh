@@ -1,0 +1,66 @@
+########################################################################
+# author: Milos Atz
+# date: 2021-01-29
+# comment: DASSH input example; bad axial plane request
+########################################################################
+[ARC] # NEUTRONICS AND GEOMETRY FILES
+    pmatrx = ../test_data/single_asm_refl/PMATRX
+    geodst = ../test_data/single_asm_refl/GEODST
+    ndxsrf = ../test_data/single_asm_refl/NDXSRF
+    znatdn = ../test_data/single_asm_refl/ZNATDN
+    labels = ../test_data/single_asm_refl/LABELS
+    nhflux = ../test_data/single_asm_refl/NHFLUX
+    ghflux = ../test_data/single_asm_refl/GHFLUX
+
+
+########################################################################
+# CORE DETAILS: Describe characteristics of the reactor core
+
+[Core]
+    coolant_inlet_temp = 350.0
+    coolant_material   = sodium
+    coolant_heating    = sodium
+    length             = 375.0
+    assembly_pitch     = 12.0
+    fuel_material      = metal
+    fuel_alloy         = zr
+
+########################################################################
+[Assembly] # ASSEMBLY DETAILS: Describe a group of assemblies
+# NAME identifies a group of assemblies (e.g. "INNER_DRIVER")
+# Can be repeated for as many assemblies as required by the user.
+    [[driver]]
+        num_rings      = 9
+        pin_pitch      = 0.740
+        pin_diameter   = 0.625
+        clad_thickness = 0.0500
+        wire_pitch     = 20.000
+        wire_diameter  = 0.110
+        duct_ftf       = 11.10, 11.60
+        duct_material  = HT9
+
+        [[[FuelModel]]]
+            clad_material   = HT9
+            fcgap_thickness = 0.0
+            r_frac   =  0.0, 0.33333, 0.66667
+            pu_frac  = 0.20,    0.20,    0.20
+            zr_frac  = 0.10,    0.10,    0.10
+            porosity = 0.25,    0.25,    0.25
+
+
+########################################################################
+[Assignment] # ASSIGN assemblies to positions in the core; assign fixed
+# flow rates or temperature limits to one or multiple assemblies.
+# Indicate which assemblies must be grouped together in an orificing
+# calculation.
+
+    [[ByPosition]]
+        driver =    1, 1, 1, FLOWRATE, 15.0, GROUP, 1
+
+########################################################################
+[Setup]
+    [[Units]]
+        length      = cm
+        temperature = C
+    [[Options]]
+        axial_plane = 40.0, 50.0, 60.0, xoxo, 75.0

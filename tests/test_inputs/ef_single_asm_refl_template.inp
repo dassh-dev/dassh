@@ -1,0 +1,7 @@
+GEODST_FILE ../../../test_data/single_asm_refl/GEODST
+NHFLUX_FILE ../../../test_data/single_asm_refl/NHFLUX
+NDXSRF_FILE ../../../test_data/single_asm_refl/NDXSRF
+ZNATDN_FILE ../../../test_data/single_asm_refl/ZNATDN
+LABELS_FILE ../../../test_data/single_asm_refl/LABELS
+ISOTXS_FILE ../../../test_data/single_asm_refl/ISOTXS
+SELECT_REACTION POWER

@@ -1,0 +1,73 @@
+########################################################################
+# author: Milos Atz
+# date: 2021-04-05
+# comment: DASSH input example (2 rings, but only 2 assemblies)
+########################################################################
+# SETUP: Problem setup, user options, etc
+
+[Setup]
+    [[Units]]
+        temperature    = Celsius
+        length         = cm
+        mass_flow_rate = kg/s
+    [[Options]]
+        calc_energy_balance = True
+
+
+########################################################################
+ # NEUTRONICS AND GEOMETRY FILES
+
+[ARC]
+    pmatrx = ../test_data/seven_asm_vac/PMATRX
+    geodst = ../test_data/seven_asm_vac/GEODST
+    ndxsrf = ../test_data/seven_asm_vac/NDXSRF
+    znatdn = ../test_data/seven_asm_vac/ZNATDN
+    labels = ../test_data/seven_asm_vac/LABELS
+    nhflux = ../test_data/seven_asm_vac/NHFLUX
+    ghflux = ../test_data/seven_asm_vac/GHFLUX
+
+
+########################################################################
+# CORE DETAILS: Describe characteristics of the reactor core
+
+[Core]
+    coolant_inlet_temp   = 350.0
+    fuel_material        = metal
+    fuel_alloy           = zr
+    coolant_heating      = sodium
+    coolant_material     = sodium_se2anl_425
+    length               = 375.0
+    assembly_pitch       = 12.0
+    # bypass_fraction      = 0.1
+    gap_model            = no_flow
+    total_power          = 0.0
+
+
+########################################################################
+# ASSEMBLY DETAILS: Describe a group of assemblies
+# NAME identifies a group of assemblies (e.g. "INNER_DRIVER")
+# Can be repeated for as many assemblies as required by the user.
+
+[Assembly]
+
+    [[fuel]]
+        num_rings      = 3
+        pin_pitch      = 2.4200
+        pin_diameter   = 2.0000
+        clad_thickness = 0.0500
+        wire_pitch     = 20.000
+        wire_diameter  = 0.4100
+        duct_ftf       = 11.25, 11.75
+        duct_material  = HT9
+
+
+########################################################################
+# ASSIGN assemblies to positions in the core; assign fixed
+# flow rates or temperature limits to one or multiple assemblies.
+# Indicate which assemblies must be grouped together in an orificing
+# calculation.
+
+[Assignment]
+    [[ByPosition]]
+        fuel = 1,  1,  1, FLOWRATE = 1.0
+        fuel = 2,  1,  1, FLOWRATE = 1.0

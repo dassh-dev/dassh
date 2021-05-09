@@ -1,0 +1,66 @@
+########################################################################
+# author: Milos Atz
+# date: 2021-01-29
+# comment: DASSH input example - unit conversion
+########################################################################
+ # NEUTRONICS AND GEOMETRY FILES
+
+[ARC]
+    pmatrx = ../test_data/single_asm_refl/PMATRX
+    geodst = ../test_data/single_asm_refl/GEODST
+    ndxsrf = ../test_data/single_asm_refl/NDXSRF
+    znatdn = ../test_data/single_asm_refl/ZNATDN
+    labels = ../test_data/single_asm_refl/LABELS
+    nhflux = ../test_data/single_asm_refl/NHFLUX
+    ghflux = ../test_data/single_asm_refl/GHFLUX
+
+########################################################################
+# CORE DETAILS: Describe characteristics of the reactor core
+
+[Core]
+    coolant_inlet_temp = 662.0
+    coolant_material   = sodium
+    coolant_heating    = sodium
+    length             = 12.30315
+    assembly_pitch     = 0.39370
+    fuel_material      = metal
+    fuel_alloy         = zr
+
+
+########################################################################
+# ASSEMBLY DETAILS: Describe a group of assemblies
+# NAME identifies a group of assemblies (e.g. "INNER_DRIVER")
+# Can be repeated for as many assemblies as required by the user.
+
+[Assembly]
+
+    [[fuel]]
+        num_rings      = 9
+        pin_pitch      = 0.024278
+        pin_diameter   = 0.020505
+        clad_thickness = 0.00165
+        wire_pitch     = 0.66667
+        wire_diameter  = 0.00361
+        duct_ftf       = 0.364175, 0.380575
+        duct_material  = HT9
+
+########################################################################
+# ASSIGN assemblies to positions in the core; assign fixed
+# flow rates or temperature limits to one or multiple assemblies.
+# Indicate which assemblies must be grouped together in an orificing
+# calculation.
+
+[Assignment]
+    [[ByPosition]]
+        fuel = 1, 1, 1, TEMPERATURE,   1000.0, group, 2
+        fuel = 2, 1, 6, FLOWRATE,    119050.0, group= 1
+
+########################################################################
+# SETUP: Problem setup, user options, etc
+#
+[Setup]
+
+    [[Units]]
+        temperature    = Fahrenheit
+        length         = ft
+        mass_flow_rate = lb/hr
