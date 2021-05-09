@@ -1,11 +1,25 @@
 ########################################################################
+# Copyright 2021, UChicago Argonne, LLC
+#
+# Licensed under the BSD-3 License (the "License"); you may not use
+# this file except in compliance with the License. You may obtain a
+# copy of the License at
+#
+#     https://opensource.org/licenses/BSD-3-Clause
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+# implied. See the License for the specific language governing
+# permissions and limitations under the License.
+########################################################################
 """
-date: 2019-10-07
+date: 2021-05-04
 author: Milos Atz
 """
 ########################################################################
 from setuptools import setup
-from packaging import version
+from setuptools._vendor.packaging import version
 
 
 DESCRIPTION = "DASSH: Ducted Assembly Steady-State Heat Transfer software"
@@ -15,8 +29,8 @@ metal fast reactors."""
 DISTNAME = 'DASSH'
 MAINTAINER = 'Milos Atz'
 MAINTAINER_EMAIL = 'matz@anl.gov'
-URL = 'https://svn.inside.anl.gov/repos/nuclearrats/trunk/LegacyRATs/src_DASSH/'
-LICENSE = ''
+# URL = 'https://svn.inside.anl.gov/repos/nuclearrats/trunk/LegacyRATs/src_DASSH/'
+LICENSE = 'https://opensource.org/licenses/BSD-3-Clause'
 DOWNLOAD_URL = ''
 # FROM OPENMC: Get version information from __init__.py. This is ugly,
 # but more reliable than using an import.
@@ -70,7 +84,7 @@ if __name__ == "__main__":
           description=DESCRIPTION,
           long_description=LONG_DESCRIPTION,
           license=LICENSE,
-          url=URL,
+          # url=URL,
           version=VERSION,
           download_url=DOWNLOAD_URL,
           python_requires='>=3.5',
@@ -80,6 +94,7 @@ if __name__ == "__main__":
           package_data={'dassh': ['./*.txt',
                                   './correlations/*.py',
                                   './_se2anl/*.py',
+                                  './py4c/*.py',
                                   './varpow_osx.x',
                                   './varpow_linux.x',
                                   './data/*.csv',
