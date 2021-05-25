@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-04-30
+date: 2021-05-20
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -898,6 +898,40 @@ class RoddedRegion(LoggedClass, DASSH_Region):
 
         # Update pressure drop (now that correlations are updated)
         self._pressure_drop += self.calculate_pressure_drop(dz)
+
+    def activate2(self, previous_reg, t_gap, h_gap, adiabatic):
+        """Activate region by averaging coolant temperatures from
+        previous region and calculating new SS duct temperatures
+
+        Parameters
+        ----------
+        previous_reg : DASSH Region
+            Previous region to get average coolant temperatures to
+            assign to new region
+        t_gap : numpy.ndarray
+            Gap temperatures on the new region duct mesh
+        h_gap : numpy.ndarray
+            Gap coolant HTC on the new region duct mesh
+        adiabatic : boolean
+            Indicate whether outer duct wall is adiabatic
+
+        Notes
+        -----
+
+        """
+        # Base method assigns coolant and duct MW temperatures
+        # - Coolant temperature(s) set to previous region average
+        # - Outer duct MW temperatures set to average outer duct MW
+        #   temp in previous region; set MW temp of other ducts in
+        #   new region to average coolant temperature
+        self._activate_base(previous_reg)
+
+        # Make new duct temperature calculation based on new coolant
+        # temperatures and input gap temperatures / HTC. Assume zero
+        # power: previous region was not a pin bundle and therefore
+        # did not have power generated in the duct.
+        p_duct = np.zeros(self.temp['duct_mw'].size)
+        self._calc_duct_temp(p_duct, t_gap, h_gap, adiabatic)
 
     ####################################################################
     # COOLANT TEMPERATURE CALCULATION METHODS

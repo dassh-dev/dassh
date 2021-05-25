@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-04
+date: 2021-05-19
 author: matz
 Generate power distributions in assembly components based on neutron
 flux; object to assign to individual assemblies
@@ -1002,16 +1002,18 @@ def _from_file(fpath):
 
             # Z-finemesh for component: if not yet defined in dict,
             # add it; otherwise, check against it
-            dim1 = len(np.unique(tmp2[:, 2]))
-            z_finemesh = np.zeros(dim1 + 1)
-            z_finemesh[1:] = np.unique(tmp2[:, 2])
+            # dim1 = len(np.unique(tmp2[:, 2]))
+            # z_finemesh = np.zeros(dim1 + 1)
+            # z_finemesh[1:] = np.unique(tmp2[:, 2])
+            z_finemesh = np.unique(tmp2[:, (2, 3)])
+            dim1 = z_finemesh.shape[0] - 1  # number of regions
             if 'zfm' not in params.keys():
                 params['zfm'] = z_finemesh
             else:
                 _check_axial_reg_defns(params['zfm'], z_finemesh, a)
 
-            dim2 = len(np.unique(tmp2[:, 3]))  # Component index
-            dim3 = tmp2.shape[1] - 4  # Number of terms
+            dim2 = len(np.unique(tmp2[:, 4]))  # Component index
+            dim3 = tmp2.shape[1] - 5  # Number of terms
 
             # Add data to dictionary
             params[c] = tmp2[:, -dim3:].reshape(dim1, dim2, dim3)

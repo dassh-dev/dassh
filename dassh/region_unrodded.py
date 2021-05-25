@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-03-29
+date: 2021-05-20
 author: matz
 Methods for unrodded axial regions; to be used within Assembly objects
 """
@@ -202,7 +202,9 @@ class SingleNodeHomogeneous(DASSH_Region):
         self.x_pts = np.array([-1, 1])  # Only pts are the corners
 
         # Ratio of interior flow rate in rod bundle to total flow rate
-        self._mratio = convection_factor
+        self._mratio = 1.0
+        if convection_factor is not None:
+            self._mratio = convection_factor
 
     def calculate_xbnds(self):
         """Calculate boundaries between duct elements
@@ -320,6 +322,7 @@ class SingleNodeHomogeneous(DASSH_Region):
                                             self.coolant_params['Re'],
                                             self._params['htc'])
         self.coolant_params['htc'] = k * nu / self._params['de']
+        self.coolant_params['htc'] *= self.mratio
 
     def calculate_pressure_drop(self, dz):
         """Calculate pressure drop attribute across current step"""
@@ -361,6 +364,37 @@ class SingleNodeHomogeneous(DASSH_Region):
         # Update pressure drop
         self._pressure_drop += self.calculate_pressure_drop(dz)
 
+    def activate2(self, previous_reg, t_gap, h_gap, adiabatic):
+        """Activate region by averaging coolant temperatures from
+        previous region and calculating new SS duct temperatures
+
+        Parameters
+        ----------
+        previous_reg : DASSH Region
+            Previous region to get average coolant temperatures to
+            assign to new region
+        t_gap : numpy.ndarray
+            Gap temperatures on the new region duct mesh
+        h_gap : numpy.ndarray
+            Gap coolant HTC on the new region duct mesh
+        adiabatic : boolean
+            Indicate whether outer duct wall is adiabatic
+
+        Notes
+        -----
+
+        """
+        # Base method assigns coolant and duct MW temperatures
+        # - Coolant temperature(s) set to previous region average
+        # - Outer duct MW temperatures set to average outer duct MW
+        #   temp in previous region; set MW temp of other ducts in
+        #   new region to average coolant temperature
+        self._activate_base(previous_reg)
+
+        # Make new duct temperature calculation based on new coolant
+        # temperatures and input gap temperatures / HTC.
+        self._calc_duct_temp(t_gap, h_gap, adiabatic)
+
     def _calc_coolant_temp(self, dz, power, adiabatic=False, ebal=False):
         """Calculate single node coolant temperature with Q=mCpdT
 
@@ -397,7 +431,7 @@ class SingleNodeHomogeneous(DASSH_Region):
                            * self.coolant_params['htc']
                            * self.duct_perim_over_6)
 
-            dT_duct = dT_duct * self.mratio
+            # dT_duct = dT_duct * self.mratio
             dT += np.sum(dT_duct)
 
         if ebal:

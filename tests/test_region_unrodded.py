@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-03-10
+date: 2021-05-25
 author: matz
 Test the behavior and attributes of unrodded DASSH Region instances
 """
@@ -591,79 +591,103 @@ def test_ur_vs_rr_yoyoyo1(c_shield_rr_params):
     asm_params, mat_dict = c_shield_rr_params
     # asm_params['shape_factor'] = 10.0
     fr = 0.05
-    # Make rodded region
-    rr = dassh.region_rodded.make_rr_asm(
-        asm_params, 'dummy', mat_dict, fr)
-    # Make unrodded region; manually set UR params
-    asm_params['use_low_fidelity_model'] = True
     # asm_params['interior_mfr_frac'] = 0.06775
     # asm_params['interior_mfr_frac'] = 0.0001
-    asm_params['interior_mfr_frac'] = 'calculate'
-    ur = dassh.region_unrodded.make_ur_asm(asm_params, mat_dict, fr)
+    for x in [0.001, 0.005, 0.01, 0.05, 0.1, 0.5, 1.0]:
+        # Make rodded region
+        rr = dassh.region_rodded.make_rr_asm(
+            asm_params, 'dummy', mat_dict, fr)
+        print(rr.pin_pitch)
+        print(rr.pin_diameter)
+        print(rr.duct_ftf[0][0])
+        print((rr.pin_pitch - rr.pin_diameter) / rr.pin_pitch)
+        assert 0
+        # Make unrodded region; manually set UR params
+        asm_params['use_low_fidelity_model'] = True
+        asm_params['convection_factor'] = x
+        ur = dassh.region_unrodded.make_ur_asm(asm_params, mat_dict, fr)
 
-    for k in rr.temp.keys():
-        rr.temp[k] *= 623.15
-        ur.temp[k] *= 623.15
+        for k in rr.temp.keys():
+            rr.temp[k] *= 623.15
+            ur.temp[k] *= 623.15
 
-    # Calculate mesh size
-    dz_rr = dassh.region_rodded.calculate_min_dz(rr, 623.15, 773.15)
-    dz_ur = dassh.region_unrodded.calculate_min_dz(ur, 623.15, 773.15)
-    dz = min([dz_rr[0], dz_ur[0]])
-    print('dz_rr', dz_rr)
-    print('dz_ur (simple)', dz_ur)
-    length = 1.0
-    n_steps = np.ceil(length / dz)
-    print(n_steps)
-    p_lin = 0.01e6
-    power_ur = {'refl': p_lin}
-    power_rr = make_rr_power(rr, power_ur)
-    gap_temp_ur = np.ones(6) * (400.0 + 273.15)
-    gap_temp_rr = make_rr_gap_temps_rr(rr, gap_temp_ur)
-    fake_htc = np.ones(2) * 2e4
-    for i in range(int(n_steps)):
-        ur.calculate(dz, power_ur, gap_temp_ur, fake_htc, ebal=True)
-        rr.calculate(dz, power_rr, gap_temp_rr, fake_htc, ebal=True)
+        # Calculate mesh size
+        dz_rr = dassh.region_rodded.calculate_min_dz(rr, 623.15, 773.15)
+        dz_ur = dassh.region_unrodded.calculate_min_dz(ur, 623.15, 773.15)
+        dz = min([dz_rr[0], dz_ur[0]])
+        # print('dz_rr', dz_rr)
+        # print('dz_ur (simple)', dz_ur)
+        length = 1.0
+        n_steps = np.ceil(length / dz)
+        # print(n_steps)
+        # print(ur._params['htc'])
+        # print(ur.coolant_params['htc'])
+        # # nu = nusselt_db.calculate_bundle_Nu(ur.coolant,
+        # #                                     ur.coolant_params['Re'],
+        # #                                     ur._params['htc'])
+        # # print(nu)
+        # # print(rr.coolant_int_params['htc'])
+        # # print((rr.pin_pitch - rr.pin_diameter) / rr.pin_pitch)
+        # ur._params['htc'][-1] *= (rr.pin_pitch - rr.pin_diameter) / rr.pin_pitch
+        # nu = nusselt_db.calculate_bundle_Nu(ur.coolant,
+        #                                     ur.coolant_params['Re'],
+        #                                     ur._params['htc'])
+        # print(nu * ur.coolant.thermal_conductivity / ur._params['de'])
+        # assert 0
+        p_lin = 1e3
+        power_ur = {'refl': p_lin}
+        power_rr = make_rr_power(rr, power_ur)
+        gap_temp_ur = np.ones(6) * (400.0 + 273.15)
+        gap_temp_rr = make_rr_gap_temps_rr(rr, gap_temp_ur)
+        fake_htc = np.ones(2) * 2e4
+        z = 0.0
+        for i in range(int(n_steps)):
+            z += dz
+            ur.calculate(dz, power_ur, gap_temp_ur, fake_htc, ebal=True)
+            rr.calculate(dz, power_rr, gap_temp_rr, fake_htc, ebal=True)
+        print(x, ur.avg_coolant_temp, rr.avg_coolant_temp)
 
-    print(rr.coolant_int_params['fs'])
-    print(rr.coolant_int_params['fs']
-          * rr.params['area']
-          * fr
-          / rr.bundle_params['area'])
-    cp = ur.coolant.heat_capacity
-    print()
-    print('UR ENERGY FROM DUCT (W):', ur.ebal['from_duct'])
-    print('RR ENERGY FROM DUCT (W):', rr.ebal['from_duct'])
-    print()
-    print('UR COOLANT DT (C): ', ur.avg_coolant_temp - 623.15)
-    print('RR COOLANT DT (C): ', rr.avg_coolant_temp - 623.15)
-    print()
-    print('UR EBAL PER HEX SIDE')
-    print(ur.ebal['per_hex_side'])
-    print('RR EBAL PER HEX SIDE')
-    print(rr.ebal['per_hex_side'])
-    print()
-    print('UR EBAL')
-    print('added:', ur.ebal['power'])
-    print('from duct:', ur.ebal['from_duct'])
-    tot = ur.ebal['power'] + ur.ebal['from_duct']
-    print('sum:', tot)
-    dT = ur.avg_coolant_temp - 623.15
-    print('coolant rise:', dT * ur.flow_rate * cp)
-    print('bal:', tot - dT * ur.flow_rate * cp)
-    print()
-
-    print(ur.ebal)
-    print()
-    print('UR AVG COOLANT // DUCT TEMP')
-    print(ur.temp['coolant_int'])
-    print(ur.avg_coolant_temp - 273.15)
-    print(ur.avg_duct_mw_temp[0] - 273.15)
-    print(np.average(ur.temp['duct_surf'][-1, -1]) - 273.15)
-    print('RR AVG COOLANT // DUCT TEMP')
-    print(rr.avg_coolant_temp - 273.15)
-    print(rr.avg_duct_mw_temp[0] - 273.15)
-    print(np.average(rr.temp['duct_surf'][-1, -1]) - 273.15)
-    print()
+    # print()
+    # print(rr.coolant_int_params['fs'])
+    # print(rr.coolant_int_params['fs']
+    #       * rr.params['area']
+    #       * fr
+    #       / rr.bundle_params['area'])
+    # cp = ur.coolant.heat_capacity
+    # print()
+    # print('UR ENERGY FROM DUCT (W):', np.sum(ur.ebal['duct']))
+    # print('RR ENERGY FROM DUCT (W):', np.sum(rr.ebal['duct']))
+    # print()
+    # print('UR COOLANT DT (C): ', ur.avg_coolant_temp - 623.15)
+    # print('RR COOLANT DT (C): ', rr.avg_coolant_temp - 623.15)
+    # print()
+    # # print('UR EBAL PER HEX SIDE')
+    # # print(ur.ebal['per_hex_side'])
+    # # print('RR EBAL PER HEX SIDE')
+    # # print(rr.ebal['per_hex_side'])
+    # # print()
+    # print('UR EBAL')
+    # print('added:', ur.ebal['power'])
+    # print('from duct:', np.sum(ur.ebal['duct']))
+    # tot = ur.ebal['power'] + np.sum(ur.ebal['duct'])
+    # print('sum:', tot)
+    # dT = ur.avg_coolant_temp - 623.15
+    # print('coolant rise:', dT * ur.flow_rate * cp)
+    # print('bal:', tot - dT * ur.flow_rate * cp)
+    # print()
+    #
+    # print(ur.ebal)
+    # print()
+    # print('UR AVG COOLANT // DUCT TEMP')
+    # print(ur.temp['coolant_int'])
+    # print(ur.avg_coolant_temp - 273.15)
+    # print(ur.avg_duct_mw_temp[0] - 273.15)
+    # print(np.average(ur.temp['duct_surf'][-1, -1]) - 273.15)
+    # print('RR AVG COOLANT // DUCT TEMP')
+    # print(rr.avg_coolant_temp - 273.15)
+    # print(rr.avg_duct_mw_temp[0] - 273.15)
+    # print(np.average(rr.temp['duct_surf'][-1, -1]) - 273.15)
+    # print()
     # print(c_shield_rr.temp['coolant_int'])
     assert 0
 

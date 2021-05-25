@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-04-02
+date: 2021-05-20
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -27,6 +27,7 @@ import logging
 from dassh.logged_class import LoggedClass
 from dassh import region_rodded
 from dassh import region_unrodded
+from dassh import mesh_functions
 
 
 _sqrt3 = np.sqrt(3)
@@ -477,6 +478,7 @@ class Assembly(LoggedClass):
         None
 
         """
+        self._z = z
         # Calculate power at this axial level (j), calculate
         # temperatures and pin powers (if applicable)
         # power_j = self.power.get_power(z)
@@ -517,6 +519,85 @@ class Assembly(LoggedClass):
             # Activate new region: now that index is updated,
             # "active_region" property returns new region
             self.active_region.activate(self.region[old_region_id])
+
+    def check_region_update2(self, z):
+        """Check whether an axial step takes place in a new region
+
+        Parameters
+        ----------
+        z : float
+            Absolute axial position
+        t_gap : numpy.ndarray
+            Adjacent gap temperatures on the inter-assembly gap mesh
+        h_gap : numpy.ndarray
+            Adjacent gap subchannel HTC on the inter-assembly gap mesh
+
+        Notes
+        -----
+        To set up a new region, this method:
+            1. Averages coolant temperatures from old --> regions at
+               axial level j; each subchannel in the new region gets
+               the average temperature of the old region
+            2. Recalculates duct temperatures at axial level j based
+               on the new coolant temperatures and gap temperatures on
+               the new region duct mesh.
+
+        """
+        active_region_id = self._identify_active_region(z)
+        old_region_id = self.active_region_idx
+        if old_region_id != active_region_id:
+            return True
+        else:
+            return False
+
+    def update_region(self, z, t_gap, h_gap, adiabatic=False):
+        """Set up new Region objecct
+
+        Parameters
+        ----------
+        z : float
+            Absolute axial position
+        t_gap : numpy.ndarray
+            Adjacent gap temperatures on the inter-assembly gap mesh
+        h_gap : numpy.ndarray
+            Adjacent gap subchannel HTC on the inter-assembly gap mesh
+        adiabatic : boolean
+            Indicate whether adiabatic outer duct
+
+        Notes
+        -----
+        To set up a new region, this method:
+            1. Averages coolant temperatures from old --> regions at
+               axial level j; each subchannel in the new region gets
+               the average temperature of the old region
+            2. Recalculates duct temperatures at axial level j based
+               on the new coolant temperatures and gap temperatures on
+               the new region duct mesh.
+
+        """
+        active_region_id = self._identify_active_region(z)
+        old_region_id = self.active_region_idx
+        if old_region_id != active_region_id:
+            # Activate new region index
+            self._active_region_idx = active_region_id
+            # Update total pressure drop from old region
+            self._pressure_drop += \
+                self.region[old_region_id].pressure_drop
+            # Activate new region: index is already been updated
+            # so that "active_region" property returns new region
+            if adiabatic:
+                new_gap_htc = np.ones(self.duct_outer_surf_temp.shape[0])
+                new_gap_temp = new_gap_htc
+            else:
+                new_gap_htc = mesh_functions.map_across_gap(
+                    h_gap, self.active_region._map['gap2duct'])
+                new_gap_temp = mesh_functions.map_across_gap(
+                    t_gap * h_gap, self.active_region._map['gap2duct'])
+                new_gap_temp = new_gap_temp / new_gap_htc
+            self.active_region.activate2(self.region[old_region_id],
+                                         new_gap_temp,
+                                         new_gap_htc,
+                                         adiabatic)
 
     def _identify_active_region(self, z):
         """Identify the index of the current axial region"""

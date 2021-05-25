@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-04-30
+date: 2021-05-25
 author: matz
 Objects and methods to print ASCII tables in Python
 """
@@ -1189,11 +1189,11 @@ class CoolantTempTable(LoggedClass, DASSH_Table):
 
     title = "COOLANT TEMPERATURE SUMMARY" + "\n"
     notes = """Column heading definitions
-    Power - Total assembly power (MW)
-    Bulk outlet - Mixed-mean coolant temp. at the assembly outlet (˚C)
-    Peak outlet - Maximum coolant subchannel temp. at the assembly outlet (˚C)
-    Peak total - Axial-maximum coolant subchannel temp. in the assembly (˚C)
-    Height - Axial height at which "Peak total" temp. occurs (cm)
+    Power - Total assembly power
+    Bulk outlet - Mixed-mean coolant temp. at the assembly outlet
+    Peak outlet - Maximum coolant subchannel temp. at the assembly outlet
+    Peak total - Axial-maximum coolant subchannel temp. in the assembly
+    Height - Axial height at which "Peak total" temp. occurs
 """
 
     def __init__(self, col_width=12, col0_width=4, sep=' '):
@@ -1292,12 +1292,9 @@ class DuctTempTable(LoggedClass, DASSH_Table):
     """
     title = "DUCT TEMPERATURE SUMMARY" + "\n"
     notes = """Column heading definitions
-    Power - Total assembly power (MW)
-    Average temp. - Duct mid-wall temperature per face (˚C) at core outlet
-    Peak temp. - Axial peak duct mid-wall temperature (˚C)
-    Peak Ht. - Axial position at which peak duct MW temperature occurs (cm)
-    Peak Face - Hex face in which peak duct MW temperature occurs
-           If corner, adjacent two face IDs are given
+    Average temp. - Duct mid-wall temperature per face at core outlet
+    Peak temp. - Axial peak duct mid-wall temperature
+    Peak Ht. - Axial position at which peak duct MW temperature occurs
 
 Duct face key                  Face 6    =   Face 1
     Face 1:  1-o'clock                =     =

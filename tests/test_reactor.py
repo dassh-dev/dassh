@@ -401,6 +401,7 @@ def test_single_asm(testdir):
     r = dassh.Reactor(inp, path=outpath, write_output=True)
     # r.temperature_sweep(verbose=True)
     r.temperature_sweep()
+    r.save()
     assert 'dassh.out' in os.listdir(outpath)
     assert np.abs(r.assemblies[0].avg_coolant_temp - 273.15 - 500) < 1.0
 

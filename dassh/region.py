@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-04-02
+date: 2021-05-20
 author: matz
 Methods to describe the axial regions in an assembly
 """
@@ -170,7 +170,9 @@ class DASSH_Region(object):
 
         Parameters
         ----------
-
+        previous_reg : DASSH Region
+            Previous region to get average coolant temperatures to
+            assign to new region
 
         Notes
         -----
@@ -245,6 +247,76 @@ class DASSH_Region(object):
 
         # Energy balance - initiate temperature tracking
         self.ebal['temp_in'] = avg_cool_temp
+
+    def _activate_base(self, previous_reg):
+        """Activate region coolant temperatures based on temperatures
+        in previous region
+
+        Parameters
+        ----------
+        previous_reg : DASSH Region
+            Previous region to get average coolant temperatures to
+            assign to new region
+
+        Notes
+        -----
+        It is assumed that the coolant is mixed across region
+        transitions. Therefore, the coolant temperature in every
+        node in the new region should be equal to the overall
+        average coolant temperature from the previous region.
+
+        Bypass coolant channels are not preserved across regions. It
+        is assumed that the bypass gap coolant, if present, will be
+        mixed with the primary interior coolant before entering the
+        new axial region.
+
+        This method is called from within the activate methods of the
+        parent Region classes because duct temperatures need to be
+        calculated.
+
+        """
+        # Make sure region is not yet activated
+        msg = "Cannot activate region if it has been already activated"
+        assert (np.allclose(self.temp['coolant_int'], 1)
+                and np.allclose(self.temp['duct_mw'], 1)
+                and np.allclose(self.temp['duct_surf'], 1)), msg
+
+        # Claim the DASSH Material objects from the previous region
+        # self.coolant = previous_reg.coolant
+        # self.duct = previous_reg.duct
+        # if hasattr(previous_reg, 'struct'):
+        #     self.struct = previous_reg.struct
+
+        # Coolant temperatures: assume mixing
+        avg_cool_temp = previous_reg.avg_coolant_temp
+        avg_cool_int_temp = previous_reg.avg_coolant_int_temp
+        self.temp['coolant_int'] *= avg_cool_temp
+        if 'coolant_byp' in self.temp.keys():
+            self.temp['coolant_byp'] *= avg_cool_temp
+
+        # Duct temperatures: duct temperatures need to be recalculated
+        # based on coolant temperatures, but set the temperatures here
+        # so that the average temperatures are useful in determining
+        # duct properties for that recalculation
+
+        # Duct temperatures: duct temperatures need to be recalculated
+        # based on coolant temperatures, but set the MW temperatures
+        # here b/c the recalculation requires an average duct MW
+        # temperature to get properties. Ignore surface temperatures.
+        # Between old and new regions, inner ducts may be added or
+        # subtracted:
+        # - For the outermost duct, which must continue in the next
+        #   region, set all temperatures to the duct average
+        # - If the duct is removed, nothing.
+        # - If a duct is added, set surface/midwall temperatures equal
+        #   to the average interior coolant temperature.
+
+        # Outer duct temperature (ignore surface temperatures)
+        self.temp['duct_mw'][-1] *= previous_reg.avg_duct_mw_temp[-1]
+
+        # Other ducts: set equal to average interior coolant temp
+        for d in range(len(self.temp['duct_mw']) - 1):
+            self.temp['duct_mw'][d] *= avg_cool_int_temp
 
     # def update_peak_temp(self, z):
     #     """Update trackers on peak coolant and duct temperature"""

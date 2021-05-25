@@ -1013,7 +1013,7 @@ class Reactor(LoggedClass):
             if self._options['parallel']:
                 self.axial_step_parallel(self.z[i], self.dz[i - 1], pool)
             else:
-                self.axial_step(self.z[i], self.dz[i - 1], verbose)
+                self.axial_step(self.z[i], self.dz[i - 1], i, verbose)
 
             # Log progress, if requested
             if self._options['log_progress']:
@@ -1052,7 +1052,7 @@ class Reactor(LoggedClass):
         self.log('info', msg)
         self._stepcount = 0
 
-    def axial_step(self, z, dz, verbose=False):
+    def axial_step(self, z, dz, step, verbose=False):
         """Solve temperatures at the next axial step
 
         Parameters
@@ -1061,6 +1061,8 @@ class Reactor(LoggedClass):
             Absolute axial position (m)
         dz : float
             Axial mesh size (m)
+        step : int
+            Axial step index
         verbose (optional) : bool
             Indicate whether to print step summary
 
@@ -1133,12 +1135,23 @@ class Reactor(LoggedClass):
         #    (b) Homogeneous region (porous media)
         #        - Calculate assembly coolant and duct temepratures at
         #          the j+1 level based on temperatures at the j level
-        for i in range(len(self.assemblies)):
-            self._calculate_asm_temperatures(self.assemblies[i], i, z,
-                                             dz, dump_step)
+        for ai in range(len(self.assemblies)):
+            self._calculate_asm_temperatures(self.assemblies[ai], ai,
+                                             z, dz, dump_step)
 
         if verbose:
             print(self._print_step_summary(z, dz))
+
+        # Update region if necessary
+        next_step = step + 1
+        if next_step < self.z.size:
+            for ai in range(len(self.assemblies)):
+                if self.assemblies[ai].check_region_update2(self.z[next_step]):
+                    self.assemblies[ai].update_region(
+                        self.z[next_step],
+                        self.core.adjacent_coolant_gap_temp(ai),
+                        self.core.adjacent_coolant_gap_htc(ai),
+                        self._is_adiabatic)
 
     def axial_step0(self):
         """Update duct temperatures prior to sweep based on inlet
@@ -1258,7 +1271,7 @@ class Reactor(LoggedClass):
     def _calculate_asm_temperatures(self, asm, i, z, dz, dump_step):
         """Calculate assembly coolant and duct temperatures"""
         # Update the region if necessary
-        asm.check_region_update(z)
+        # asm.check_region_update(z)
         # Find and approximate gap temperatures next to each asm
         # gap_adj_temps = interpolate_temps(
         #     self.core.x_pts,
