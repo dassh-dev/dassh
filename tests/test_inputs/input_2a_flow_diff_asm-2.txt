@@ -1,7 +1,24 @@
 ########################################################################
 # author: Milos Atz
 # date: 2021-05-26
-# comment: DASSH input example (fuel rodded, control unrodded)
+# comment: DASSH input example (2 rings, but only 2 assemblies)
+########################################################################
+# SETUP: Problem setup, user options, etc
+
+[Setup]
+    [[Units]]
+        temperature    = Celsius
+        length         = cm
+        mass_flow_rate = kg/s
+    [[Options]]
+        calc_energy_balance = True
+    [[Dump]]
+        coolant  = True
+        gap      = True
+        gap_fine = True
+        duct     = True
+
+
 ########################################################################
  # NEUTRONICS AND GEOMETRY FILES
 
@@ -16,18 +33,6 @@
 
 
 ########################################################################
-
-[Materials]
-    [[sodium_x]]
-        thermal_conductivity = 70.0
-        viscosity            = 0.00025
-        heat_capacity        = 1274.0
-        density              = 850.0
-    [[ht9_x]]
-        thermal_conductivity = 26.0
-
-
-########################################################################
 # CORE DETAILS: Describe characteristics of the reactor core
 
 [Core]
@@ -35,13 +40,14 @@
     fuel_material        = metal
     fuel_alloy           = zr
     coolant_heating      = sodium
-    coolant_material     = sodium_x
+    coolant_material     = sodium_se2anl_425
     length               = 375.0
     assembly_pitch       = 12.0
-    bypass_fraction      = 0.005
+    bypass_fraction      = 0.1
     gap_model            = flow
-    power_scaling_factor = 0.1
     power_model          = pin_only
+    total_power          = 0.0
+
 
 ########################################################################
 # ASSEMBLY DETAILS: Describe a group of assemblies
@@ -51,25 +57,26 @@
 [Assembly]
 
     [[fuel]]
-        num_rings      = 10
-        pin_pitch      = 0.6725
-        pin_diameter   = 0.5590
+        num_rings      = 3
+        pin_pitch      = 2.4200
+        pin_diameter   = 2.0000
         clad_thickness = 0.0500
         wire_pitch     = 20.000
-        wire_diameter  = 0.100
+        wire_diameter  = 0.4100
         duct_ftf       = 11.25, 11.75
-        duct_material  = ht9_x
+        duct_material  = HT9_se2anl_425
 
-    [[control]]
-        num_rings      = 4
-        pin_pitch      = 1.630
-        pin_diameter   = 1.500
-        clad_thickness = 0.13266
-        wire_pitch     = 20.000
-        wire_diameter  = 0.120
-        duct_ftf       = 10.25, 10.75, 11.25, 11.75
-        duct_material  = ht9_x
+    [[other]]
+        num_rings      = 5
+        pin_pitch      = 1.37
+        pin_diameter   = 1.13
+        clad_thickness = 0.05
+        wire_pitch     = 20.0
+        wire_diameter  = 0.24
+        duct_ftf       = 11.25, 11.75
+        duct_material  = HT9_se2anl_425
         use_low_fidelity_model = True
+        convection_factor      = 1.0
 
 
 ########################################################################
@@ -80,15 +87,5 @@
 
 [Assignment]
     [[ByPosition]]
-        control   = 1, 1, 1, DELTA_TEMP, 150.0
-        fuel      = 2, 1, 6, DELTA_TEMP, 150.0
-
-########################################################################
-# SETUP: Problem setup, user options, etc
-
-[Setup]
-
-    [[Units]]
-        temperature    = Celsius
-        length         = cm
-        mass_flow_rate = kg/s
+        fuel  = 1,  1,  1, FLOWRATE = 1.0
+        other = 2,  1,  1, FLOWRATE = 1.0

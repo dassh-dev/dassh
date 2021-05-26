@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-25
+date: 2021-05-26
 author: matz
 Test the behavior and attributes of unrodded DASSH Region instances
 """
@@ -123,6 +123,7 @@ def test_simple_unrodded_reg_qmcdt(c_lrefl_simple):
     qlin = power / dz
 
     # Calculate dT and estimate Q
+    c_lrefl_simple._update_coolant_params(623.15)
     dT = c_lrefl_simple._calc_coolant_temp(dz, {'refl': qlin})
     q_est = (c_lrefl_simple.coolant.heat_capacity *
              c_lrefl_simple.flow_rate * dT)
@@ -140,12 +141,11 @@ def test_simple_unrodded_reg_duct(c_lrefl_simple):
     """Test that simple homog duct calc returns proper result"""
     # Set up some bullshit
     c_lrefl_simple.temp['coolant_int'] *= 633.15
-    dz = 0.1
-
     # Calculate dT and estimate Q
     gap_temp = np.ones(6) * 623.15
-    gap_htc = [7.5e4, 7.5e4]  # made this up
+    gap_htc = np.ones(6) * 7.5e4  # made this up
     # print(c_lrefl_simple.temp['duct_mw'][0])
+    c_lrefl_simple._update_coolant_params(633.15)
     c_lrefl_simple._calc_duct_temp(gap_temp, gap_htc)
     print('inner', c_lrefl_simple.temp['duct_surf'][0, 0])
     print('midwall', c_lrefl_simple.temp['duct_mw'][0])
@@ -173,7 +173,7 @@ def test_mnh_ur_ebal_adiabatic(shield_ur_mnh):
     dz = 0.001
     power = {'refl': 100.0}
     gap_temp = np.arange(625, 775, 25)  # [625, 650, 675, 700, 725, 750]
-    fake_htc = np.ones(2) * 2e4
+    fake_htc = np.ones(6) * 2e4
     for i in range(n_steps):
         shield_ur_mnh.calculate(dz, power, gap_temp, fake_htc,
                                 ebal=True, adiabatic_duct=True)
@@ -203,7 +203,7 @@ def test_mnh_ur_ebal(shield_ur_mnh):
     dz = 0.001  # less than dz calculated above
     power = {'refl': 0.0}
     gap_temp = np.arange(625, 775, 25)  # [625, 650, 675, 700, 725, 750]
-    fake_htc = np.ones(2) * 2e4
+    fake_htc = np.ones(6) * 2e4
     for i in range(n_steps):
         shield_ur_mnh.calculate(dz, power, gap_temp, fake_htc, ebal=True)
     # Check power added real quick

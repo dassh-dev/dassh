@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-03
+date: 2021-05-26
 author: matz
 Methods to describe the layout of assemblies in the reactor core and
 the coolant in the gap between them
@@ -189,6 +189,7 @@ class Core(LoggedClass):
         self.gap_params['asm wp'] = self._calculate_asm_sc_wp()
         self.gap_params['area'] = self._calculate_sc_area()
         self.gap_params['L'] = self._calculate_dist_between_sc()
+        assert not np.any(0 in np.sum(self.gap_params['L'], axis=1))
         self.gap_params['de'] = self._calculate_sc_de()
 
         # Core-total parameters
@@ -318,6 +319,10 @@ class Core(LoggedClass):
             # Add the temporary arrays to main arrays
             asm_adj_sc.append(tmp_asm_adj_sc)
 
+        # Cast all value as int
+        for i in range(len(asm_adj_sc)):
+            for j in range(len(asm_adj_sc[i])):
+                asm_adj_sc[i][j] = [int(x) for x in asm_adj_sc[i][j]]
         return asm_adj_sc
 
     def _calculate_gap_xbnds(self):
@@ -911,7 +916,8 @@ class Core(LoggedClass):
         for ai in range(len(asm_sc_adj)):
             asm_sc = asm_sc_adj[ai]
             for side in range(len(asm_sc)):
-                for sci in range(len(asm_sc[side]) - 1):
+                # for sci in range(len(asm_sc[side]) - 1):
+                for sci in range(len(asm_sc[side])):
                     # Look to trailing corner on previous side
                     if sci == 0:
                         # Fill trailing corner's value into active index
@@ -931,15 +937,16 @@ class Core(LoggedClass):
                                 idx = np.where(sc_adj[sc - 1] == 0)[0][0]
                             sc_adj[sc - 1, idx] = asm_sc[side][sci]
                     # For the sc in current index: map the sc in next index
-                    sc = asm_sc[side][sci]
-                    if asm_sc[side][sci + 1] not in sc_adj[sc - 1]:
-                        idx = np.where(sc_adj[sc - 1] == 0)[0][0]
-                        sc_adj[sc - 1, idx] = asm_sc[side][sci + 1]
-                    # For the sc in next index; map the sc in current index
-                    sc = asm_sc[side][sci + 1]
-                    if asm_sc[side][sci] not in sc_adj[sc - 1]:
-                        idx = np.where(sc_adj[sc - 1] == 0)[0][0]
-                        sc_adj[sc - 1, idx] = asm_sc[side][sci]
+                    if sci < len(asm_sc[side]) - 1:
+                        sc = asm_sc[side][sci]
+                        if asm_sc[side][sci + 1] not in sc_adj[sc - 1]:
+                            idx = np.where(sc_adj[sc - 1] == 0)[0][0]
+                            sc_adj[sc - 1, idx] = asm_sc[side][sci + 1]
+                        # For the sc in next index; map the sc in current index
+                        sc = asm_sc[side][sci + 1]
+                        if asm_sc[side][sci] not in sc_adj[sc - 1]:
+                            idx = np.where(sc_adj[sc - 1] == 0)[0][0]
+                            sc_adj[sc - 1, idx] = asm_sc[side][sci]
         return sc_adj
 
     def _calculate_sc_wp(self):

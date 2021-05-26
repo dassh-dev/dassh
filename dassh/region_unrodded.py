@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-20
+date: 2021-05-26
 author: matz
 Methods for unrodded axial regions; to be used within Assembly objects
 """
@@ -147,7 +147,8 @@ class SingleNodeHomogeneous(DASSH_Region):
                     range(0, len(duct_ftf), 2)]
         self.duct_ftf = duct_ftf[-1]
         self.duct_thickness = (self.duct_ftf[1] - self.duct_ftf[0]) / 2
-        self.duct_perim = self.duct_ftf[0] * 6 / _sqrt3
+        # self.duct_perim = self.duct_ftf[0] * 6 / _sqrt3
+        self.duct_perim = self.duct_ftf[1] * 6 / _sqrt3
         # One sixth of the duct perimeter for the coolant temp calc
         # (self.duct_perimeter defined in SingleNodeHomogeneous)
         self.duct_perim_over_6 = self.duct_perim / 6
@@ -357,11 +358,18 @@ class SingleNodeHomogeneous(DASSH_Region):
         None
 
         """
+        # Interior coolant temperatures: calculate using coolant
+        # properties from previous axial step
         self.temp['coolant_int'] += self._calc_coolant_temp(
             dz, power, adiabatic_duct, ebal)
+
+        # Update coolant properties for the duct wall calculation
+        self._update_coolant_params(self.temp['coolant_int'][0])
+
+        # Duct temperatures: calculate with new coolant properties
         self._calc_duct_temp(t_gap, htc_gap, adiabatic_duct)
 
-        # Update pressure drop
+        # Update pressure drop (now that correlations are updated)
         self._pressure_drop += self.calculate_pressure_drop(dz)
 
     def activate2(self, previous_reg, t_gap, h_gap, adiabatic):
@@ -412,8 +420,7 @@ class SingleNodeHomogeneous(DASSH_Region):
 
         """
         # Update coolant parameters and material properties
-        Tj = self.avg_coolant_int_temp  # <-- dont wanna calc everytim
-        self._update_coolant_params(Tj)
+        # Tj = self.avg_coolant_int_temp  # <-- dont wanna calc everytim
 
         # Calculate change in temperature from heat generation
         dT = power['refl']
@@ -425,9 +432,11 @@ class SingleNodeHomogeneous(DASSH_Region):
                      / self.duct.thermal_conductivity)
                 R += 1 / self.coolant_params['htc']
                 dT_duct = (self.duct_perim_over_6 / R
-                           * (self.temp['duct_mw'][0] - Tj))
+                           * (self.temp['duct_mw'][0]
+                              - self.temp['coolant_int'][0]))
             else:
-                dT_duct = ((self.temp['duct_surf'][0, 0] - Tj)
+                dT_duct = ((self.temp['duct_surf'][0, 0]
+                            - self.temp['coolant_int'][0])
                            * self.coolant_params['htc']
                            * self.duct_perim_over_6)
 
@@ -478,17 +487,24 @@ class SingleNodeHomogeneous(DASSH_Region):
 
         else:
             # Update coolant parameters and material properties
-            self._update_coolant_params(self.avg_coolant_int_temp)
+            # self._update_coolant_params(self.avg_coolant_int_temp)
             self.duct.update(self.avg_duct_mw_temp[0])
             L_over_2 = self.duct_thickness / 2
+            # c1 = (self.coolant_params['htc']
+            #       * (temp_gap - self.temp['coolant_int'])
+            #       / (self.coolant_params['htc'] * self.duct_thickness
+            #          + (self.duct.thermal_conductivity
+            #             * (1 + self.coolant_params['htc'] / htc_gap[1]))))
+            # c2 = (temp_gap
+            #       - c1 * (L_over_2
+            #               + self.duct.thermal_conductivity / htc_gap[1]))
             c1 = (self.coolant_params['htc']
                   * (temp_gap - self.temp['coolant_int'])
                   / (self.coolant_params['htc'] * self.duct_thickness
                      + (self.duct.thermal_conductivity
-                        * (1 + self.coolant_params['htc'] / htc_gap[1]))))
+                        * (1 + self.coolant_params['htc'] / htc_gap))))
             c2 = (temp_gap
-                  - c1 * (L_over_2
-                          + self.duct.thermal_conductivity / htc_gap[1]))
+                  - c1 * (L_over_2 + self.duct.thermal_conductivity / htc_gap))
             self.temp['duct_mw'][0] = c2
             self.temp['duct_surf'][0, 0] = c1 * -L_over_2 + c2
             self.temp['duct_surf'][0, 1] = c1 * L_over_2 + c2

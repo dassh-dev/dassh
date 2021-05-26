@@ -1,18 +1,33 @@
 ########################################################################
 # author: Milos Atz
 # date: 2021-05-26
-# comment: DASSH input example (fuel rodded, control unrodded)
+# comment: DASSH input example (central assembly is unrodded)
+########################################################################
+# SETUP: Problem setup, user options, etc
+
+[Setup]
+
+    [[Units]]
+        temperature    = Celsius
+        length         = cm
+        mass_flow_rate = kg/s
+    [[Options]]
+        calc_energy_balance = True
+    [[Dump]]
+        coolant = True
+
+
 ########################################################################
  # NEUTRONICS AND GEOMETRY FILES
 
 [ARC]
-    pmatrx = ../test_data/seven_asm_vac/PMATRX
-    geodst = ../test_data/seven_asm_vac/GEODST
-    ndxsrf = ../test_data/seven_asm_vac/NDXSRF
-    znatdn = ../test_data/seven_asm_vac/ZNATDN
-    labels = ../test_data/seven_asm_vac/LABELS
-    nhflux = ../test_data/seven_asm_vac/NHFLUX
-    ghflux = ../test_data/seven_asm_vac/GHFLUX
+    pmatrx = ../../test_data/seven_asm_vac/PMATRX
+    geodst = ../../test_data/seven_asm_vac/GEODST
+    ndxsrf = ../../test_data/seven_asm_vac/NDXSRF
+    znatdn = ../../test_data/seven_asm_vac/ZNATDN
+    labels = ../../test_data/seven_asm_vac/LABELS
+    nhflux = ../../test_data/seven_asm_vac/NHFLUX
+    ghflux = ../../test_data/seven_asm_vac/GHFLUX
 
 
 ########################################################################
@@ -38,9 +53,8 @@
     coolant_material     = sodium_x
     length               = 375.0
     assembly_pitch       = 12.0
-    bypass_fraction      = 0.005
+    bypass_fraction      = 0.05
     gap_model            = flow
-    power_scaling_factor = 0.1
     power_model          = pin_only
 
 ########################################################################
@@ -59,6 +73,18 @@
         wire_diameter  = 0.100
         duct_ftf       = 11.25, 11.75
         duct_material  = ht9_x
+
+    [[fuel_ur]]
+        num_rings      = 10
+        pin_pitch      = 0.6725
+        pin_diameter   = 0.5590
+        clad_thickness = 0.0500
+        wire_pitch     = 20.000
+        wire_diameter  = 0.100
+        duct_ftf       = 11.25, 11.75
+        duct_material  = ht9_x
+        use_low_fidelity_model = True
+        convection_factor      = 1.0
 
     [[control]]
         num_rings      = 4
@@ -80,15 +106,6 @@
 
 [Assignment]
     [[ByPosition]]
-        control   = 1, 1, 1, DELTA_TEMP, 150.0
+        fuel_ur   = 1, 1, 1, DELTA_TEMP, 150.0
         fuel      = 2, 1, 6, DELTA_TEMP, 150.0
 
-########################################################################
-# SETUP: Problem setup, user options, etc
-
-[Setup]
-
-    [[Units]]
-        temperature    = Celsius
-        length         = cm
-        mass_flow_rate = kg/s

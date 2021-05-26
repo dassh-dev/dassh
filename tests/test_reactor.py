@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-04-29
+date: 2021-05-26
 author: matz
 Test the temperature sweep across the core
 """
@@ -441,6 +441,51 @@ def test_3asm_sweep(testdir):
         assert np.sign(diff) == sign[i]
 
 
+def test_2asm_ebal(testdir):
+    """Test heat transfer between two assemblies of different types; no
+    power, one has elevated temperature
+
+    """
+    inpath = os.path.join(testdir, 'test_inputs', 'input_2a_flow_diff_asm-2.txt')
+    outpath = os.path.join(testdir, 'test_results', 'test_2asm_ht_flow_diff_asm')
+    inp = dassh.DASSH_Input(os.path.join(inpath))
+    r = dassh.Reactor(inp, path=outpath, write_output=True)
+    # Zero power
+    for asm in r.assemblies:
+        asm.power.avg_power *= 0.0
+        if asm.has_rodded:
+            asm.power.pin_power *= 0.0
+            asm.power.coolant_power *= 0.0
+            asm.power.duct_power *= 0.0
+    # Elevate assembly 1 temperature
+    r.assemblies[0].rodded.temp['coolant_int'] *= 0.0
+    r.assemblies[0].rodded.temp['coolant_int'] += 700 + 273.15
+    # Perform temperature sweep
+    r.save()
+    r.write_summary()
+    r.temperature_sweep()
+    r.save()
+
+    # Check that energy was conserved
+    dt = np.zeros(3)
+    q_in = np.zeros(3)
+    q_duct = np.zeros(3)
+    mfr = np.zeros(3)
+    for i in range(len(r.assemblies)):
+        dt[i] = r.assemblies[i].avg_coolant_int_temp - r.inlet_temp
+        q_in[i] = sum(r.assemblies[i]._power_delivered.values())
+        mfr[i] = r.assemblies[i].flow_rate
+        q_duct[i] = np.sum(r.assemblies[i].active_region.ebal['duct'])
+
+    dt[0] = r.assemblies[0].avg_coolant_int_temp - (700 + 273.15)
+    dt[-1] = r.core.avg_coolant_gap_temp - r.inlet_temp
+    mfr[-1] = r.core.gap_flow_rate
+    q_duct[-1] = np.sum(r.core.ebal['asm'])
+    cp = r.assemblies[0].active_region.coolant.heat_capacity  # constant
+    q_dt = mfr * cp * dt
+    assert np.abs(np.sum(q_dt)) < 1e-9
+
+
 def test_silly_core_sweep(testdir):
     """Test an absurd core layout to confirm sweep"""
     inp = dassh.DASSH_Input(os.path.join(testdir,
@@ -461,9 +506,8 @@ def test_silly_core_sweep(testdir):
 def test_sweep_with_all_but_one_unrodded_asm(testdir):
     """Test that the Reactor object and power setup are achieved; this
     test just makes sure nothing fails"""
-
-    if 'linux' not in sys.platform:
-        pytest.skip('skipping sweep test, too slow locally')
+    # if 'linux' not in sys.platform:
+    #     pytest.skip('skipping sweep test, too slow locally')
 
     inpath = os.path.join(testdir, 'test_inputs')
     outpath = os.path.join(testdir,
@@ -550,8 +594,8 @@ def test_adiabatic_unrodded_reactor_sweep(testdir):
 
 def test_double_duct_ebal(testdir):
     """Test energy balance tracking on double ducted assembly"""
-    if 'linux' not in sys.platform:
-        pytest.skip('skipping sweep test, too slow locally')
+    # if 'linux' not in sys.platform:
+    #     pytest.skip('skipping sweep test, too slow locally')
 
     inpath = os.path.join(testdir, 'test_inputs')
     outpath = os.path.join(testdir, 'test_results', 'test_dd_ebal')
@@ -583,8 +627,8 @@ def test_double_duct_ebal(testdir):
 @pytest.mark.skip(reason='milos still working on this')
 def test_stagnant_double_duct_ebal(testdir):
     """Test energy balance tracking on double ducted assembly"""
-    if 'linux' not in sys.platform:
-        pytest.skip('skipping sweep test, too slow locally')
+    # if 'linux' not in sys.platform:
+    #     pytest.skip('skipping sweep test, too slow locally')
 
     name = 'dd_stagnant_byp'
     inpath = os.path.join(testdir, 'test_inputs')
@@ -618,8 +662,8 @@ def test_stagnant_double_duct_ebal(testdir):
 @pytest.mark.skip(reason='the interasm key no longer exists, need new test')
 def test_interasm_ebal(testdir):
     """Test that the interassembly energy balance works"""
-    if 'linux' not in sys.platform:
-        pytest.skip('skipping sweep test, too slow locally')
+    # if 'linux' not in sys.platform:
+    #     pytest.skip('skipping sweep test, too slow locally')
 
     inpath = os.path.join(testdir, 'test_inputs')
     outpath = os.path.join(testdir, 'test_results',

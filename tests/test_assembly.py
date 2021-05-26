@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-04-02
+date: 2021-05-26
 author: matz
 Test the DASSH Assembly object
 """
@@ -73,7 +73,8 @@ def test_temperature_unrodded_asm(c_shield_asm):
     # Try calculating temperature; shouldn't fail
     dz = 0.005
     tgap = np.ones(6) * 623.15
-    htc_gap = [1e5, 1e5]
+    htc_gap = np.ones(6) * 1e5
+    c_shield_asm.active_region._update_coolant_params(623.15)
     c_shield_asm.calculate(dz, dz, tgap, htc_gap)
     assert c_shield_asm.avg_coolant_temp > 623.15
 

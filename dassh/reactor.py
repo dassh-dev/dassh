@@ -1280,7 +1280,7 @@ class Reactor(LoggedClass):
         if self.core.model is None:
             gap_temp = np.ones(asm.duct_outer_surf_temp.shape[0])
             gap_htc = np.ones(asm.duct_outer_surf_temp.shape[0])
-        elif asm.active_region.is_rodded:
+        # elif asm.active_region.is_rodded:
             # gap_temp = dassh.mesh_functions.interpolate_quad(
             #     self.core.x_pts,
             #     self.core.adjacent_coolant_gap_temp(i),
@@ -1291,6 +1291,7 @@ class Reactor(LoggedClass):
             #     self.core.x_pts,
             #     self.core.adjacent_coolant_gap_temp(i),
             #     asm.x_pts)
+        else:
             gap_htc = dassh.mesh_functions.map_across_gap(
                 self.core.adjacent_coolant_gap_htc(i),
                 asm.active_region._map['gap2duct'])
@@ -1299,20 +1300,20 @@ class Reactor(LoggedClass):
                  * self.core.adjacent_coolant_gap_htc(i)),
                 asm.active_region._map['gap2duct'])
             gap_temp = gap_temp / gap_htc
-        else:
-            gap_htc = dassh.mesh_functions.map_across_gap(
-                self.core.adjacent_coolant_gap_htc(i),
-                asm.active_region._map['gap2duct'])
-            gap_temp = dassh.mesh_functions.map_across_gap(
-                self.core.adjacent_coolant_gap_temp(i),
-                asm.active_region._map['gap2duct']) / gap_htc
-            # poop = self.core.adjacent_coolant_gap_temp(i).reshape(6, -1)
-            # gap_temp = gap_temp.reshape(6, -1)
-            # gap_temp[:, -1] = poop[:, -1]
-            # gap_temp = gap_temp.flatten()
-            # gap_adj_temps = map_across_gap(
-            #     self.core.adjacent_coolant_gap_temp(i),
-            #     asm.active_region._map['gap2duct'])
+        # else:
+        #     gap_htc = dassh.mesh_functions.map_across_gap(
+        #         self.core.adjacent_coolant_gap_htc(i),
+        #         asm.active_region._map['gap2duct'])
+        #     gap_temp = dassh.mesh_functions.map_across_gap(
+        #         self.core.adjacent_coolant_gap_temp(i),
+        #         asm.active_region._map['gap2duct']) / gap_htc
+        #     # poop = self.core.adjacent_coolant_gap_temp(i).reshape(6, -1)
+        #     # gap_temp = gap_temp.reshape(6, -1)
+        #     # gap_temp[:, -1] = poop[:, -1]
+        #     # gap_temp = gap_temp.flatten()
+        #     # gap_adj_temps = map_across_gap(
+        #     #     self.core.adjacent_coolant_gap_temp(i),
+        #     #     asm.active_region._map['gap2duct'])
         asm.calculate(z, dz, gap_temp, gap_htc,
                       self._is_adiabatic, self._options['ebal'])
         # Write the results
