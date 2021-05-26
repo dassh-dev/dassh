@@ -17,7 +17,7 @@ timing.py
 tmp_plot.py
 
 # No tests (for now; need to clean)
-tests/
+# tests/
 
 # None of the test results
 tests/test_results/
