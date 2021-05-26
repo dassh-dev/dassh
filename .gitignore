@@ -10,7 +10,6 @@ misc/
 dist/
 build/
 dassh.egg-info/
-code_length.txt
 animation.py
 misc_benchmarking_crap.py
 timing.py
