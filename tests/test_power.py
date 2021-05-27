@@ -320,7 +320,7 @@ def test_zero_power_with_all_nones():
 
 
 # @pytest.mark.skip(reason='need to test negative power check first')
-def test_instantiation_user_power(testdir):
+def test_instantiation_user_power(testdir, small_reactor):
     """Test that user-supplied power profiles can be used to create
     DASSH AssemblyPower object"""
     # Have path to CSV with power data; load using the method
@@ -353,8 +353,20 @@ def test_instantiation_user_power(testdir):
         assert not np.all(p_test['duct'] == 0.0)
         assert not np.all(p_test['cool'] == 0.0)
 
+        # Check total power against distributions used to generate the CSV
+        ans = small_reactor.assemblies[ai].power.calculate_total_power()
+        assert ap.calculate_total_power() == pytest.approx(ans)
 
-def test_instantiation_pin_only_user_power(testdir):
+        # Check power profiles against distributions used to generate the CSV
+        assert np.allclose(ap.pin_power,
+                           small_reactor.assemblies[ai].power.pin_power)
+        assert np.allclose(ap.duct_power,
+                           small_reactor.assemblies[ai].power.duct_power)
+        assert np.allclose(ap.coolant_power,
+                           small_reactor.assemblies[ai].power.coolant_power)
+
+
+def test_instantiation_pin_only_user_power(testdir, small_core_asm_power):
     """Test proper instantiation when user provides only pin power
     distribution"""
     # Have path to CSV with power data; load using the method
