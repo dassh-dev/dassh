@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-26
+date: 2021-05-27
 author: matz
 Methods for unrodded axial regions; to be used within Assembly objects
 """
@@ -422,6 +422,9 @@ class SingleNodeHomogeneous(DASSH_Region):
         # Update coolant parameters and material properties
         # Tj = self.avg_coolant_int_temp  # <-- dont wanna calc everytim
 
+        if power['refl'] is None:
+            power['refl'] = 0
+
         # Calculate change in temperature from heat generation
         dT = power['refl']
 
@@ -439,7 +442,6 @@ class SingleNodeHomogeneous(DASSH_Region):
                             - self.temp['coolant_int'][0])
                            * self.coolant_params['htc']
                            * self.duct_perim_over_6)
-
             # dT_duct = dT_duct * self.mratio
             dT += np.sum(dT_duct)
 
@@ -471,12 +473,6 @@ class SingleNodeHomogeneous(DASSH_Region):
         Returns
         -------
         None
-
-        Notes
-        -----
-        We only want the htc for the CORNER gap meshes because we're
-        solving for the duct wall temperatures at the corners. That's
-        why it's indexed as such below.
 
         """
         # Because no heat generation in duct, if adiabatic, duct wall

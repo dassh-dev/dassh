@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-19
+date: 2021-05-27
 author: matz
 Generate power distributions in assembly components based on neutron
 flux; object to assign to individual assemblies
@@ -35,6 +35,7 @@ module_logger = logging.getLogger('dassh.power')
 
 _sqrt3 = np.sqrt(3)
 _ref_hex_pitch = np.sqrt(2 / np.sqrt(3))
+_user_power_mat_ids = ['pins', 'duct', 'cool']
 
 
 class Power(LoggedClass):
@@ -708,17 +709,23 @@ class AssemblyPower(object):
             self.rod_zbnds[0] = -1.0
         if np.abs(self.rod_zbnds[1] - self.z_finemesh[-1]) < 1e-12:
             self.rod_zbnds[1] = 99999
+        # Check power profiles for None values
         for k in power_profiles.keys():
-            power_profiles[k] *= scale
-        self.avg_power = avg_power_profile * scale
+            if power_profiles[k] is not None:
+                power_profiles[k] *= scale
+        if avg_power_profile is not None:
+            avg_power_profile *= scale
+        # Assign power profiles as attributes
+        self.avg_power = avg_power_profile
         self.pin_power = power_profiles.get('pins')
         self.duct_power = power_profiles.get('duct')
         self.coolant_power = power_profiles.get('cool')
         self.n_terms = 0
-        if self.pin_power is not None:
-            self.n_terms = self.pin_power.shape[2]
-
-        self.norm = np.ones(len(self.z_finemesh) - 1)
+        for profile in [self.pin_power, self.duct_power, self.coolant_power]:
+            if profile is not None:
+                self.n_terms = profile.shape[2]
+                break
+        # self.norm = np.ones(len(self.z_finemesh) - 1)
 
     def get_power(self, z):
         """Calculate the linear power in all components at the
@@ -773,16 +780,18 @@ class AssemblyPower(object):
         else:
             zm = self.transform_z(kf, z)
             z_exp = np.power(zm, np.arange(self.n_terms))
-            p_lin['pins'] = np.dot(self.pin_power[kf], z_exp) * 100
-            p_lin['cool'] = np.dot(self.coolant_power[kf], z_exp) * 100
-            p_lin['duct'] = np.dot(self.duct_power[kf], z_exp) * 100
+            if self.pin_power is not None:
+                p_lin['pins'] = np.dot(self.pin_power[kf], z_exp) * 100
+            if self.coolant_power is not None:
+                p_lin['cool'] = np.dot(self.coolant_power[kf], z_exp) * 100
+            if self.duct_power is not None:
+                p_lin['duct'] = np.dot(self.duct_power[kf], z_exp) * 100
 
         # At extremely low power, can get some negative values
         # (~ -1e-6 W/m); want to filter these out as zeros.
         for k in p_lin.keys():
             try:
                 p_lin[k] = p_lin[k].clip(0.0)
-                p_lin[k] *= self.norm[kf]
             except AttributeError:
                 continue
         return p_lin
@@ -924,6 +933,10 @@ class AssemblyPower(object):
     def calculate_pin_power_skew(self):
         """Calculate the radial pin power peaking for use in calculating
         the modified critical Grashoff number"""
+        # If zero power, just return 1.0; no skew!
+        if self.calculate_total_power() < 1e-12:
+            return 1.0
+
         # Integrate pin powers
         z_bnds = np.array([-0.5, 0.5])
         z_bnds = z_bnds.reshape(2, 1)
@@ -977,7 +990,7 @@ def _from_file(fpath):
 
     Parameters
     ----------
-    fpath : strt
+    fpath : str
         Absolute path to DASSH power CSV file
 
     Returns
@@ -988,29 +1001,33 @@ def _from_file(fpath):
         the pins, duct, and coolant in that assembly
 
     """
-    test = np.loadtxt(fpath, delimiter=',')
+    with open(fpath, 'r', encoding='utf-8-sig') as f:
+        pp = np.loadtxt(f, delimiter=',')
+
     components = ['pins', 'duct', 'cool']
     assembly_power_params = []
-
     # For every assembly
-    for a in np.unique(test[:, 0]):
+    for a in np.unique(pp[:, 0]):
         params = {}
-        tmp1 = test[test[:, 0] == a]
+        tmp1 = pp[pp[:, 0] == a]
         for ci in range(3):
             c = components[ci]
             tmp2 = tmp1[tmp1[:, 1] == ci + 1]
+            if tmp2.size == 0:
+                # params[c] = None
+                continue
+
+            # Do some checks on axial region specifications
+            _check_axial_reg_same_bnds_for_all_entries(tmp2)
+            _check_axial_reg_no_gaps_between_regions(tmp2)
 
             # Z-finemesh for component: if not yet defined in dict,
-            # add it; otherwise, check against it
-            # dim1 = len(np.unique(tmp2[:, 2]))
-            # z_finemesh = np.zeros(dim1 + 1)
-            # z_finemesh[1:] = np.unique(tmp2[:, 2])
-            z_finemesh = np.unique(tmp2[:, (2, 3)])
-            dim1 = z_finemesh.shape[0] - 1  # number of regions
+            zfm = np.unique(tmp2[:, (2, 3)])
+            dim1 = zfm.shape[0] - 1  # number of regions
             if 'zfm' not in params.keys():
-                params['zfm'] = z_finemesh
+                params['zfm'] = zfm
             else:
-                _check_axial_reg_defns(params['zfm'], z_finemesh, a)
+                _check_axial_reg_between_materials(params['zfm'], zfm, a)
 
             dim2 = len(np.unique(tmp2[:, 4]))  # Component index
             dim3 = tmp2.shape[1] - 5  # Number of terms
@@ -1022,9 +1039,9 @@ def _from_file(fpath):
             _check_for_negative_power(params[c], c, a)
 
         # If they pass, integrate to get average power
-        params['avg_power'] = _integrate(params['pins'],
-                                         params['duct'],
-                                         params['cool'],
+        params['avg_power'] = _integrate(params.get('pins'),
+                                         params.get('duct'),
+                                         params.get('cool'),
                                          dim3)
 
         # Then assign to list for return
@@ -1032,14 +1049,79 @@ def _from_file(fpath):
     return assembly_power_params
 
 
-def _check_axial_reg_defns(zfm1, zfm2, a):
-    """All components muxt have same axial region definitions;
-    check against region definitions for pins"""
+def _check_axial_reg_between_materials(zfm1, zfm2, a):
+    """Pins, coolant, and duct must have same axial region definitions;
+    check against already accepted region definitions
+
+    Parameters
+    ----------
+    zfm1 : numpy.ndarray
+        Accepted fine-mesh axial region boundaries
+    zfm2 : numpy.ndarray
+        Fine-mesh axial region boundaries for incoming profiles
+    a : int
+        Assembly ID (for error message)
+    """
     if not np.array_equal(zfm1, zfm2):
         msg = ('Error in user-specified power distribution '
-               f'(assembly ID: {a}); all pins, duct cells, and coolant'
-               'cells must have identical axial region boundaries.')
+               f'(assembly ID: {int(a)}); all pins, duct cells, and coolant'
+               'items must have identical axial region boundaries.')
         module_logger.log(40, msg)
+        sys.exit()
+
+
+def _check_axial_reg_same_bnds_for_all_entries(mat_arr):
+    """For pins/coolant/duct, all items must have the same axial regions
+
+    Parameters
+    ----------
+    mat_arr : numpy.ndarray
+        Power profile array for one material (pins or duct or coolant)
+        from one assembly
+
+    """
+    # If there are N elements (pins, subchannels, etc) of a material, each
+    # region lower bound should occur N times and each upper bound should
+    # occur N times.
+    msg = ('Error in axial bound entries of user-specified power distribution'
+           'for assembly {0} {1}; all need to have the same region bounds.')
+    msg = msg.format(int(mat_arr[0, 0]),
+                     _user_power_mat_ids[int(mat_arr[0, 1]) - 1])
+    N = np.max(mat_arr[:, 4])
+    for zlo in np.unique(mat_arr[:, 2]):
+        if not mat_arr[mat_arr[:, 2] == zlo].shape[0] == N:
+            module_logger.log(40, msg)
+            sys.exit()
+    # If there are N elements (pins, subchannels, etc) of a material, each
+    # region upper bound should occur N times and each upper bound should
+    # occur N times.
+    for zhi in np.unique(mat_arr[:, 3]):
+        if not mat_arr[mat_arr[:, 3] == zhi].shape[0] == N:
+            module_logger.log(40, msg)
+            sys.exit()
+
+
+def _check_axial_reg_no_gaps_between_regions(mat_arr):
+    """Check that there are no gaps between previous region upper bound
+    and next region lower bound
+
+    Parameters
+    ----------
+    mat_arr : numpy.ndarray
+        Power profile array for one material (pins or duct or coolant)
+        from one assembly
+
+    """
+    msg = ('Error in axial bound entries of user-specified power distribution'
+           'for assembly {0} {1}; no gaps or overlaps allowed between upper/ '
+           'lower bounds of successive regions')
+    msg = msg.format(int(mat_arr[0, 0]),
+                     _user_power_mat_ids[int(mat_arr[0, 1]) - 1])
+    zlo = np.unique(mat_arr[:, 2])  # returns sorted values
+    zhi = np.unique(mat_arr[:, 3])  # returns sorted values
+    if not np.allclose(zhi[:-1] - zlo[1:], 0):
+        module_logger.log(40, msg)
+        sys.exit()
 
 
 def _check_for_negative_power(power_profile, component, a_id):
@@ -1065,8 +1147,9 @@ def _check_for_negative_power(power_profile, component, a_id):
                f'in {reg}:\n')
         for i in range(len(loc)):
             msg += f'Axial region: {str(loc[i][0] + 1).rjust(3)}; '
-            msg += f'Component ID: {str(loc[i][1] + 1).rjust(3)}\n'
+            msg += f'Index: {str(loc[i][1] + 1).rjust(3)}\n'
         module_logger.log(40, msg)
+        sys.exit()
 
 
 def _integrate(pp_pins, pp_duct, pp_cool, n_terms):
@@ -1090,14 +1173,26 @@ def _integrate(pp_pins, pp_duct, pp_cool, n_terms):
         Average linear power in each axial region (size: N_region x 1)
 
     """
-    avg_power = np.zeros((pp_pins.shape[0], 2))
+    # If all profiles are None, there is no power: result is 0
+    if all(x is None for x in [pp_pins, pp_duct, pp_cool]):
+        return 0.0
+
+    # Otherwise, need to integrate
+    # Determine number of axial regions from non-None profile
+    n_reg = 0
+    for pp in [pp_pins, pp_duct, pp_cool]:
+        if pp is not None:
+            n_reg = pp.shape[0]
+            break
+    avg_power = np.zeros((n_reg, 2))
     z_bnds = np.array([-0.5, 0.5])
     z_bnds = z_bnds.reshape(2, 1)
     int_exponents = np.arange(1, n_terms + 1)
     z_int = np.power(z_bnds, int_exponents)
     for pp in [pp_pins, pp_duct, pp_cool]:
-        tmp = np.dot(pp / int_exponents, z_int.T)
-        avg_power += np.sum(tmp, axis=1)
+        if pp is not None:
+            tmp = np.dot(pp / int_exponents, z_int.T)
+            avg_power += np.sum(tmp, axis=1)
     #
     return avg_power[:, 1] - avg_power[:, 0]
 

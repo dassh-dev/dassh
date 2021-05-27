@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-02-01
+date: 2021-05-27
 author: matz
 Test power assignment from binary files to reactor components
 """
@@ -67,21 +67,21 @@ def test_total_core_power(small_core_power_unscaled):
     assert res == pytest.approx(ans, 6)
 
 
-@pytest.mark.skip(reason='no longer raises negative power warning')
-def test_negative_power_warning(testdir, caplog):
-    """Test that the Power object catches the negative powers caused
-    by negative fluxes in low-flux regions"""
-    res_path = os.path.join(testdir, 'test_results', 'seven_asm_vac',
-                            'power')
-    dassh.power.Power(
-        os.path.join(res_path, 'MaterialPower.out'),
-        os.path.join(res_path, 'VariantMonoExponents.out'),
-        os.path.join(res_path, 'Output.VARPOW'),
-        os.path.join(res_path, 'GEODST'),
-        warn_negative=True)
-    # assert len(caplog.records) == 2
-    assert all([r.levelname == 'WARNING' for r in caplog.records])
-    assert 'Negative' in caplog.text
+# @pytest.mark.skip(reason='no longer raises negative power warning')
+# def test_negative_power_warning(testdir, caplog):
+#     """Test that the Power object catches the negative powers caused
+#     by negative fluxes in low-flux regions"""
+#     res_path = os.path.join(testdir, 'test_results', 'seven_asm_vac',
+#                             'power')
+#     dassh.power.Power(
+#         os.path.join(res_path, 'MaterialPower.out'),
+#         os.path.join(res_path, 'VariantMonoExponents.out'),
+#         os.path.join(res_path, 'Output.VARPOW'),
+#         os.path.join(res_path, 'GEODST'),
+#         warn_negative=True)
+#     # assert len(caplog.records) == 2
+#     assert all([r.levelname == 'WARNING' for r in caplog.records])
+#     assert 'Negative' in caplog.text
 
 
 @pytest.mark.filterwarnings("ignore")  # ignore negative power warning
@@ -281,72 +281,147 @@ def test_single_asm_vac_total_power(testdir):
 ########################################################################
 
 
-@pytest.mark.skip(reason='not implemented')
-def test_check_for_negative_user_power():
+def test_check_for_negative_user_power(caplog):
     """Ensure that DASSH can catch user power profiles that produce
     negative linear power in the range of interest"""
-    raise NotImplementedError
+    # This power profile should fail
+    pp = np.ones((1, 1, 3))
+    pp *= np.array([0.25, -0.01, -1.0])
+    with pytest.raises(SystemExit):
+        dassh.power._check_for_negative_power(pp, 'dummy', 0)
+    assert 'found negative linear power' in caplog.text
+
+    # This power profile should pass
+    pp = np.ones((1, 1, 3))
+    pp *= np.array([0.25, 0.0, -1.0])
+    dassh.power._check_for_negative_power(pp, 'dummy2', 0)
+    assert 'dummy2' not in caplog.text
 
 
-@pytest.mark.skip(reason='need to test negative power check first')
-def test_instantiation_with_user_power(testdir):
+def test_zero_power_with_all_nones():
+    """Test that "None" values input as power profiles yield an AssemblyPower
+    object that returns all zero power"""
+    ap = dassh.AssemblyPower({'pins': None, 'duct': None, 'cool': None},
+                             None,
+                             np.array([0.0, 400.0]),
+                             [0.0, 400.0])
+    # Test attributes
+    assert ap.pin_power is None
+    assert ap.duct_power is None
+    assert ap.coolant_power is None
+    assert ap.avg_power is None
+    # Test linear power values
+    res = ap.get_power(2.0)
+    assert all([res[k] is None for k in res.keys()])
+    # Test total power integration
+    assert ap.calculate_total_power() == pytest.approx(0.0)
+    # Test power skew
+    assert ap.calculate_pin_power_skew() == pytest.approx(1.0)
+
+
+# @pytest.mark.skip(reason='need to test negative power check first')
+def test_instantiation_user_power(testdir):
     """Test that user-supplied power profiles can be used to create
     DASSH AssemblyPower object"""
     # Have path to CSV with power data; load using the method
     asm_power_profiles = dassh.power._from_file(
-        os.path.join(
-            testdir, 'test_data', 'power',
-            'seven_asm_reactor_power.csv'))
+        os.path.join(testdir, 'test_data', 'seven_asm_power_profiles.csv'))
 
     # Loop over each entry and demonstrate that with each one you
     # can make an AssemblyPower object
     for ai in range(len(asm_power_profiles)):
         # Make an Instance
         ap = dassh.AssemblyPower(
-            {'pins': asm_power_profiles[ai]['pin_power'],
-             'duct': asm_power_profiles[ai]['duct_power'],
-             'cool': asm_power_profiles[ai]['coolant_power']},
-            asm_power_profiles[ai]['avg_power'],
-            asm_power_profiles[ai]['zfm'],
-            [0.0, 400.0])
+            {'pins': asm_power_profiles[ai][1].get('pins'),
+             'duct': asm_power_profiles[ai][1].get('duct'),
+             'cool': asm_power_profiles[ai][1].get('cool')},
+            asm_power_profiles[ai][1]['avg_power'],
+            asm_power_profiles[ai][1]['zfm'],
+            [0.0, 375.0])
 
         # Confirm axial region boundaries
-        k_test = np.random.randint(len(ap.z_finemesh))
-        z_lo = asm_power_profiles[ai]['zfm'][k_test]
-        z_hi = asm_power_profiles[ai]['zfm'][k_test + 1]
+        k_test = np.random.randint(len(ap.z_finemesh) - 1)
+        z_lo = asm_power_profiles[ai][1]['zfm'][k_test]
+        z_hi = asm_power_profiles[ai][1]['zfm'][k_test + 1]
         z_test = z_lo + (z_hi - z_lo) * np.random.random()
         k_res = ap.get_kfint(z_test)
         assert k_res == k_test
 
         # Just make sure it doesn't fail when you choose a random point
-        p_test = ap.get_power(np.random.random() * 4.0)
+        p_test = ap.get_power(np.random.random() * 3.75)
+        assert not np.all(p_test['pins'] == 0.0)
+        assert not np.all(p_test['duct'] == 0.0)
+        assert not np.all(p_test['cool'] == 0.0)
 
 
-@pytest.mark.skip(reason='not implemented')
-def test_instantiation_user_power_pin_only():
+def test_instantiation_pin_only_user_power(testdir):
     """Test proper instantiation when user provides only pin power
     distribution"""
-    raise NotImplementedError()
+    # Have path to CSV with power data; load using the method
+    asm_power_profiles = dassh.power._from_file(
+        os.path.join(testdir, 'test_data', 'single_asm_refl_pin_power.csv'))
+    print(np.random.get_state())
+    ai = 0  # only one assembly
+    # Make an Instance
+    ap = dassh.AssemblyPower(
+        {'pins': asm_power_profiles[ai][1].get('pins'),
+         'duct': asm_power_profiles[ai][1].get('duct'),
+         'cool': asm_power_profiles[ai][1].get('cool')},
+        asm_power_profiles[ai][1]['avg_power'],
+        asm_power_profiles[ai][1]['zfm'],
+        [0.0, 375.0])
+
+    # Confirm axial region boundaries
+    k_test = np.random.randint(len(ap.z_finemesh) - 1)
+    z_lo = asm_power_profiles[ai][1]['zfm'][k_test]
+    z_hi = asm_power_profiles[ai][1]['zfm'][k_test + 1]
+    z_test = z_lo + (z_hi - z_lo) * np.random.random()
+    k_res = ap.get_kfint(z_test)
+    assert k_res == k_test
+
+    # Just make sure it doesn't fail when you choose a random point
+    p_test = ap.get_power(np.random.random() * 3.75)
+    assert not np.all(p_test['pins'] == 0.0)
+    assert p_test['duct'] is None
+    assert p_test['cool'] is None
 
 
-@pytest.mark.skip(reason='not implemented')
-def test_user_power_instantiation_errors():
-    """Test that DASSH throws proper errors when incorrect input is
-    supplied.
+def test_user_power_axial_region_error_betw_types(testdir, caplog):
+    """Test that DASSH throws proper error when profiles for all pins,
+    duct, coolant don't have the same axial region definitions"""
+    with pytest.raises(SystemExit):
+        dassh.power._from_file(
+            os.path.join(
+                testdir, 'test_data', 'user_power_ax_reg_test_fail-1.csv'))
+    msg = ('Error in user-specified power distribution '
+           '(assembly ID: 0); all pins, duct cells, and coolant'
+           'items must have identical axial region boundaries.')
+    assert msg in caplog.text
 
-    1. Profiles for all components (pins, duct, coolant) must have the
-       same axial region definitions
-    2. At no point should the power profiles provided result in
-       negative linear power
 
-    """
-    raise NotImplementedError()
+def test_user_power_axial_region_error_betw_items(testdir, caplog):
+    """Test that DASSH throws proper error when profiles for all elements of
+    a specific type (e.g pins) don't have the same axial region definitions"""
+    with pytest.raises(SystemExit):
+        dassh.power._from_file(
+            os.path.join(
+                testdir, 'test_data', 'user_power_ax_reg_test_fail-2.csv'))
+    msg = ('Error in axial bound entries of user-specified power distribution'
+           'for assembly 0 pins; all need to have the same region bounds.')
+    assert msg in caplog.text
 
 
-@pytest.mark.skip(reason='not implemented')
-def test_user_power():
-    """Test that user-supplied power profiles gives expected results"""
-    raise NotImplementedError()
+def test_user_power_axial_region_error_gap(testdir, caplog):
+    """Test that DASSH throws proper error when profile axial boundaries
+    have any gaps or overlaps between successive region boundaries"""
+    with pytest.raises(SystemExit):
+        dassh.power._from_file(
+            os.path.join(
+                testdir, 'test_data', 'user_power_ax_reg_test_fail-3.csv'))
+    msg = ('Error in axial bound entries of user-specified power distribution'
+           'for assembly 0 duct; no gaps or overlaps allowed between upper/ '
+           'lower bounds of successive regions')
+    assert msg in caplog.text
 
 
 ########################################################################

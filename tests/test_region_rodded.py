@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-04-02
+date: 2021-05-27
 author: matz
 Test the DASSH Assembly object
 """
@@ -186,7 +186,6 @@ def test_single_pin_fail(coolant, structure):
                            clad_thickness, wire_pitch, wire_diameter,
                            duct_ftf, inlet_flow_rate, coolant, structure,
                            None, None, 'CTD', 'CTD', 'CTD', 'DB')
-
 
 
 @pytest.mark.skip(reason='No single pin functionality at the moment')
@@ -435,6 +434,25 @@ def test_asm_zero_power(c_fuel_rr):
     assert not np.any(res)  # all should be zero
 
 
+def test_rr_none_power(c_fuel_rr):
+    """Test that correct power is delivered to subchannels if pin and/or
+    coolant power is None"""
+    # Both pin and coolant power are None: result is zero power
+    res = c_fuel_rr._calc_int_sc_power(None, None)
+    zero_power = np.zeros(c_fuel_rr.subchannel.n_sc['coolant']['total'])
+    assert np.array_equal(res, zero_power)
+    # Pin power is None: result is coolant power
+    pcool = np.random.random(c_fuel_rr.subchannel.n_sc['coolant']['total'])
+    res = c_fuel_rr._calc_int_sc_power(None, pcool)
+    assert np.allclose(res, pcool)
+    # Coolant power is None: result is distributed pin power as if no coolant
+    # power is specified; use zero coolant power to check
+    ppins = np.random.random(c_fuel_rr.subchannel.n_sc['coolant']['total'])
+    res = c_fuel_rr._calc_int_sc_power(ppins, None)
+    ans = c_fuel_rr._calc_int_sc_power(ppins, zero_power)
+    assert np.allclose(res, ans)
+
+
 def test_zero_power_coolant_int_temp(c_fuel_rr):
     """Test that the internal coolant temperature calculation
     with no heat generation returns no temperature change"""
@@ -443,6 +461,13 @@ def test_zero_power_coolant_int_temp(c_fuel_rr):
     res = c_fuel_rr._calc_coolant_int_temp(0.5, pin_power, pcoolant)
     # Temperature should be unchanged relative to the previous level
     # (res is delta T)
+    assert np.allclose(res, 0.0)
+
+
+def test_none_power_coolant_int_temp(c_fuel_rr):
+    """Test that the internal coolant temperature calculation with None
+    power for pins/coolant returns no temperature change"""
+    res = c_fuel_rr._calc_coolant_int_temp(0.5, None, None)
     assert np.allclose(res, 0.0)
 
 

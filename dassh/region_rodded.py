@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-20
+date: 2021-05-27
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -736,10 +736,10 @@ class RoddedRegion(LoggedClass, DASSH_Region):
             self.coolant_int_params['eddy'] = \
                 (mix[0] * self.coolant_int_params['fs'][0]
                  * self.coolant_int_params['vel'])
-            poop = (mix[1] * self.coolant_int_params['vel']
-                    * self.coolant_int_params['fs'][1])
-            self.coolant_int_params['swirl'][1] = poop
-            self.coolant_int_params['swirl'][2] = poop
+            tmp = (mix[1] * self.coolant_int_params['vel']
+                   * self.coolant_int_params['fs'][1])
+            self.coolant_int_params['swirl'][1] = tmp
+            self.coolant_int_params['swirl'][2] = tmp
 
         # 2021-03-09 MILOS MODIFICATION
         # self.coolant_int_params['eddy'] = 0.0
@@ -1074,15 +1074,22 @@ class RoddedRegion(LoggedClass, DASSH_Region):
             adjacent pins.
 
         """
-        # Pin power: loop over pins, put appropriate power into
-        # adjacent subchannels as defined by the pin_adjacency array.
-        q = pin_power[self.subchannel.rev_pin_adj]
-        q[self.subchannel.rev_pin_adj < 0] = 0
-        # q = np.ma.masked_array(q, self.subchannel.rev_pin_adj < 0)
-        q = np.sum(q, axis=1)
-        q *= self._q_p2sc
-        q += cool_power
-        return q
+        # Null case: no power specified
+        if pin_power is None and cool_power is None:
+            return np.zeros(self.subchannel.n_sc['coolant']['total'])
+
+        elif pin_power is None:  # Then cool_power is not None
+            return cool_power
+        else:  # Then pin_power is not None, but cool_power might be None
+            # Pin power: loop over pins, put appropriate power into
+            # adjacent subchannels as defined by the pin_adjacency array.
+            q = pin_power[self.subchannel.rev_pin_adj]
+            q[self.subchannel.rev_pin_adj < 0] = 0
+            q = np.sum(q, axis=1)
+            q *= self._q_p2sc
+            if cool_power is not None:
+                q += cool_power
+            return q
 
     def _calc_coolant_byp_temp(self, dz, ebal=False):
         """Calculate the coolant temperatures in the assembly bypass
@@ -1311,17 +1318,18 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                     self.subchannel.type[
                         (sci + self.subchannel.n_sc['coolant']['total'])]
             self._duct_idx -= 3
-        #
+
         for i in range(self.n_duct):
             # No params to update, just need avg duct temp
             self.duct.update(duct_avg_temps[i])
-            start = i * self.subchannel.n_sc['duct']['total']
-            end = (i + 1) * self.subchannel.n_sc['duct']['total']
-            # Convert linear power (W/m) to volumetric power (W/m^3)
-            # (qtp == q triple prime); value is very large
-            qtp = (p_duct[start:end]
-                   / self.duct_params['area'][i, self._duct_idx])
-            #
+            # start = i * self.subchannel.n_sc['duct']['total']
+            # end = (i + 1) * self.subchannel.n_sc['duct']['total']
+            # # Convert linear power (W/m) to volumetric power (W/m^3)
+            # # (qtp == q triple prime); value is very large
+            # qtp = (p_duct[start:end]
+            #        / self.duct_params['area'][i, self._duct_idx])
+            qtp = self._calc_duct_power(p_duct, i)
+
             # Need to get inner and outer coolant temperatures and
             # heat transfer coeffs; Requires two material updates
             if i == 0:  # inner-most duct, inner htc is asm interior
@@ -1372,16 +1380,28 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                       - c1_L_over_2
                       - self.duct.thermal_conductivity * c1 / htc_out
                       + qtp * self.duct_params['L/2'][i] / htc_out)
-            #
+
             # Wall midpoint temperature
             self.temp['duct_mw'][i] = c2
-            #
             # Wall inside surface temperature: x = -L/2
             self.temp['duct_surf'][i, 0] = \
                 -qLsq_over_8k - c1_L_over_2 + c2
             # Wall outside surface temperature: x = L/2
             self.temp['duct_surf'][i, 1] = \
                 -qLsq_over_8k + c1_L_over_2 + c2
+
+    def _calc_duct_power(self, p_duct, duct_id):
+        """Transform linear power to power density for duct wall calculation"""
+        if p_duct is None:
+            return np.zeros(self.subchannel.n_sc['duct']['total'])
+        else:
+            start = duct_id * self.subchannel.n_sc['duct']['total']
+            end = (duct_id + 1) * self.subchannel.n_sc['duct']['total']
+            # Convert linear power (W/m) to volumetric power (W/m^3)
+            # (qtp == q triple prime); value is very large
+            pdens = (p_duct[start:end]
+                     / self.duct_params['area'][duct_id, self._duct_idx])
+            return pdens
 
     ####################################################################
 
@@ -1400,6 +1420,10 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         None
 
         """
+        # Check for nonspecified pin power
+        if pin_powers is None:
+            pin_powers = np.zeros(self.n_pin)
+
         # Heat transfer coefficient (via Nu) for clad-coolant
         pin_nu = self.corr['pin_nu'](self.coolant,
                                      self.coolant_int_params['Re'],

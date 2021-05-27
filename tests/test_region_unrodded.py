@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-26
+date: 2021-05-27
 author: matz
 Test the behavior and attributes of unrodded DASSH Region instances
 """
@@ -101,13 +101,23 @@ def test_unrodded_reg_clone_deep(c_lrefl_simple):
     assert len(non_matches) == 0
 
 
-def test_simple_unrodded_reg_no_power(c_lrefl_simple):
+def test_simple_unrodded_reg_zero_power(c_lrefl_simple):
     """Test that no power temp calc returns no change"""
     in_temp = c_lrefl_simple.temp['coolant_int']
     t_gap = np.ones(6) * c_lrefl_simple.avg_duct_mw_temp
     c_lrefl_simple.calculate(
         0.1, {'refl': 0.0}, t_gap, 0.0, adiabatic_duct=True)
-    assert c_lrefl_simple.temp['coolant_int'] == in_temp
+    assert c_lrefl_simple.temp['coolant_int'] == pytest.approx(in_temp)
+    assert c_lrefl_simple.pressure_drop > 0.0
+
+
+def test_simple_unrodded_reg_none_power(c_lrefl_simple):
+    """Test that giving power=None returns no change in temps"""
+    in_temp = c_lrefl_simple.temp['coolant_int']
+    t_gap = np.ones(6) * c_lrefl_simple.avg_duct_mw_temp
+    c_lrefl_simple.calculate(
+        0.1, {'refl': None}, t_gap, 0.0, adiabatic_duct=True)
+    assert c_lrefl_simple.temp['coolant_int'] == pytest.approx(in_temp)
     assert c_lrefl_simple.pressure_drop > 0.0
 
 
