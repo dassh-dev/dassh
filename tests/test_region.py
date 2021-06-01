@@ -14,13 +14,13 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-01-21
+date: 2021-06-21
 author: matz
 Test the base Region class and its methods
 """
 ########################################################################
 import numpy as np
-import conftest
+from tests import conftest
 
 
 def test_activate_to_rr(c_fuel_params, c_lrefl_simple):

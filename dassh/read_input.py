@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-09
+date: 2021-06-01
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -1422,25 +1422,25 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
     # CCCC (4C) files supplied by the user in the input
     ####################################################################
 
-    def read_4c(self, t):
-        """Read the 4C files input for the specified time point"""
-        # GEODST
-        path = os.path.join(self.path, self.data['ARC']['geodst'][t])
-        geodst_obj = py4c.geodst.GEODST(path)
-
-        # LABELS
-        path = os.path.join(self.path, self.data['ARC']['labels'][t])
-        labels_obj = py4c.labels.LABELS(path)
-
-        # OTHER
-        # nhflux_obj = py4c.geodst.GEODST(self.data['nhflux_input'][tpt])
-        # ndxsrf_obj = py4c.geodst.GEODST(self.data['ndxsrf_input'][tpt])
-        # compxs_obj = py4c.geodst.GEODST(self.data['compxs_input'][tpt])
-        # pmatrx_obj = py4c.geodst.GEODST(self.data['pmatrx_input'][tpt])
-
-        self.check_4c_agreement(geodst_obj, labels_obj)
-        self.check_labels(labels_obj)
-        return geodst_obj, labels_obj
+    # def read_4c(self, t):
+    #     """Read the 4C files input for the specified time point"""
+    #     # GEODST
+    #     path = os.path.join(self.path, self.data['ARC']['geodst'][t])
+    #     geodst_obj = py4c.geodst.GEODST(path)
+    #
+    #     # LABELS
+    #     path = os.path.join(self.path, self.data['ARC']['labels'][t])
+    #     labels_obj = py4c.labels.LABELS(path)
+    #
+    #     # OTHER
+    #     # nhflux_obj = py4c.geodst.GEODST(self.data['nhflux_input'][tpt])
+    #     # ndxsrf_obj = py4c.geodst.GEODST(self.data['ndxsrf_input'][tpt])
+    #     # compxs_obj = py4c.geodst.GEODST(self.data['compxs_input'][tpt])
+    #     # pmatrx_obj = py4c.geodst.GEODST(self.data['pmatrx_input'][tpt])
+    #
+    #     self.check_4c_agreement(geodst_obj, labels_obj)
+    #     self.check_labels(labels_obj)
+    #     return geodst_obj, labels_obj
 
     def check_4c_agreement(self, geodst, labels):  # labels_obj):
         """Check 4C file data for agreement.

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-04
+date: 2021-06-01
 author: Milos Atz
 """
 ########################################################################
@@ -29,7 +29,7 @@ metal fast reactors."""
 DISTNAME = 'DASSH'
 MAINTAINER = 'Milos Atz'
 MAINTAINER_EMAIL = 'matz@anl.gov'
-# URL = 'https://svn.inside.anl.gov/repos/nuclearrats/trunk/LegacyRATs/src_DASSH/'
+URL = 'https://github.com/dassh-dev/dassh'
 LICENSE = 'https://opensource.org/licenses/BSD-3-Clause'
 DOWNLOAD_URL = ''
 # FROM OPENMC: Get version information from __init__.py. This is ugly,
@@ -84,7 +84,7 @@ if __name__ == "__main__":
           description=DESCRIPTION,
           long_description=LONG_DESCRIPTION,
           license=LICENSE,
-          # url=URL,
+          url=URL,
           version=VERSION,
           download_url=DOWNLOAD_URL,
           python_requires='>=3.5',

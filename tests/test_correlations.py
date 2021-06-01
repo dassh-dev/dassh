@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-04-01
+date: 2021-06-01
 author: matz
 Test the correlations
 """
@@ -24,7 +24,7 @@ import copy
 import pandas as pd
 import numpy as np
 import pytest
-from conftest import activate_rodded_region
+from tests.conftest import activate_rodded_region
 import dassh
 from dassh.correlations import (friction_ctd,
                                 friction_cts,
