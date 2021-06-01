@@ -188,4 +188,4 @@ def test_ebal_with_ur(testdir):
     q_duct[-1] = np.sum(r.core.ebal['asm'])
     cp = r.assemblies[0].active_region.coolant.heat_capacity  # constant
     q_dt = mfr * cp * dt
-    assert np.abs(np.sum(q_in) - np.sum(q_dt)) < 1e-8
+    assert np.abs(np.sum(q_in) - np.sum(q_dt)) < 2e-8
