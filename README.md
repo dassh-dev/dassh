@@ -1,6 +1,8 @@
 # Ducted Assembly Steady State Heat transfer code (DASSH)
 
 [![Build Status](https://travis-ci.com/dassh-dev/dassh.svg?token=9JiRbxest2oH9X8ijsPq&branch=master)](https://travis-ci.com/github/dassh-dev/dassh)
+[![codecov](https://codecov.io/gh/dassh-dev/dassh/branch/master/graph/badge.svg)](https://app.codecov.io/gh/dassh-dev/dassh)
+
 
 The Ducted Assembly Steady State Heat transfer code (DASSH) is an open-source tool for calculating temperature and flow distributions in hexagonal, ducted assemblies comprised of wire-wrapped pin bundles. DASSH is intended for use in the early stages of a design process when components can be undefined or are undergoing considerable design changes. DASSH provides a relatively rapid assessment of the system to allow quick characterization and identification of problem areas. 
 
