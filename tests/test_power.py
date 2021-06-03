@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-27
+date: 2021-06-03
 author: matz
 Test power assignment from binary files to reactor components
 """
@@ -160,19 +160,18 @@ def test_get_kfint(small_core_asm_power):
 def test_transform_z(small_core_asm_power):
     """Test that the absolute Z-coordinates are transformed to
     relative coordinate in the active axial mesh cell"""
-    # Rodded bounds: 128.1 - 212.33cm (k = 9 - 22)
-    # Core bounds: 0.0 - 386.2 cm (k = 0 - 36)
-    # assert np.isclose(small_core_asm_power.transform_z(0.0), -0.5)
-    # assert np.isclose(small_core_asm_power.transform_z(386.2), 0.5)
-    # assert np.isclose(small_core_asm_power.transform_z(128.10001), -0.5)
-    # assert np.isclose(small_core_asm_power.transform_z(212.32999), 0.5)
-    # assert np.isclose(small_core_asm_power.transform_z(7.625), 0.0)
-
-    # BECAUSE VARPOW SPITS OUT THE POWER DENSITIES BACKWARDS, NEED
-    # TO INVERT THEM AXIALLY
+    # # BECAUSE VARPOW SPITS OUT THE POWER DENSITIES BACKWARDS, NEED
+    # # TO INVERT THEM AXIALLY
+    # z = [0.0, 375.0, 125.0000001, 209.9999999, 7.5]
+    # kf = [small_core_asm_power.get_kfint(zi) for zi in z]
+    # ans = [0.5, -0.5, 0.5, -0.5, 0.0]
+    # for i in range(len(ans)):
+    #     res = small_core_asm_power.transform_z(kf[i], z[i])
+    #     msg = ' '.join([str(z[i]), str(kf[i]), str(res), str(ans[i])])
+    #     assert ans[i] == pytest.approx(res), msg
     z = [0.0, 375.0, 125.0000001, 209.9999999, 7.5]
     kf = [small_core_asm_power.get_kfint(zi) for zi in z]
-    ans = [0.5, -0.5, 0.5, -0.5, 0.0]
+    ans = [-0.5, 0.5, -0.5, 0.5, 0.0]
     for i in range(len(ans)):
         res = small_core_asm_power.transform_z(kf[i], z[i])
         msg = ' '.join([str(z[i]), str(kf[i]), str(res), str(ans[i])])
@@ -319,7 +318,6 @@ def test_zero_power_with_all_nones():
     assert ap.calculate_pin_power_skew() == pytest.approx(1.0)
 
 
-# @pytest.mark.skip(reason='need to test negative power check first')
 def test_instantiation_user_power(testdir, small_reactor):
     """Test that user-supplied power profiles can be used to create
     DASSH AssemblyPower object"""
@@ -358,6 +356,10 @@ def test_instantiation_user_power(testdir, small_reactor):
         assert ap.calculate_total_power() == pytest.approx(ans)
 
         # Check power profiles against distributions used to generate the CSV
+        diff = ap.pin_power - small_reactor.assemblies[ai].power.pin_power
+        rdiff = diff / small_reactor.assemblies[ai].power.pin_power
+        print(np.max(np.abs(diff)))
+        print(np.max(np.abs(rdiff)))
         assert np.allclose(ap.pin_power,
                            small_reactor.assemblies[ai].power.pin_power)
         assert np.allclose(ap.duct_power,
@@ -441,6 +443,35 @@ def test_user_power_axial_region_error_gap(testdir, caplog):
 ########################################################################
 
 
+def evaluate_flux(template_path, outpath, asm_obj, z_pts):
+    """Create input and run EvaluateFlux ARC utility program"""
+    # Create EvaluateFlux input file
+    with open(template_path, 'r') as f:
+        ef = f.read()
+    for pi in range(asm_obj.rodded.n_pin):
+        x, y = asm_obj.rodded.pin_lattice.xy[pi]
+        x = np.around(x * 100, 6)
+        y = np.around(y * 100, 6)
+        for zi in z_pts:
+            ef += f"ADD_MESHPOINT {x} {y} {zi}\n"
+    with open(os.path.join(outpath, 'ef.inp'), 'w') as f:
+        f.write(ef)
+    # Run EvaluateFlux
+    efpath = "/software/ARC/EvaluateFlux.x"
+    if not os.path.exists(efpath):
+        pytest.skip('Need ARC program EvaluateFlux to run test')
+    og_path = os.getcwd()
+    os.chdir(outpath)
+    with open(os.path.join(outpath, 'ef_stdout.txt'), 'w') as f:
+        subprocess.call([efpath, os.path.join(outpath, 'ef.inp')],
+                        stdout=f)
+    os.chdir(og_path)
+    # Remove the output files we don't want
+    os.remove(os.path.join(outpath, 'IsotopeMacroRR.out'))
+    os.remove(os.path.join(outpath, 'IsotopeMicroRR.out'))
+    os.remove(os.path.join(outpath, 'LabeledRegionRR.out'))
+
+
 def write_evaluate_flux_input(template_path, outpath, asm_obj, z_pts):
     """Create an EvaluateFlux input based"""
     with open(template_path, 'r') as f:
@@ -520,19 +551,30 @@ def test_EF_single_asm_refl(testdir):
                        + ((np.sum(p['duct']) + np.sum(p['cool']))
                           / 100 / a_pin / r.assemblies[0].rodded.n_pin))
 
-    # Make EvaluateFlux input
-    write_evaluate_flux_input(
-        os.path.join(inpath, 'ef_single_asm_refl_template.inp'),
-        outpath,
-        r.assemblies[0],
-        z_ef)
+    # # Make EvaluateFlux input
+    # write_evaluate_flux_input(
+    #     os.path.join(inpath, 'ef_single_asm_refl_template.inp'),
+    #     outpath,
+    #     r.assemblies[0],
+    #     z_ef)
+    # # Run EvaluateFlux
+    # run_evaluate_flux(outpath)
 
-    # Run EvaluateFlux
-    run_evaluate_flux(outpath)
+    efpath = "/software/ARC/EvaluateFlux.x"
+    if not os.path.exists(efpath):  # Pull results from saved DASSH test data
+        dat = np.loadtxt(os.path.join(testdir,
+                                      'test_data',
+                                      'single_asm_refl',
+                                      'FluxAndRegionRR.out'),
+                         skiprows=2)
+    else:  # Run EvaluateFlux, import results from new output files
+        evaluate_flux(os.path.join(inpath, 'ef_single_asm_refl_template.inp'),
+                      outpath,
+                      r.assemblies[0],
+                      z_ef)
+        dat = np.loadtxt(
+            os.path.join(outpath, 'FluxAndRegionRR.out'), skiprows=2)
 
-    # Import the results
-    dat = np.loadtxt(os.path.join(outpath, 'FluxAndRegionRR.out'),
-                     skiprows=2)
     pp_ef = np.zeros((len(z_ef), r.assemblies[0].rodded.n_pin))
     for pin in range(r.assemblies[0].rodded.n_pin):
         x, y = r.assemblies[0].rodded.pin_lattice.xy[pin] * 100
@@ -618,21 +660,35 @@ def test_EF_single_asm_vac(testdir):
                        + ((np.sum(p['duct']) + np.sum(p['cool']))
                           / 100 / a_pin / r.assemblies[0].rodded.n_pin))
 
-    # Make EvaluateFlux input if necessary; this will cause the test
-    # to fail because EvaluateFlux has to be run externally from pytest
-    write_evaluate_flux_input(
-        os.path.join(inpath, 'ef_single_asm_vac_template.inp'),
-        outpath,
-        r.assemblies[0],
-        z_ef)
+    # # Make EvaluateFlux input if necessary; this will cause the test
+    # # to fail because EvaluateFlux has to be run externally from pytest
+    # write_evaluate_flux_input(
+    #     os.path.join(inpath, 'ef_single_asm_vac_template.inp'),
+    #     outpath,
+    #     r.assemblies[0],
+    #     z_ef)
+    #
+    # # Run EvaluateFlux if necessary; for some reason this segfaults
+    # # if not os.path.exists(os.path.join(testpath, 'FluxAndRegionRR.out')):
+    # run_evaluate_flux(outpath)
+    # # Import EvaluateFlux results
+    # dat = np.loadtxt(os.path.join(outpath, 'FluxAndRegionRR.out'),
+    #                  skiprows=2)
+    efpath = "/software/ARC/EvaluateFlux.x"
+    if not os.path.exists(efpath):  # Pull results from saved DASSH test data
+        dat = np.loadtxt(os.path.join(testdir,
+                                      'test_data',
+                                      'single_asm_vac',
+                                      'FluxAndRegionRR.out'),
+                         skiprows=2)
+    else:  # Run EvaluateFlux, import results from new output files
+        evaluate_flux(os.path.join(inpath, 'ef_single_asm_vac_template.inp'),
+                      outpath,
+                      r.assemblies[0],
+                      z_ef)
+        dat = np.loadtxt(
+            os.path.join(outpath, 'FluxAndRegionRR.out'), skiprows=2)
 
-    # Run EvaluateFlux if necessary; for some reason this segfaults
-    # if not os.path.exists(os.path.join(testpath, 'FluxAndRegionRR.out')):
-    run_evaluate_flux(outpath)
-
-    # Import EvaluateFlux results
-    dat = np.loadtxt(os.path.join(outpath, 'FluxAndRegionRR.out'),
-                     skiprows=2)
     pp_ef = np.zeros((len(z_ef), r.assemblies[0].rodded.n_pin))
     for pin in range(r.assemblies[0].rodded.n_pin):
         x, y = r.assemblies[0].rodded.pin_lattice.xy[pin] * 100
@@ -752,6 +808,12 @@ def calc_power_profile_OLD(p_obj, asm_obj, asm_id):
                                   * (linear_power[comp][0, k]
                                      + linear_power[comp][1, k])
                                   / normalizer)
+
+    # ADDED 2021-06-03: Modifying the VARPOW-coefficients here rather than
+    # in AssemblyPower, so need to update "old" method to check agreement
+    # with updated new method
+    for comp in power.keys():
+        power[comp] = dassh.power._flip_power_dist(power[comp])
 
     # return power, linear_power, computed_power, component_power
     return power, avg_power

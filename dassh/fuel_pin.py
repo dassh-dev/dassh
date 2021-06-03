@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-06
+date: 2021-06-02
 author: matz
 Cladding and fuel pin heat transfer model
 """
@@ -318,6 +318,7 @@ class FuelPin(LoggedClass):
         T[:, 2] = T_cool + C / htc / self.clad['r'][2]
         dT = C * self.clad['ln_r2r']
         k_ip1 = self.clad['k'](T[:, 2])
+        k = k_ip1  # In case while loop is bypassed
         T_in1 = T[:, 2] + dT / k_ip1
         T_in2 = T[:, 2]
         idx = 0
@@ -451,7 +452,6 @@ class FuelPin(LoggedClass):
                         'Fuel CL', idx, np.max(T_in1 - T_in2)))
 
             # Set T_out (T(i+1)) equal to T(i) and move to next step
-            print(iter)
             T_out = T_in1
 
         # Once the for loop is done, T_in1 is the centerline temp

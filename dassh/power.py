@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-27
+date: 2021-06-03
 author: matz
 Generate power distributions in assembly components based on neutron
 flux; object to assign to individual assemblies
@@ -324,6 +324,10 @@ class Power(LoggedClass):
                     power[comp][k] = 0.0
                 else:
                     power[comp][k] *= p_lin[comp][k] / norm[k]
+
+        # Flip power distribution about unit-z axis
+        for comp in power.keys():
+            power[comp] = _flip_power_dist(power[comp])
 
         # return power, linear_power, computed_power, component_power
         return power, avg_power
@@ -665,6 +669,30 @@ def evaluate_xy_mono(xy, monomial_exp, xy_scalar):
     return eval_xy
 
 
+def _flip_power_dist(pdist):
+    """Flip the polynomial produced by VARPOW
+
+    The coefficients for the power distribution polynomial produced by
+    VARPOW correspond to "z" values between -0.5 and 0.5 in each axial
+    mesh. In other words, a transformation needs to take place to use
+    the coefficients. The absolute value of "z" in the problem (i.e.
+    z=1.21m from the core inlet) needs to be transformed to this range,
+    depending on the active mesh. For example, if z=1.21 occurs at the
+    bottom of some axial mesh, that mesh's coefficients would be used
+    to determine the power distribution and the transformed z*=-0.5.
+
+    However, VARPOW spits out the coefficients backward, such that the
+    lower bound of the mesh actually needs z*=0.5, not z*=-0.5. This
+    method flips the coefficients so that the power distribution is
+    properly oriented on the z-axis.
+
+    """
+    exp = np.arange(0, pdist.shape[-1], 1)
+    multiplier = np.ones(pdist.shape[-1]) * -1
+    multiplier = multiplier**exp
+    return pdist * multiplier
+
+
 ########################################################################
 
 
@@ -685,7 +713,9 @@ class AssemblyPower(object):
         upper bounds of the rodded core (cm)
     scale : float (optional)
         Scalar for total power (default = 1.0)
-
+    user_power : boolean (optional)
+        Indicate whether power distribution is defined by user or by VARPOW;
+        VARPOW flips the unit mesh bounds so need to know how to handle
     Notes
     -----
     This container is passed to DASSH assembly objects for them to
@@ -798,7 +828,7 @@ class AssemblyPower(object):
 
     def transform_z(self, k_fint, z_abs):
         """Transform z-position in the core to the relative z-position
-        within the appropriate VARIANT mesh cell
+        within the appropriate power profile mesh cell
 
         Parameters
         ----------
@@ -811,7 +841,7 @@ class AssemblyPower(object):
         -------
         float
             Value between -0.5 and 0.5 corresponding to the relative
-            position in the active VARIANT mesh cell
+            position in the active power profile mesh cell
 
         """
         if k_fint == len(self.z_finemesh) - 1:
@@ -829,35 +859,36 @@ class AssemblyPower(object):
         # Because VARPOW spits out the power densities backwards with
         # respect to z in each region, we want to invert the relative
         # z-coordinate
-        return -(z_abs / dz + const)
+        # return -(z_abs / dz + const)
+        return (z_abs / dz + const)
 
-    def transform_z2(self, k_fint, z_abs):
-        """Transform z-position in the core to the relative z-position
-        within the appropriate VARIANT mesh cell
-
-        Parameters
-        ----------
-        k_fint : int (or numpy.ndarray of int)
-            Axial region in which to obtain the power distribution
-        z_abs : float (or numpy.ndarry of float)
-            Axial position in the core (cm)
-
-        Returns
-        -------
-        float (or numpy.ndarray of float)
-            Value(s) between -0.5 and 0.5 corresponding to the
-            relative position in the active VARIANT mesh cell
-
-        """
-        z_lo = self.z_finemesh[k_fint]
-        z_hi = self.z_finemesh[k_fint + 1]
-        dz = z_hi - z_lo
-        const = -0.5 - (z_lo / dz)
-        assert np.allclose(const, 0.5 - (z_hi / dz))
-        # Because VARPOW spits out the power densities backwards with
-        # respect to z in each region, we want to invert the relative
-        # z-coordinate
-        return -(z_abs / dz + const)
+    # def transform_z2(self, k_fint, z_abs):
+    #     """Transform z-position in the core to the relative z-position
+    #     within the appropriate VARIANT mesh cell
+    #
+    #     Parameters
+    #     ----------
+    #     k_fint : int (or numpy.ndarray of int)
+    #         Axial region in which to obtain the power distribution
+    #     z_abs : float (or numpy.ndarry of float)
+    #         Axial position in the core (cm)
+    #
+    #     Returns
+    #     -------
+    #     float (or numpy.ndarray of float)
+    #         Value(s) between -0.5 and 0.5 corresponding to the
+    #         relative position in the active VARIANT mesh cell
+    #
+    #     """
+    #     z_lo = self.z_finemesh[k_fint]
+    #     z_hi = self.z_finemesh[k_fint + 1]
+    #     dz = z_hi - z_lo
+    #     const = -0.5 - (z_lo / dz)
+    #     assert np.allclose(const, 0.5 - (z_hi / dz))
+    #     # Because VARPOW spits out the power densities backwards with
+    #     # respect to z in each region, we want to invert the relative
+    #     # z-coordinate
+    #     return -(z_abs / dz + const)
 
     def get_kfint(self, z_abs):
         """Get the fine mesh interval for a given axial position
@@ -883,23 +914,23 @@ class AssemblyPower(object):
             idx = np.where(self.z_finemesh == z_abs)[0][0]
         return idx
 
-    def get_kfint2(self, z_abs):
-        """Get the fine mesh interval for a given axial position
-
-        Parameters
-        ----------
-        z_abs : float (or numpy.ndarray of float)
-            Axial position in the core (cm)
-
-        Returns
-        -------
-        int
-            VARIANT mesh cell in which the requested axial
-            position is located
-
-        """
-        z_abs = np.around(z_abs, 12)
-        return np.searchsorted(self.z_finemesh, z_abs) - 1
+    # def get_kfint2(self, z_abs):
+    #     """Get the fine mesh interval for a given axial position
+    #
+    #     Parameters
+    #     ----------
+    #     z_abs : float (or numpy.ndarray of float)
+    #         Axial position in the core (cm)
+    #
+    #     Returns
+    #     -------
+    #     int
+    #         VARIANT mesh cell in which the requested axial
+    #         position is located
+    #
+    #     """
+    #     z_abs = np.around(z_abs, 12)
+    #     return np.searchsorted(self.z_finemesh, z_abs) - 1
 
     def estimate_total_power(self, zpts=250):
         """Estimate the total power (W) produced by the assembly using

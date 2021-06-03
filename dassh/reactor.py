@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-09
+date: 2021-06-03
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -290,7 +290,7 @@ class Reactor(LoggedClass):
         # User power specification
         if 'user' in self.power.keys():
             for ai in range(len(self.power['user'])):
-                ax_bnd += list(self.power['user'][ai][1]['zfm'])
+                ax_bnd += list(self.power['user'][ai][1]['zfm'] * 1e-2)
 
         # Axial regions in assembly specification
         for a in inp.data['Assembly'].keys():
@@ -406,7 +406,6 @@ class Reactor(LoggedClass):
                 z_mesh = tmp['zfm']
                 tot_power = np.sum((z_mesh[1:] - z_mesh[:-1])
                                    * avg_power_profile)
-
                 # Need to check that user power input matches assembly
                 # assignment geometry (number of pins, etc)
             else:  # Get it from DIF3D power
@@ -604,7 +603,6 @@ class Reactor(LoggedClass):
             # Clone assembly object from template using flow rate
             # and assign power profiles
             asm = self.asm_templates[atype].clone(loc, new_flowrate=fr[i])
-
             bundle_bnd = get_rod_bundle_bnds(asm_power[i][3], asm_data)
             asm.power = dassh.power.AssemblyPower(asm_power[i][0],
                                                   asm_power[i][1],
