@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-01
+date: 2021-06-08
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -753,10 +753,10 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         """Confirm user-spec power dist input file exists, if given"""
         if not self._user_power:
             return
-        print(self.data['Power']['user_power'])
-        print(self.determine_power_input())
-        print(self.data['Power'])
-        print(self.data['ARC'])
+        # print(self.data['Power']['user_power'])
+        # print(self.determine_power_input())
+        # print(self.data['Power'])
+        # print(self.data['ARC'])
         for i in range(len(self.data['Power']['user_power'])):
             abs_fp = os.path.abspath(
                 os.path.join(self.path,

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-03
+date: 2021-06-08
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -471,8 +471,9 @@ class Reactor(LoggedClass):
                 if plist[i] == []:  # skip if asm is undefined
                     continue
                 # Component power profiles
-                for k in plist[i][0].keys():
-                    plist[i][0][k] *= renorm
+                for k in ['pins', 'duct', 'cool']:
+                    if plist[i][0].get(k) is not None:
+                        plist[i][0][k] *= renorm
                 # Average power profile
                 plist[i][1] *= renorm
                 # Total power
@@ -484,8 +485,9 @@ class Reactor(LoggedClass):
                 if plist[i] == []:  # skip if asm is undefined
                     continue
                 # Component power profiles
-                for k in plist[i][0].keys():
-                    plist[i][0][k] *= pscalar
+                for k in ['pins', 'duct', 'cool']:
+                    if plist[i][0].get(k) is not None:
+                        plist[i][0][k] *= pscalar
                 # Average power profile
                 plist[i][1] *= pscalar
                 # Total power
