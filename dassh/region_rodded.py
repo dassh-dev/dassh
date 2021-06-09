@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-27
+date: 2021-06-09
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -2082,33 +2082,28 @@ def _import_flowsplit_correlation(name, bundle, warn):
         import dassh.correlations.flowsplit_nov as fs
         name = 'novendstern'
         nickname = 'nov'
-        constants = fs.calc_constants(bundle)
 
     elif name in ['se2', 'superenergy', 'superenergy-2', 'superenergy2']:
         import dassh.correlations.flowsplit_se2 as fs
         name = 'se2'
         nickname = 'se2'
-        constants = fs.calc_constants(bundle)
 
     elif name in ['ct', 'cheng-todreas', 'ctd',
                   'cheng-todreas-detailed']:
         import dassh.correlations.flowsplit_ctd as fs
         name = 'cheng-todreas-detailed'
         nickname = 'ctd'
-        constants = fs.calc_constants(bundle)
 
     elif name in ['uctd', 'upgraded-cheng-todreas-detailed',
                   'upgraded-cheng-todreas']:
         import dassh.correlations.flowsplit_uctd as fs
         name = 'upgraded-cheng-todreas-detailed'
         nickname = 'uctd'
-        constants = fs.calc_constants(bundle)
 
     elif name in ['mit', 'chiu-rohsenow-todreas']:
         import dassh.correlations.flowsplit_mit as fs
         name = 'chiu-rohsenow-todreas'
         nickname = 'mit'
-        constants = fs.calc_constants(bundle)
 
     else:
         module_logger.error(f'Assembly {bundle.name}: unknown '
@@ -2118,6 +2113,7 @@ def _import_flowsplit_correlation(name, bundle, warn):
 
     if warn:
         check_correlation.check_application_range(bundle, fs)
+    constants = fs.calc_constants(bundle)
     return nickname, fs.calculate_flow_split, constants
 
 
@@ -2146,28 +2142,25 @@ def _import_mixing_correlation(name, bundle):
         import dassh.correlations.mixing_mit as mix
         name = 'chiu-rohsenow-todreas'
         nickname = 'mit'
-        constants = mix.calc_constants(bundle)
 
     elif name in ['ct', 'cheng-todreas',
                   'ctd', 'cheng-todreas-detailed']:
         import dassh.correlations.mixing_ctd as mix
         name = 'cheng-todreas'
         nickname = 'ctd'
-        constants = mix.calc_constants(bundle)
 
     elif name in ['uct', 'upgraded-cheng-todreas',
                   'uctd', 'upgraded-cheng-todreas-detailed']:
         import dassh.correlations.mixing_uctd as mix
         name = 'upgraded-cheng-todreas'
         nickname = 'uctd'
-        constants = mix.calc_constants(bundle)
 
     else:
         module_logger.error(f'Assembly {bundle.name}: unknown '
                             f'correlation specified for mixing '
                             f'parameters: {name}')
         sys.exit(1)
-
+    constants = mix.calc_constants(bundle)
     return nickname, mix.calculate_mixing_params, constants
 
 

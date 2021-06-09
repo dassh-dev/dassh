@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-03-09
+date: 2021-06-09
 author: matz
 Cheng-Todreas Detailed original correlations (1986)
 """
@@ -280,9 +280,8 @@ def calculate_bundle_friction_factor_const(asm_obj):
     """
     try:
         cf_sc = asm_obj.corr_constants['ff']['Cf_sc']
-    except (KeyError, AttributeError):
+    except (KeyError, AttributeError, TypeError):
         cf_sc = calculate_subchannel_friction_factor_const(asm_obj)
-
     return _calc_cfb(asm_obj, cf_sc)
 
 

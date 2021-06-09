@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-04-22
+date: 2020-06-09
 author: matz
 Upgraded Cheng-Todreas Detailed correlations (2018)
 """
@@ -130,8 +130,12 @@ def calculate_wire_sweeping_const(h_over_d):
     """Calculate the wire-sweeping constant for the Upgraded
     Cheng-Todreas friction factor constant calculation"""
     ws = {}
-    ws['turbulent'] = -11.0 * np.log10(h_over_d) + 19.0
-    ws['laminar'] = ws['turbulent']
+    if h_over_d == 0.0:
+        ws['turbulent'] = 0.0
+        ws['laminar'] = 0.0
+    else:
+        ws['turbulent'] = -11.0 * np.log10(h_over_d) + 19.0
+        ws['laminar'] = ws['turbulent']
     return ws
 
 
@@ -139,9 +143,13 @@ def calculate_wire_drag_const(wd_over_d, h_over_d):
     """Calculate the wire-drag constant for the Upgraded
     Cheng-Todreas friction factor constant calculation"""
     wd = {}
-    wd['turbulent'] = ((19.56 - 98.71 * wd_over_d
-                        + 303.47 * wd_over_d**2) / h_over_d**0.541)
-    wd['laminar'] = 1.4 * wd['turbulent']
+    if wd_over_d == 0.0:
+        wd['turbulent'] = 0.0
+        wd['laminar'] = 0.0
+    else:
+        wd['turbulent'] = ((19.56 - 98.71 * wd_over_d + 303.47 * wd_over_d**2)
+                           / h_over_d**0.541)
+        wd['laminar'] = 1.4 * wd['turbulent']
     return wd
 
 

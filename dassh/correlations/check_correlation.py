@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-09-29
+date: 2021-06-09
 author: matz
 Method to check the applicability of correlations requested by the
 user; raises warnings when outside the appropriate range
@@ -54,7 +54,7 @@ def check_application_range(asm, corr_module):
         if 'bare rod' in corr_module.applicability.keys():
             if (params['bare rod'] and
                     not corr_module.applicability['bare rod']):
-                asm.log('warning',
+                asm.log('error',
                         ('Correlation \"{:s}\" not meant to apply to '
                          'bare rod assembly (\"{:s}\")'
                          .format(corr_name, asm.name)))

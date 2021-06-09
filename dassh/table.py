@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-25
+date: 2021-06-09
 author: matz
 Objects and methods to print ASCII tables in Python
 """
@@ -667,10 +667,16 @@ representation of the flow is not accurate.
               * rr.params['de'][0]
               / rr.coolant.viscosity)
         # Novendstern's multiplication factor for wire-wrapped bundles
-        M = 1.034 / (rr.pin_pitch / rr.pin_diameter)**0.124
-        M += (29.7 * (rr.pin_pitch / rr.pin_diameter)**6.94 * Re**0.086
-              / (rr.wire_pitch / rr.pin_diameter)**2.239)
-        M = M**0.885
+        # If wire wrap pitch is zero (no wire wrap): treat as though it has
+        # a very large wire wrap pitch (as if the wire was nearly vertical);
+        # In that case, M approaches 1.0; otherwise, M is greater than 1.0
+        if rr.wire_pitch == 0.0:
+            M = 1.0
+        else:
+            M = 1.034 / (rr.pin_pitch / rr.pin_diameter)**0.124
+            M += (29.7 * (rr.pin_pitch / rr.pin_diameter)**6.94 * Re**0.086
+                  / (rr.wire_pitch / rr.pin_diameter)**2.239)
+            M = M**0.885
         # Evaluate some other stuff
         Pr = (rr.coolant.heat_capacity
               * rr.coolant.viscosity
