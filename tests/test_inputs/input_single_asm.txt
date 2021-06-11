@@ -1,33 +1,56 @@
 ########################################################################
 # author: Milos Atz
-# date: 2021-01-29
+# date: 2021-06-10
 # comment: DASSH input example (single FASTER assembly)
 ########################################################################
- # NEUTRONICS AND GEOMETRY FILES
+# SETUP: Problem setup, user options, etc
 
-[ARC]
-    pmatrx = ../test_data/single_asm_refl/PMATRX
-    geodst = ../test_data/single_asm_refl/GEODST
-    ndxsrf = ../test_data/single_asm_refl/NDXSRF
-    znatdn = ../test_data/single_asm_refl/ZNATDN
-    labels = ../test_data/single_asm_refl/LABELS
-    nhflux = ../test_data/single_asm_refl/NHFLUX
-    ghflux = ../test_data/single_asm_refl/GHFLUX
+[Setup]
+    axial_plane = -10.0, 15.748, 29.528, 400.0
+    [[Dump]]
+        all      = True
+        interval = 4.0
+    [[Units]]
+        temperature    = Fahrenheit
+        length         = in
+        mass_flow_rate = lb/hr
+
+
+########################################################################
+
+[Materials]
+    [[sodium_se2anl_csv]]
+        from_file = sodium_se2anl.csv
+
+
+########################################################################
+# POWER DISTRIBUTIONS
+[Power]
+    total_power        = 6.001e6
+    [[ARC]]
+        fuel_material      = metal
+        fuel_alloy         = zr
+        coolant_heating    = sodium
+        pmatrx = ../test_data/single_asm_refl/PMATRX
+        geodst = ../test_data/single_asm_refl/GEODST
+        ndxsrf = ../test_data/single_asm_refl/NDXSRF
+        znatdn = ../test_data/single_asm_refl/ZNATDN
+        labels = ../test_data/single_asm_refl/LABELS
+        nhflux = ../test_data/single_asm_refl/NHFLUX
+        ghflux = ../test_data/single_asm_refl/GHFLUX
+
 
 ########################################################################
 # CORE DETAILS: Describe characteristics of the reactor core
 
 [Core]
     coolant_inlet_temp = 662.0
-    fuel_material      = metal
-    fuel_alloy         = zr
     coolant_material   = sodium_se2anl
-    coolant_heating    = sodium
     length             = 147.63780
     gap_model          = none
     assembly_pitch     = 4.72440
     bypass_fraction    = 0.0
-    total_power        = 6.001e6
+
 
 ########################################################################
 # ASSEMBLY DETAILS: Describe a group of assemblies
@@ -35,7 +58,6 @@
 # Can be repeated for as many assemblies as required by the user.
 
 [Assembly]
-
     [[fuel]]
         num_rings      = 10
         pin_pitch      = 0.2575
@@ -77,21 +99,5 @@
     [[ByPosition]]
         fuel = 1, 1, 1, outlet_temp=932.0
 
+
 ########################################################################
-# SETUP: Problem setup, user options, etc
-
-[Setup]
-    [[Units]]
-        temperature    = Fahrenheit
-        length         = in
-        mass_flow_rate = lb/hr
-    [[Options]]
-        axial_plane = -10.0, 15.748, 29.528, 400.0
-    [[Dump]]
-        all      = True
-        interval = 4.0
-
-
-[Materials]
-    [[sodium_se2anl_csv]]
-        from_file = sodium_se2anl.csv

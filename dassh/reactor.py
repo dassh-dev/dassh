@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-08
+date: 2021-06-11
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -169,7 +169,7 @@ class Reactor(LoggedClass):
 
     def _setup_options(self, inp, **kwargs):
         """Store user options from input/invocation"""
-        opt = inp.data['Setup']['Options']
+        # opt = inp.data['Setup']['Options']
 
         # Load defaults where they aren't be taken from input
         self._options = {}
@@ -179,32 +179,32 @@ class Reactor(LoggedClass):
         self._options['parallel'] = False
 
         # Process user input
-        self._options['axial_plane'] = opt['axial_plane']
-        self._options['se2geo'] = opt['se2geo']
+        self._options['axial_plane'] = inp.data['Setup']['axial_plane']
+        self._options['se2geo'] = inp.data['Setup']['se2geo']
 
         if 'write_output' in kwargs.keys():  # always True in __main__
             self._options['write_output'] = kwargs['write_output']
 
-        self._options['debug'] = opt['debug']
+        self._options['debug'] = inp.data['Setup']['debug']
         if 'debug' in kwargs.keys():
             self._options['debug'] = kwargs['debug']
 
-        self._options['axial_mesh_size'] = opt['axial_mesh_size']
+        self._options['axial_mesh_size'] = inp.data['Setup']['axial_mesh_size']
         if 'axial_mesh_size' in kwargs.keys():
             self._options['axial_mesh_size'] = kwargs['axial_mesh_size']
 
-        if opt['log_progress'] > 0:
+        if inp.data['Setup']['log_progress'] > 0:
             self._options['log_progress'] = True
-            self._options['log_interval'] = opt['log_progress']
+            self._options['log_interval'] = inp.data['Setup']['log_progress']
             self._stepcount = 0.0
 
         # Low-flow convection approximation
-        self._options['conv_approx'] = opt['conv_approx']
-        if opt['conv_approx_dz_cutoff'] is not None:
+        self._options['conv_approx'] = inp.data['Setup']['conv_approx']
+        if inp.data['Setup']['conv_approx_dz_cutoff'] is not None:
             self._options['conv_approx_dz_cutoff'] = \
-                opt['conv_approx_dz_cutoff']
+                inp.data['Setup']['conv_approx_dz_cutoff']
 
-        self._options['ebal'] = opt['calc_energy_balance']
+        self._options['ebal'] = inp.data['Setup']['calc_energy_balance']
         if 'calc_energy_balance' in kwargs.keys():
             self._options['ebal'] = kwargs['calc_energy_balance']
 
@@ -430,8 +430,10 @@ class Reactor(LoggedClass):
         asm_power, total_power = self._setup_scale_asm_power(
             asm_power,
             core_total_power,
-            inp.data['Core']['total_power'],
-            inp.data['Core']['power_scaling_factor'])
+            inp.data['Power']['total_power'],
+            inp.data['Power']['power_scaling_factor'])
+            # inp.data['Core']['total_power'],
+            # inp.data['Core']['power_scaling_factor'])
         self.total_power = total_power
         return asm_power
 
@@ -1493,11 +1495,13 @@ def calc_power_VARIANT(input_data, working_dir, t_pt=0):
         os.chdir(working_dir)
 
     # Identify VARPOW keys for fuel and coolant
-    fuel_id = _FUELS[input_data['Core']['fuel_material'].lower()]
+    fuel_type = input_data['Power']['ARC']['fuel_material'].lower()
+    fuel_id = _FUELS[fuel_type]
     if type(fuel_id) == dict:
-        fuel_id = fuel_id[input_data['Core']['fuel_alloy'].lower()]
+        alloy_type = input_data['Power']['ARC']['fuel_alloy'].lower()
+        fuel_id = fuel_id[alloy_type]
 
-    coolant_heating = input_data['Core']['coolant_heating']
+    coolant_heating = input_data['Power']['ARC']['coolant_heating']
     if coolant_heating is None:
         coolant_heating = input_data['Core']['coolant_material']
     if coolant_heating.lower() not in _COOLANTS.keys():
@@ -1519,12 +1523,12 @@ def calc_power_VARIANT(input_data, working_dir, t_pt=0):
         subprocess.call([path2varpow,
                          str(fuel_id),
                          str(cool_id),
-                         input_data['ARC']['pmatrx'][t_pt],
-                         input_data['ARC']['geodst'][t_pt],
-                         input_data['ARC']['ndxsrf'][t_pt],
-                         input_data['ARC']['znatdn'][t_pt],
-                         input_data['ARC']['nhflux'][t_pt],
-                         input_data['ARC']['ghflux'][t_pt]],
+                         input_data['Power']['ARC']['pmatrx'][t_pt],
+                         input_data['Power']['ARC']['geodst'][t_pt],
+                         input_data['Power']['ARC']['ndxsrf'][t_pt],
+                         input_data['Power']['ARC']['znatdn'][t_pt],
+                         input_data['Power']['ARC']['nhflux'][t_pt],
+                         input_data['Power']['ARC']['ghflux'][t_pt]],
                         stdout=f)
     subprocess.call(['mv', 'MaterialPower.out',
                      'varpow_MatPower.out'])
@@ -1570,8 +1574,8 @@ def import_power_VARIANT(data, w_dir, t_pt=0):
         os.path.join(w_dir, 'varpow_MatPower.out'),
         os.path.join(w_dir, 'varpow_MonoExp.out'),
         os.path.join(w_dir, 'VARPOW.out'),
-        os.path.join(w_dir, data['ARC']['geodst'][t_pt]),
-        model=data['Core']['power_model'])
+        os.path.join(w_dir, data['Power']['ARC']['geodst'][t_pt]),
+        model=data['Power']['ARC']['power_model'])
 
     # Raise negative power warning
     # negative_power = list(core_power.values())[0].negative_power

@@ -1,16 +1,41 @@
 ########################################################################
 # author: Milos Atz
-# date: 2021-01-29
+# date: 2021-06-10
 # comment: DASSH input example - bad custom material specification
 ########################################################################
-[ARC] # NEUTRONICS AND GEOMETRY FILES
-    pmatrx = ../test_data/single_asm_refl/PMATRX
-    geodst = ../test_data/single_asm_refl/GEODST
-    ndxsrf = ../test_data/single_asm_refl/NDXSRF
-    znatdn = ../test_data/single_asm_refl/ZNATDN
-    labels = ../test_data/single_asm_refl/LABELS
-    nhflux = ../test_data/single_asm_refl/NHFLUX
-    ghflux = ../test_data/single_asm_refl/GHFLUX
+
+[Setup]
+    [[Units]]
+        length      = cm
+        temperature = celsius
+
+
+########################################################################
+
+[Materials]
+    [[structure]]
+        thermal_conductivity = 6.308
+        heat_capacity        = 428.6, 0.1242
+        density              = '8000.0'
+        viscosity            = 'viscouscous'
+
+    [[coolant]]
+	from_file = custom_mat.csv
+
+########################################################################
+# POWER DISTRIBUTIONS
+
+[Power]
+    [[ARC]]
+        fuel_material      = metal
+        fuel_alloy         = zr
+        pmatrx = ../test_data/single_asm_refl/PMATRX
+        geodst = ../test_data/single_asm_refl/GEODST
+        ndxsrf = ../test_data/single_asm_refl/NDXSRF
+        znatdn = ../test_data/single_asm_refl/ZNATDN
+        labels = ../test_data/single_asm_refl/LABELS
+        nhflux = ../test_data/single_asm_refl/NHFLUX
+        ghflux = ../test_data/single_asm_refl/GHFLUX
 
 
 ########################################################################
@@ -18,17 +43,17 @@
 
 [Core]
     coolant_inlet_temp = 350.0
-    fuel_material      = metal
-    fuel_alloy         = zr
     coolant_material   = coolant
     length             = 375.0 
     assembly_pitch     = 12.0
 
 
 ########################################################################
-[Assembly] # ASSEMBLY DETAILS: Describe a group of assemblies
+# ASSEMBLY DETAILS: Describe a group of assemblies
 # NAME identifies a group of assemblies (e.g. "INNER_DRIVER")
 # Can be repeated for as many assemblies as required by the user.
+
+[Assembly]
     [[driver]]
         # Pin specifications
         num_rings      = 9
@@ -42,29 +67,14 @@
 
 
 ########################################################################
-[Assignment] # ASSIGN assemblies to positions in the core; assign fixed
+# ASSIGN assemblies to positions in the core; assign fixed
 # flow rates or temperature limits to one or multiple assemblies.
 # Indicate which assemblies must be grouped together in an orificing
 # calculation.
 
+[Assignment]
     [[ByPosition]]
-        driver =    1, 1, 1, FLOWRATE=15.0, GROUP=1
+        driver =    1, 1, 1, FLOWRATE=15.0
 
 
 ########################################################################
-[Setup]
-    [[Units]]
-        length      = cm
-        temperature = celsius
-
-
-########################################################################
-[Materials]
-    [[structure]]
-        thermal_conductivity = 6.308
-        heat_capacity        = 428.6, 0.1242
-        density              = '8000.0'
-        viscosity            = 'viscouscous'
-
-    [[coolant]]
-	from_file = custom_mat.csv

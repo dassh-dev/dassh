@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-09
+date: 2021-06-10
 author: matz
 Test the DASSH read_input module and DASSH_input object
 """
@@ -27,9 +27,12 @@ import dassh
 def test_bad_requested_axial_plane(testdir, caplog):
     """Test that DASSH catches bad axial planes"""
     with pytest.raises(SystemExit):
-        dassh.DASSH_Input(os.path.join(
-            testdir, 'test_inputs', 'x_bad_req_axial_plane.txt'))
-    error_msg = ('Setup // Options // axial_plane input must be of '
+        dassh.DASSH_Input(
+            os.path.join(testdir,
+                         'test_inputs',
+                         'x_bad_req_axial_plane.txt')
+        )
+    error_msg = ('Setup // axial_plane input must be of '
                  'type float (or list of float)')
     assert error_msg in caplog.text
 
@@ -37,13 +40,14 @@ def test_bad_requested_axial_plane(testdir, caplog):
 def test_requested_axial_plane(testdir, caplog):
     """Test that DASSH correctly processes good axial planes"""
     # Now try one that passes with warnings
-    inp = dassh.DASSH_Input(os.path.join(
-        testdir, 'test_inputs', 'input_req_axial_plane.txt'))
+    inp = dassh.DASSH_Input(
+        os.path.join(testdir, 'test_inputs', 'input_req_axial_plane.txt')
+    )
     assert 'ignoring -10.0' in caplog.text
     assert 'ignoring 400.0' in caplog.text
     ans = [40.0, 75.0]
     for i in range(len(ans)):
-        assert inp.data['Setup']['Options']['axial_plane'][i] == \
+        assert inp.data['Setup']['axial_plane'][i] == \
             pytest.approx(ans[i] / 100)
 
 
@@ -58,21 +62,21 @@ def test_missing_section(testdir, caplog):
 def test_inconsistent_tp(testdir, caplog):
     """Test DASSH input reader flags inconsistent input"""
     with pytest.raises(SystemExit):
-        dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-                                       'x_4c_inconsistent.txt'),
-                          empty4c=True)
-    assert 'Inconsistent' in caplog.text
-    # with pytest.raises(SystemExit):
-    #     dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-    #                                    'x_stgfctrs_inconsistent.txt'))
+        dassh.DASSH_Input(
+            os.path.join(testdir, 'test_inputs', 'x_4c_inconsistent.txt'),
+            empty4c=True
+        )
     assert 'Inconsistent' in caplog.text
 
 
 def test_negative_val(testdir, caplog):
     """Test DASSH input reader identifies negative values"""
     with pytest.raises(SystemExit):
-        dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-                                       'x_assembly_negative_val.txt'))
+        dassh.DASSH_Input(
+            os.path.join(testdir,
+                         'test_inputs',
+                         'x_assembly_negative_val.txt')
+        )
     assert 'Value must be greater than zero.' in caplog.text
 
 
@@ -88,8 +92,11 @@ def test_assembly_assignment_disagreement(testdir, caplog):
     """Test that DASSH input reader notices disagreement between
     Assembly and Assignment sections"""
     with pytest.raises(SystemExit):
-        dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-                                       'x_asm_assign_disagreement.txt'))
+        dassh.DASSH_Input(
+            os.path.join(testdir,
+                         'test_inputs',
+                         'x_asm_assign_disagreement.txt')
+        )
     print(caplog.text)
     # Check for warning
     msg = 'specified in "Assembly" input section but not assigned'
@@ -103,8 +110,11 @@ def test_assignment_bad_ring_position(testdir, caplog):
     """Test that DASSH input reader catches bad ring/position
     assignment"""
     with pytest.raises(SystemExit):
-        dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-                                       'x_assignment_ring_position.txt'))
+        dassh.DASSH_Input(
+            os.path.join(testdir,
+                         'test_inputs',
+                         'x_assignment_ring_position.txt')
+        )
     print(caplog.text)
     assert 'Error in ring 1 position 6 assignment: ' in caplog.text
 
@@ -112,16 +122,18 @@ def test_assignment_bad_ring_position(testdir, caplog):
 def test_missing_4c(testdir, caplog):
     """Test DASSH input reader notices missing required 4C file input"""
     with pytest.raises(SystemExit):
-        dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-                                       'x_4c_missing.txt'))
+        dassh.DASSH_Input(
+            os.path.join(testdir, 'test_inputs', 'x_4c_missing.txt')
+        )
     assert all([s in caplog.text for s in ['Path ', 'does not exist']])
 
 
 def test_bad_units(testdir, caplog):
     """Test that bad units raise error"""
     with pytest.raises(SystemExit):
-        dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-                                       'x_bad_units.txt'))
+        dassh.DASSH_Input(
+            os.path.join(testdir, 'test_inputs', 'x_bad_units.txt')
+        )
     msg = 'Requested temperature unit "selsius" not supported'
     assert msg in caplog.text
 
@@ -129,8 +141,9 @@ def test_bad_units(testdir, caplog):
 def test_bad_gap_model(testdir, caplog):
     """Test that bad core specs raise error"""
     with pytest.raises(SystemExit):
-        dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-                                       'x_bad_gap_model.txt'))
+        dassh.DASSH_Input(
+            os.path.join(testdir, 'test_inputs', 'x_bad_gap_model.txt')
+        )
     print(caplog.text)
     # assert 'inter-assembly gap model' in caplog.text
     assert 'gap_model' in caplog.text
@@ -197,9 +210,8 @@ def test_convection_factor(testdir, caplog):
 
     # Failing case 1: unknown entry
     with pytest.raises(SystemExit):
-        inp = dassh.DASSH_Input(
-            os.path.join(testdir, 'test_inputs',
-                         'x_ur_conv_factor1.txt'),
+        dassh.DASSH_Input(
+            os.path.join(testdir, 'test_inputs', 'x_ur_conv_factor1.txt'),
             empty4c=True)
     msg = 'do not understand "convection_factor" input - '
     ans = [x for x in caplog.text.split('\n') if x not in ('\n', '')][-1]
@@ -207,9 +219,8 @@ def test_convection_factor(testdir, caplog):
 
     # Failing case 2: improper use of "calculate"
     with pytest.raises(SystemExit):
-        inp = dassh.DASSH_Input(
-            os.path.join(testdir, 'test_inputs',
-                         'x_ur_conv_factor2.txt'),
+        dassh.DASSH_Input(
+            os.path.join(testdir, 'test_inputs', 'x_ur_conv_factor2.txt'),
             empty4c=True)
     msg = ('"convection_factor" key in section "Assembly, control, '
            'AxialRegion, upper_cr" failed validation; check that '
@@ -219,9 +230,8 @@ def test_convection_factor(testdir, caplog):
 
     # Failing case 3: Float less than or equal to zero
     with pytest.raises(SystemExit):
-        inp = dassh.DASSH_Input(
-            os.path.join(testdir, 'test_inputs',
-                         'x_ur_conv_factor3.txt'),
+        dassh.DASSH_Input(
+            os.path.join(testdir, 'test_inputs', 'x_ur_conv_factor3.txt'),
             empty4c=True)
     msg = ('"convection_factor" key in section "Assembly, control, '
            'AxialRegion, upper_cr" failed validation; check that '
@@ -234,8 +244,9 @@ def test_reactor_inactive_asm_too_many(testdir, caplog):
     """Test that Reactor instantiation fails if user tries to specify
     too many assemblies"""
     with pytest.raises(SystemExit):
-        dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-                                       'x_input_17a_silly.txt'))
+        dassh.DASSH_Input(
+            os.path.join(testdir, 'test_inputs', 'x_input_17a_silly.txt')
+        )
     assert 'More assembly positions specified in input ' in caplog.text
 
 
@@ -243,16 +254,17 @@ def test_reactor_inactive_asm_position(testdir, caplog):
     """Test that Reactor instantiation fails if user tries to put an
     assembly in an inactive position"""
     with pytest.raises(SystemExit):
-        dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-                                       'x_input_16a_inactive.txt'))
-
+        dassh.DASSH_Input(
+            os.path.join(testdir, 'test_inputs', 'x_input_16a_inactive.txt')
+        )
     assert 'assignment does not match region assignment' in caplog.text
     assert 'Assembly: 20; Loc: ((4, 1))' in caplog.text
 
     # Should have no failure with the following, which uses the same
     # GEODST but appropriately assigns assemblies
-    dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-                                   'input_16a_silly.txt'))
+    dassh.DASSH_Input(
+        os.path.join(testdir, 'test_inputs', 'input_16a_silly.txt')
+    )
 
 
 # def test_regionlist_labels_agreement(testdir, caplog):
@@ -283,77 +295,74 @@ def test_reactor_inactive_asm_position(testdir, caplog):
 
 def test_single_tp_oxide(testdir):
     """Test handling of input with oxide fuel"""
-    inp = dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-                                         'input_oxide_fuel.txt'),
-                            empty4c=True)
+    inp = dassh.DASSH_Input(
+        os.path.join(testdir, 'test_inputs', 'input_oxide_fuel.txt'),
+        empty4c=True
+    )
     print(inp.data['Assignment']['ByPosition'])
     assert hasattr(inp, 'data')
-    # assert all([x in inp.data.keys() for
-    #             x in ['Neutronics', 'Core', 'Assembly']])
-    assert all([x in inp.data.keys() for
-                x in ['ARC', 'Core', 'Assembly']])
+    assert all([x in inp.data.keys() for x in ['Power', 'Core', 'Assembly']])
 
 
 def test_undefined_material(testdir, caplog):
     """Test handling of input with undefined material"""
     with pytest.raises(SystemExit):
-        inp = dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-                                             'x_undefined_mat.txt'),
-                                empty4c=True)
+        dassh.DASSH_Input(
+            os.path.join(testdir, 'test_inputs', 'x_undefined_mat.txt'),
+            empty4c=True
+        )
     assert 'Cannot find properties for material argonne' in caplog.text
 
 
 def test_nonfloat_matspec(testdir, caplog):
     """Test handling of input with undefined material"""
     with pytest.raises(SystemExit):
-        inp = dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-                                             'x_nonfloat_matspec.txt'),
-                                empty4c=True)
+        dassh.DASSH_Input(
+            os.path.join(testdir, 'test_inputs', 'x_nonfloat_matspec.txt'),
+            empty4c=True
+        )
     assert 'must be list of floats' in caplog.text
     assert 'viscosity' in caplog.text
 
 
 def test_single_tp(testdir):
     """Test handling of correct single time point input"""
-    inp = dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-                                         'input_single_tp.txt'),
-                            empty4c=True)
+    inp = dassh.DASSH_Input(
+        os.path.join(testdir, 'test_inputs', 'input_single_tp.txt'),
+        empty4c=True
+    )
     print(inp.data['Assignment']['ByPosition'])
-    # assert 1 == 2
     assert inp.timepoints == 1
     assert hasattr(inp, 'data')
-    # assert all([x in inp.data.keys() for
-    #             x in ['Neutronics', 'Core', 'Assembly']])
-    assert all([x in inp.data.keys() for
-                x in ['ARC', 'Core', 'Assembly']])
+    assert all([x in inp.data.keys() for x in ['Power', 'Core', 'Assembly']])
 
 
 def test_mult_tp(testdir):
     """Test handling of correct multi- time point input"""
-    inp = dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-                                         'input_multiple_tp.txt'),
-                            empty4c=True)
+    inp = dassh.DASSH_Input(
+        os.path.join(testdir, 'test_inputs', 'input_multiple_tp.txt'),
+        empty4c=True
+    )
     assert inp.timepoints > 1
     assert hasattr(inp, 'data')
-    # assert all([x in inp.data.keys() for
-    #             x in ['Neutronics', 'Core', 'Assembly']])
-    assert all([x in inp.data.keys() for
-                x in ['ARC', 'Core', 'Assembly']])
+    assert all([x in inp.data.keys() for x in ['Power', 'Core', 'Assembly']])
 
 
 def test_input_custom_material(testdir, caplog):
     """Test that custom material correlations can be read"""
-    inp = dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-                                         'input_custom_mat.txt'),
-                            empty4c=True)
+    dassh.DASSH_Input(
+        os.path.join(testdir, 'test_inputs', 'input_custom_mat.txt'),
+        empty4c=True
+    )
 
 
 def test_bad_core_len(testdir, caplog):
     """Test handling of unrodded axial regions"""
     # This one fails because the linked GEODST does not match
     with pytest.raises(SystemExit):
-        inp = dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-                                             'x_bad_core_len.txt'))
+        dassh.DASSH_Input(
+            os.path.join(testdir, 'test_inputs', 'x_bad_core_len.txt')
+        )
     assert "Maximum z-mesh in GEODST file" in caplog.text
 
 
@@ -361,15 +370,17 @@ def test_bad_asm_pitch(testdir, caplog):
     """Test handling of unrodded axial regions"""
     # This one fails because the linked GEODST does not match
     with pytest.raises(SystemExit):
-        inp = dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-                                             'x_bad_asm_pitch.txt'))
+        dassh.DASSH_Input(
+            os.path.join(testdir, 'test_inputs', 'x_bad_asm_pitch.txt')
+        )
     assert "Assembly pitch in GEODST file" in caplog.text
 
 
 def test_proper_axial_reg(testdir):
     """This one passes because it matches the GEODST file"""
-    inp = dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-                                         'input_single_asm.txt'))
+    inp = dassh.DASSH_Input(
+        os.path.join(testdir, 'test_inputs', 'input_single_asm.txt')
+    )
     assert inp.data['Assembly']['fuel']['AxialRegion']['rods']['z_lo'] == \
         pytest.approx(1.2700)
     assert inp.data['Assembly']['fuel']['AxialRegion']['rods']['z_hi'] == \
@@ -379,8 +390,9 @@ def test_proper_axial_reg(testdir):
 def test_single_axial_reg(testdir):
     """Test that I can use just one simple axial region below the rod
     bundle (rather than two, one above and one below)"""
-    inp = dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-                                         'input_one_axial_reg.txt'))
+    inp = dassh.DASSH_Input(
+        os.path.join(testdir, 'test_inputs', 'input_one_axial_reg.txt')
+    )
     assert len(inp.data['Assembly']['driver']['AxialRegion']) == 2
 
 

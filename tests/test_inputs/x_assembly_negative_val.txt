@@ -1,16 +1,21 @@
 ########################################################################
 # author: Milos Atz
-# date: 2021-01-29
+# date: 2021-06-10
 # comment: DASSH input example - negative input
 ########################################################################
-[ARC] # NEUTRONICS AND GEOMETRY FILES
-    pmatrx = ../test_data/empty_cccc/PMATRX
-    geodst = ../test_data/empty_cccc/GEODST1
-    ndxsrf = ../test_data/empty_cccc/NDXSRF1
-    znatdn = ../test_data/empty_cccc/ZNATDN1
-    labels = ../test_data/empty_cccc/LABELS1
-    nhflux = ../test_data/empty_cccc/NHFLUX1
-    ghflux = ../test_data/empty_cccc/GHFLUX1
+# POWER DISTRIBUTIONS
+
+[Power]
+    [[ARC]]
+        fuel_material = metal
+        fuel_alloy    = zr
+        pmatrx = ../test_data/empty_cccc/PMATRX
+        geodst = ../test_data/empty_cccc/GEODST1
+        ndxsrf = ../test_data/empty_cccc/NDXSRF1
+        znatdn = ../test_data/empty_cccc/ZNATDN1
+        labels = ../test_data/empty_cccc/LABELS1
+        nhflux = ../test_data/empty_cccc/NHFLUX1
+        ghflux = ../test_data/empty_cccc/GHFLUX1
 
 
 ########################################################################
@@ -21,15 +26,14 @@
     coolant_material   = sodium
     length             = 375.0
     assembly_pitch     = 12.0
-    fuel_material      = metal
-    fuel_alloy         = zr
 
 
 ########################################################################
-[Assembly] # ASSEMBLY DETAILS: Describe a group of assemblies
+# ASSEMBLY DETAILS: Describe a group of assemblies
 # NAME identifies a group of assemblies (e.g. "INNER_DRIVER")
 # Can be repeated for as many assemblies as required by the user.
 
+[Assembly]
     [[driver]]
         num_rings      = 9
         pin_pitch      = -0.750  # uh oh look who's negative
@@ -42,10 +46,14 @@
 
 
 ########################################################################
-[Assignment] # ASSIGN assemblies to positions in the core; assign fixed
+# ASSIGN assemblies to positions in the core; assign fixed
 # flow rates or temperature limits to one or multiple assemblies.
 # Indicate which assemblies must be grouped together in an orificing
 # calculation.
-    
+
+[Assignment]    
     [[ByPosition]]
         driver = 1, 1, 1, OUTLET_TEMPERATURE, 350.0
+
+
+########################################################################

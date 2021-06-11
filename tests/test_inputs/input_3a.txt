@@ -1,31 +1,35 @@
 ########################################################################
 # author: Milos Atz
-# date: 2021-02-22
+# date: 2021-06-10
 # comment: DASSH input example (2 rings, but only 3 assemblies)
 ########################################################################
 # SETUP: Problem setup, user options, etc
 
 [Setup]
-
+    calc_energy_balance = True
     [[Units]]
         temperature    = Celsius
         length         = cm
         mass_flow_rate = kg/s
-    [[Options]]
-        calc_energy_balance = True
 
 
 ########################################################################
-# NEUTRONICS AND GEOMETRY FILES
+ # POWER DISTRIBUTION
 
-[ARC]
-    pmatrx = ../test_data/seven_asm_vac/PMATRX
-    geodst = ../test_data/seven_asm_vac/GEODST
-    ndxsrf = ../test_data/seven_asm_vac/NDXSRF
-    znatdn = ../test_data/seven_asm_vac/ZNATDN
-    labels = ../test_data/seven_asm_vac/LABELS
-    nhflux = ../test_data/seven_asm_vac/NHFLUX
-    ghflux = ../test_data/seven_asm_vac/GHFLUX
+[Power]
+    total_power = 1.5e6
+    [[ARC]]
+        fuel_material   = metal
+        fuel_alloy      = zr
+        coolant_heating = sodium
+        power_model     = pin_only
+        pmatrx = ../test_data/seven_asm_vac/PMATRX
+        geodst = ../test_data/seven_asm_vac/GEODST
+        ndxsrf = ../test_data/seven_asm_vac/NDXSRF
+        znatdn = ../test_data/seven_asm_vac/ZNATDN
+        labels = ../test_data/seven_asm_vac/LABELS
+        nhflux = ../test_data/seven_asm_vac/NHFLUX
+        ghflux = ../test_data/seven_asm_vac/GHFLUX
 
 
 ########################################################################
@@ -33,18 +37,13 @@
 
 [Core]
     coolant_inlet_temp   = 350.0
-    fuel_material        = metal
-    fuel_alloy           = zr
-    coolant_heating      = sodium
     coolant_material     = sodium_se2anl_425
     length               = 375.0
     assembly_pitch       = 12.0
     # bypass_fraction      = 0.005
     # gap_model            = no_flow
     gap_model            = flow
-    total_power          = 1.5e6
     bypass_fraction      = 0.05
-    power_model          = pin_only
 
 
 ########################################################################

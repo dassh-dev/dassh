@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-08
+date: 2021-06-10
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -36,6 +36,7 @@ from dassh import py4c
 
 
 _ROOT = os.path.dirname(os.path.abspath(__file__))
+_ARC = ['pmatrx', 'geodst', 'ndxsrf', 'znatdn', 'labels', 'nhflux', 'ghflux']
 module_logger = logging.getLogger('dassh.input')
 
 
@@ -539,11 +540,13 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
 
         # Coerce non-list input to list with the proper number of tpts
         self.timepoints = self.get_timepoints(infile)
-        for k in ['ARC', 'Power']:
-            for kk in self.data[k]:
-                if not isinstance(self.data[k][kk], list):
-                    self.data[k][kk] = \
-                        [self.data[k][kk]] * self.timepoints
+        if not isinstance(self.data['Power']['user_power'], list):
+            self.data['Power']['user_power'] = \
+                [self.data['Power']['user_power']] * self.timepoints
+        for f in _ARC:
+            if not isinstance(self.data['Power']['ARC'][f], list):
+                self.data['Power']['ARC'][f] = \
+                    [self.data['Power']['ARC'][f]] * self.timepoints
 
         # Import and run checks dimensionality of 4C files
         # for tpt in range(0, self.timepoints):
@@ -658,24 +661,24 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         # Read from the input file
         txt = open(inputfile).read()
         txtlines = txt.splitlines()
-        for sec in ['Assembly', 'Core', 'Assignment']:
+        for sec in ['Assembly', 'Core', 'Assignment', 'Power']:
             tmp = [i for i, s in enumerate(txtlines) if f'[{sec}]' in s]
             if not len(tmp) == 1:  # either no entries or more than one
                 # raise OSError('Missing/incorrect input section: ' + sec)
                 self.log('error', f'Missing/incorrect section: {sec}')
-        # Check whether any power distribution section present
-        tmp = [False, False]
-        sec = ['ARC', 'Power']
-        for i in range(2):
-            if f'[{sec[i]}]' in txt:
-                tmp[i] = True
-        if not any(tmp):
-            self.log('error', ('Missing power distribution section: '
-                               '(need [ARC] and/or [Power]'))
+        # # Check whether any power distribution section present
+        # tmp = [False, False]
+        # sec = ['ARC', 'Power']
+        # for i in range(2):
+        #     if f'[{sec[i]}]' in txt:
+        #         tmp[i] = True
+        # if not any(tmp):
+        #     self.log('error', ('Missing power distribution section: '
+        #                        '(need [ARC] and/or [Power]'))
 
     def check_configobj_sections(self):
         """Check the data structure contains the mandatory sections"""
-        for sec in ['Core', 'Assembly']:
+        for sec in ['Core', 'Assembly', 'Power']:
             if sec not in self.data.keys():
                 # raise OSError('Missing/incorrect input section: ' + sec)
                 self.log('error', f'Missing/incorrect section: {sec}')
@@ -688,75 +691,81 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
             self.log('error', ('Empty power distribution sections: '
                                '(need [ARC] and/or [Power]'))
 
+    def determine_power_input(self):
+        """Confirm input has appropriate power specification"""
+        incl = [False, False]
+        # Always will have ARC subsection; check that input has all req files
+        tmp = []
+        for k in _ARC:
+            try:
+                if self.data['Power']['ARC'][k][0] is not None:
+                    tmp.append(True)
+                else:
+                    tmp.append(False)
+            except TypeError:
+                if self.data['Power']['ARC'][k] is not None:
+                    tmp.append(True)
+                else:
+                    tmp.append(False)
+        if all(tmp):
+            incl[0] = True
+        # If user power is defined, count it
+        if self.data['Power'].get('user_power') is not None:
+            incl[1] = True
+        return incl
+
     def check_4c_input(self):
         """Check existence and consistency of all 4C files."""
-        for ft in self.data['ARC'].keys():  # Loop over file type
+        # for ft in self.data['ARC'].keys():  # Loop over file type
+        for ft in _ARC:  # Loop over file type
             # If None, skip; already screened for the failure if all
             # are None and no power is defined.
-            if self.data['ARC'][ft] is None:
+            if self.data['Power']['ARC'][ft] is None:
                 continue
             # Single value entries, not list
-            elif isinstance(self.data['ARC'][ft], list):
+            elif isinstance(self.data['Power']['ARC'][ft], list):
                 # Note: type checking okay here because I'm expecting
                 # values from ConfigObj that are either list or str
-                for i in range(len(self.data['ARC'][ft])):
-                    fp = self.data['ARC'][ft][i]
+                for i in range(len(self.data['Power']['ARC'][ft])):
+                    fp = self.data['Power']['ARC'][ft][i]
                     if not os.path.exists(
                         os.path.abspath(
                             os.path.join(self.path, fp))):
                         # raise OSError('Path ' + fp + ' does not exist')
                         self.log('error', f'Path {fp} does not exist')
                     # Set as absolute path
-                    self.data['ARC'][ft][i] = \
+                    self.data['Power']['ARC'][ft][i] = \
                         os.path.abspath(os.path.join(self.path, fp))
 
             else:  # Single value entry, only check file existence
-                fp = self.data['ARC'][ft]
+                fp = self.data['Power']['ARC'][ft]
                 if not os.path.exists(
                     os.path.abspath(
                         os.path.join(self.path, fp))):
                     # raise OSError('Path ' + fp + ' does not exist')
                     self.log('error', f'Path {fp} does not exist')
                 # Set as absolute path
-                self.data['ARC'][ft] = \
+                self.data['Power']['ARC'][ft] = \
                     os.path.abspath(os.path.join(self.path, fp))
 
-    def determine_power_input(self):
-        """Confirm input has appropriate power specification"""
-        incl = [False, False]
-        sec = ['ARC', 'Power']
-        for i in range(2):
-            tmp = []
-            # if all(self.data[sec[i]][k] for k in self.data[sec[i]].keys()):
-            for k in self.data[sec[i]].keys():
-                try:
-                    if self.data[sec[i]][k][0] is not None:
-                        tmp.append(True)
-                    else:
-                        tmp.append(False)
-                except TypeError:
-                    if self.data[sec[i]][k] is not None:
-                        tmp.append(True)
-                    else:
-                        tmp.append(False)
-                # if not any(None in self.data[sec[i]][k]):
-                #     incl[i] = True
-                #     break
-            if all(tmp):
-                incl[i] = True
-            # if not any(None in self.data[sec[i]][k]
-            #            for k in self.data[sec[i]].keys()):
-            #     incl[i] = True
-        return incl
+    def check_ARC_fuel_specifications(self):
+        """Check fuel material and alloy specification for VARPOW"""
+        if (self.data['Power']['ARC']['fuel_material'].lower() not in
+                ['metal', 'oxide', 'nitride']):
+            self.log('error', ('\"fuel_material\" input must be one of '
+                               '{"metal", "oxide", "nitride"}'))
+
+        if self.data['Power']['ARC']['fuel_alloy'] is not None:
+            if (self.data['Power']['ARC']['fuel_alloy'].lower() not in
+                    ['zr', 'zirconium', 'al', 'aluminum']):
+                self.log('error', ('\"fuel_alloy\" input must be '
+                                   'either "zr" or "al"'))
 
     def check_user_power(self):
         """Confirm user-spec power dist input file exists, if given"""
         if not self._user_power:
             return
-        # print(self.data['Power']['user_power'])
-        # print(self.determine_power_input())
-        # print(self.data['Power'])
-        # print(self.data['ARC'])
+
         for i in range(len(self.data['Power']['user_power'])):
             abs_fp = os.path.abspath(
                 os.path.join(self.path,
@@ -1157,10 +1166,10 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
 
     def check_assignment_against_geodst(self, empty4c=False):
         """Make sure all assigned positions are active in GEODST"""
-        if self.data['ARC']['geodst'] is None or empty4c:
+        if self.data['Power']['ARC']['geodst'] is None or empty4c:
             return
 
-        for g in self.data['ARC']['geodst']:
+        for g in self.data['Power']['ARC']['geodst']:
             geodst = dassh.py4c.geodst.GEODST(g)
 
             msg = ('More assembly positions specified in input file '
@@ -1290,7 +1299,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
 
     def check_core_specifications(self):
         """Check the values specified in the Core section"""
-        for k in ['length', 'assembly_pitch', 'power_scaling_factor']:
+        for k in ['length', 'assembly_pitch']:
             self._check_nonzero(self.data['Core'][k], k)
 
         if self.data['Core']['gap_model'] == 'none':
@@ -1301,17 +1310,6 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
             self.log('error', ('\"bypass_fraction\" input must be '
                                'greater than 0 to use '
                                '\"gap_model=flow\"'))
-
-        if (self.data['Core']['fuel_material'].lower() not in
-                ['metal', 'oxide', 'nitride']):
-            self.log('error', ('\"fuel_material\" input must be one of '
-                               '{"metal", "oxide", "nitride"}'))
-
-        if self.data['Core']['fuel_alloy'] is not None:
-            if (self.data['Core']['fuel_alloy'].lower() not in
-                    ['zr', 'zirconium', 'al', 'aluminum']):
-                self.log('error', ('\"fuel_alloy\" input must be '
-                                   'either "zr" or "al"'))
 
     def check_user_spec_materials(self):
         """Check that material properties specifications make sense"""
@@ -1346,14 +1344,12 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
 
     def check_axial_plane_req(self):
         """Check that user made appropriate requests for axial planes"""
-        if self.data['Setup']['Options']['axial_plane'] is not None:
+        if self.data['Setup']['axial_plane'] is not None:
             try:
-                axial = [float(x) for x in
-                         self.data['Setup']['Options']['axial_plane']]
+                axial = [float(x) for x in self.data['Setup']['axial_plane']]
             except ValueError:
-                self.log('error', 'Setup // Options // axial_plane '
-                                  'input must be of type float (or '
-                                  'list of float)')
+                self.log('error', 'Setup // axial_plane input must be of '
+                                  'type float (or list of float)')
 
             # At this point, we've either passed the try or created
             # an error, so let's make sure that none of the values in
@@ -1363,9 +1359,8 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
             for x in axial:
                 if (x > self.data['Core']['length'] or x < 0):
                     self.log('warning',
-                             'Setup // Options // axial_plane input '
-                             'must be greater than 0 and less than '
-                             ' core length; ignoring ' + str(x))
+                             'Setup // axial_plane input must be greater than '
+                             '0 and less than core length; ignoring ' + str(x))
                 else:
                     new_axial.append(x)
 
@@ -1373,7 +1368,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
             new_axial = list(set(new_axial))
 
             # Now replace the old list with the new, clean one
-            self.data['Setup']['Options']['axial_plane'] = new_axial
+            self.data['Setup']['axial_plane'] = new_axial
 
     def check_dump(self):
         """Check specifications for dumping temperatures"""
@@ -1551,9 +1546,9 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         # Open all geodst files
         geodst_files = []
         geodst = []
-        for i in range(len(self.data['ARC']['geodst'])):
+        for i in range(len(self.data['Power']['ARC']['geodst'])):
             geodst_files.append(os.path.join(self.path,
-                                self.data['ARC']['geodst'][i]))
+                                self.data['Power']['ARC']['geodst'][i]))
             geodst.append(py4c.geodst.GEODST(geodst_files[i]))
 
         # Find z_boundaries in the first GEODST file
@@ -1595,9 +1590,9 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         # Open all geodst files
         geodst_files = []
         geodst = []
-        for i in range(len(self.data['ARC']['geodst'])):
+        for i in range(len(self.data['Power']['ARC']['geodst'])):
             geodst_files.append(os.path.join(self.path,
-                                self.data['ARC']['geodst'][i]))
+                                self.data['Power']['ARC']['geodst'][i]))
             geodst.append(py4c.geodst.GEODST(geodst_files[i]))
 
         # Check assembly pitch in all files
@@ -1860,15 +1855,15 @@ def convert_length(data):
                 conv(data['Assembly'][a]['FuelModel']['fcgap_thickness'])
 
     # Convert requested axial plane solves
-    if data['Setup']['Options']['axial_plane'] is not None:
-        for i in range(len(data['Setup']['Options']['axial_plane'])):
-            data['Setup']['Options']['axial_plane'][i] = \
-                conv(data['Setup']['Options']['axial_plane'][i])
+    if data['Setup']['axial_plane'] is not None:
+        for i in range(len(data['Setup']['axial_plane'])):
+            data['Setup']['axial_plane'][i] = \
+                conv(data['Setup']['axial_plane'][i])
 
     # Convert axial step size, if given
-    if data['Setup']['Options']['axial_mesh_size'] is not None:
-        data['Setup']['Options']['axial_mesh_size'] = \
-            conv(data['Setup']['Options']['axial_mesh_size'])
+    if data['Setup']['axial_mesh_size'] is not None:
+        data['Setup']['axial_mesh_size'] = \
+            conv(data['Setup']['axial_mesh_size'])
 
     # Convert data dumping interval, if given
     if data['Setup']['Dump']['interval'] is not None:
@@ -1876,9 +1871,9 @@ def convert_length(data):
             conv(data['Setup']['Dump']['interval'])
 
     # Convert duct approx cutoff
-    k = 'conv_approx_dz_cutoff'  # it's a long one!
-    if data['Setup']['Options'][k] is not None:
-        data['Setup']['Options'][k] = conv(data['Setup']['Options'][k])
+    if data['Setup']['conv_approx_dz_cutoff'] is not None:
+        data['Setup']['conv_approx_dz_cutoff'] = \
+            conv(data['Setup']['conv_approx_dz_cutoff'])
 
     return data
 

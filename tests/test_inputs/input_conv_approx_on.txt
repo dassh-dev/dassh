@@ -1,34 +1,49 @@
 ########################################################################
 # author: Milos Atz
-# date: 2021-01-29
-# comment: DASSH input example (low flow approximation enabled)
+# date: 2021-06-10
+# comment: DASSH input example (low flow approximation disabled)
 ########################################################################
- # NEUTRONICS AND GEOMETRY FILES
+# SETUP: Problem setup, user options, etc
 
-[ARC]
-    pmatrx = ../../../test_data/single_asm_vac/PMATRX
-    geodst = ../../../test_data/single_asm_vac/GEODST
-    ndxsrf = ../../../test_data/single_asm_vac/NDXSRF
-    znatdn = ../../../test_data/single_asm_vac/ZNATDN
-    labels = ../../../test_data/single_asm_vac/LABELS
-    nhflux = ../../../test_data/single_asm_vac/NHFLUX
-    ghflux = ../../../test_data/single_asm_vac/GHFLUX
+[Setup]
+    conv_approx = True
+    [[Dump]]
+        coolant = True
+        interval = 50.0
+    [[Units]]
+        temperature = Celsius
+        length      = cm
+
+
+########################################################################
+# POWER DISTRIBUTIONS
+
+[Power]
+    total_power = 2.0e5
+    [[ARC]]
+        fuel_material   = metal
+        fuel_alloy      = zr
+        coolant_heating = sodium
+        power_model     = distribute
+        pmatrx = ../../../test_data/single_asm_vac/PMATRX
+        geodst = ../../../test_data/single_asm_vac/GEODST
+        ndxsrf = ../../../test_data/single_asm_vac/NDXSRF
+        znatdn = ../../../test_data/single_asm_vac/ZNATDN
+        labels = ../../../test_data/single_asm_vac/LABELS
+        nhflux = ../../../test_data/single_asm_vac/NHFLUX
+        ghflux = ../../../test_data/single_asm_vac/GHFLUX
+
 
 ########################################################################
 # CORE DETAILS: Describe characteristics of the reactor core
 
 [Core]
     coolant_inlet_temp = 350.0
-    fuel_material      = metal
-    fuel_alloy         = zr
     coolant_material   = sodium_se2anl_425
-    coolant_heating    = sodium
     length             = 375.0
     gap_model          = none
     assembly_pitch     = 12.0
     bypass_fraction    = 0.0
-    total_power        = 2.0e5
-    power_model        = distribute
 
 
 ########################################################################
@@ -37,7 +52,6 @@
 # Can be repeated for as many assemblies as required by the user.
 
 [Assembly]
-
     [[fuel]]
         num_rings       = 9
         pin_pitch       = 0.750
@@ -65,16 +79,5 @@
     [[ByPosition]]
         fuel = 1, 1, 1, outlet_temp=500.0
 
+
 ########################################################################
-# SETUP: Problem setup, user options, etc
-
-[Setup]
-    [[Units]]
-        temperature = Celsius
-        length = cm
-    [[Options]]
-	conv_approx = True
-    [[Dump]]
-        coolant = True
-        interval = 50.0
-

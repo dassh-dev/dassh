@@ -1,18 +1,33 @@
 ########################################################################
 # author: Milos Atz
-# date: 2021-01-29
+# date: 2021-06-11
 # comment: DASSH input example (all assemblies unrodded)
 ########################################################################
- # NEUTRONICS AND GEOMETRY FILES
+# SETUP: Problem setup, user options, etc
 
-[ARC]
-    pmatrx = ../test_data/seven_asm_vac/PMATRX
-    geodst = ../test_data/seven_asm_vac/GEODST
-    ndxsrf = ../test_data/seven_asm_vac/NDXSRF
-    znatdn = ../test_data/seven_asm_vac/ZNATDN
-    labels = ../test_data/seven_asm_vac/LABELS
-    nhflux = ../test_data/seven_asm_vac/NHFLUX
-    ghflux = ../test_data/seven_asm_vac/GHFLUX
+[Setup]
+    [[Units]]
+        temperature = Celsius
+        length      = cm
+        flowrate    = kg/s
+
+
+########################################################################
+# POWER DISTRIBUTION
+
+[Power]
+    power_scaling_factor = 0.1
+    [[ARC]]
+        fuel_material   = metal
+        fuel_alloy      = zr
+        coolant_heating = sodium
+        pmatrx = ../test_data/seven_asm_vac/PMATRX
+        geodst = ../test_data/seven_asm_vac/GEODST
+        ndxsrf = ../test_data/seven_asm_vac/NDXSRF
+        znatdn = ../test_data/seven_asm_vac/ZNATDN
+        labels = ../test_data/seven_asm_vac/LABELS
+        nhflux = ../test_data/seven_asm_vac/NHFLUX
+        ghflux = ../test_data/seven_asm_vac/GHFLUX
 
 
 ########################################################################
@@ -20,15 +35,11 @@
 
 [Core]
     coolant_inlet_temp   = 350.0
-    fuel_material        = metal
-    fuel_alloy           = zr
     coolant_material     = sodium_se2anl_425
-    coolant_heating      = sodium
     length               = 375.0
     assembly_pitch       = 12.0
     bypass_fraction      = 0.005
     gap_model            = flow
-    power_scaling_factor = 0.1
 
 
 ########################################################################
@@ -73,12 +84,3 @@
         fuel      = 2, 1, 6, DELTA_TEMP, 150.0
 
 ########################################################################
-# SETUP: Problem setup, user options, etc
-
-[Setup]
-
-    [[Units]]
-        temperature = Celsius
-        length      = cm
-        flowrate    = kg/s
-

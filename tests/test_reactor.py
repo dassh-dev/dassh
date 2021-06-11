@@ -193,7 +193,7 @@ def test_asm_ordering(testdir):
 
     inputfile = os.path.join(testdir,
                              'test_inputs',
-                             'input_assignment_dif3d.txt')
+                             'input_assignment_check.txt')
     outpath = os.path.join(testdir, 'test_results', 'indexing', 'dif3d')
     inp = dassh.DASSH_Input(inputfile)
     r = dassh.Reactor(inp, path=outpath)

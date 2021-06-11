@@ -1,18 +1,32 @@
 ########################################################################
 # author: Milos Atz
-# date: 2021-02-11
+# date: 2021-06-10
 # comment: DASSH input example (37 asm positions, no asm in corners)
 ########################################################################
- # NEUTRONICS AND GEOMETRY FILES
+# SETUP: Problem setup, user options, etc
 
-[ARC]
-    pmatrx = ../test_data/empty_cccc/PMATRX
-    geodst = ../test_data/empty_cccc/GEODST1
-    ndxsrf = ../test_data/empty_cccc/NDXSRF1
-    znatdn = ../test_data/empty_cccc/ZNATDN1
-    labels = ../test_data/empty_cccc/LABELS1
-    nhflux = ../test_data/empty_cccc/NHFLUX1
-    ghflux = ../test_data/empty_cccc/GHFLUX1
+[Setup]
+    [[Units]]
+        temperature    = Celsius
+        length         = cm
+        mass_flow_rate = kg/s
+
+
+########################################################################
+# POWER DISTRIBUTION
+
+[Power]
+    power_scaling_factor = 0.1
+    [[ARC]]
+        fuel_material    = metal
+        fuel_alloy       = zr
+        pmatrx = ../test_data/empty_cccc/PMATRX
+        geodst = ../test_data/empty_cccc/GEODST1
+        ndxsrf = ../test_data/empty_cccc/NDXSRF1
+        znatdn = ../test_data/empty_cccc/ZNATDN1
+        labels = ../test_data/empty_cccc/LABELS1
+        nhflux = ../test_data/empty_cccc/NHFLUX1
+        ghflux = ../test_data/empty_cccc/GHFLUX1
 
 
 ########################################################################
@@ -20,14 +34,11 @@
 
 [Core]
     coolant_inlet_temp   = 350.0
-    fuel_material        = metal
-    fuel_alloy           = zr
-    coolant_material     = sodium
+    coolant_material = sodium
     length               = 375.0
     assembly_pitch       = 12.0
     bypass_fraction      = 0.005
     gap_model            = flow
-    power_scaling_factor = 0.1
 
 
 ########################################################################
@@ -36,7 +47,6 @@
 # Can be repeated for as many assemblies as required by the user.
 
 [Assembly]
-
     [[fuel]]
         num_rings      = 10
         pin_pitch      = 0.6725
@@ -68,11 +78,3 @@
 
 
 ########################################################################
-# SETUP: Problem setup, user options, etc
-
-[Setup]
-
-    [[Units]]
-        temperature    = Celsius
-        length         = cm
-        mass_flow_rate = kg/s

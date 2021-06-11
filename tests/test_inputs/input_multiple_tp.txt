@@ -1,16 +1,29 @@
 ########################################################################
 # author: Milos Atz
-# date: 2021-01-29
+# date: 2021-06-10
 # comment: DASSH input example; multiple 4C file sets
 ########################################################################
-[ARC] # NEUTRONICS AND GEOMETRY FILES
-    pmatrx = ../test_data/single_asm_refl/PMATRX
-    geodst = ../test_data/single_asm_refl/GEODST, ../test_data/single_asm_vac/GEODST
-    ndxsrf = ../test_data/single_asm_refl/NDXSRF, ../test_data/single_asm_vac/NDXSRF
-    znatdn = ../test_data/single_asm_refl/ZNATDN, ../test_data/single_asm_vac/ZNATDN
-    labels = ../test_data/single_asm_refl/LABELS, ../test_data/single_asm_vac/LABELS
-    nhflux = ../test_data/single_asm_refl/NHFLUX, ../test_data/single_asm_vac/NHFLUX
-    ghflux = ../test_data/single_asm_refl/GHFLUX, ../test_data/single_asm_vac/GHFLUX
+
+[Setup]
+    [[Units]]
+        length      = cm
+        temperature = celsius
+
+
+########################################################################
+
+[Power]
+    [[ARC]]
+        coolant_heating    = sodium
+        fuel_material      = metal
+        fuel_alloy         = zr
+        pmatrx = ../test_data/single_asm_refl/PMATRX
+        geodst = ../test_data/single_asm_refl/GEODST, ../test_data/single_asm_vac/GEODST
+        ndxsrf = ../test_data/single_asm_refl/NDXSRF, ../test_data/single_asm_vac/NDXSRF
+        znatdn = ../test_data/single_asm_refl/ZNATDN, ../test_data/single_asm_vac/ZNATDN
+        labels = ../test_data/single_asm_refl/LABELS, ../test_data/single_asm_vac/LABELS
+        nhflux = ../test_data/single_asm_refl/NHFLUX, ../test_data/single_asm_vac/NHFLUX
+        ghflux = ../test_data/single_asm_refl/GHFLUX, ../test_data/single_asm_vac/GHFLUX
 
 
 ########################################################################
@@ -19,17 +32,16 @@
 [Core]
     coolant_inlet_temp = 350.0
     coolant_material   = sodium
-    coolant_heating    = sodium
     length             = 375.0
     assembly_pitch     = 12.0
-    fuel_material      = metal
-    fuel_alloy         = zr
 
 
 ########################################################################
-[Assembly] # ASSEMBLY DETAILS: Describe a group of assemblies
+# ASSEMBLY DETAILS: Describe a group of assemblies
 # NAME identifies a group of assemblies (e.g. "INNER_DRIVER")
 # Can be repeated for as many assemblies as required by the user.
+
+[Assembly]
     [[driver]]
         num_rings      = 10
         pin_pitch      = 0.6725
@@ -42,15 +54,11 @@
 
 
 ########################################################################
-[Assignment] # ASSIGN assemblies to positions in the core; assign fixed
+# ASSIGN assemblies to positions in the core; assign fixed
 # flow rates or temperature limits to one or multiple assemblies.
 # Indicate which assemblies must be grouped together in an orificing
 # calculation.
 
+[Assignment] 
     [[ByPosition]]
-        driver =    1, 1, 1, FLOWRATE=15.0, GROUP=1
-
-[Setup]
-    [[Units]]
-        length      = cm
-        temperature = celsius
+        driver =    1, 1, 1, FLOWRATE=15.0

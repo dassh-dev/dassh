@@ -1,35 +1,40 @@
 ########################################################################
 # author: Milos Atz
-# date: 2021-04-05
+# date: 2021-06-10
 # comment: DASSH input example (2 rings, but only 2 assemblies)
 ########################################################################
 # SETUP: Problem setup, user options, etc
 
 [Setup]
-    [[Units]]
-        temperature    = Celsius
-        length         = cm
-        mass_flow_rate = kg/s
-    [[Options]]
-        calc_energy_balance = True
+    calc_energy_balance = True
     [[Dump]]
         coolant  = True
         gap      = True
         gap_fine = True
         duct     = True
+    [[Units]]
+        temperature    = Celsius
+        length         = cm
+        mass_flow_rate = kg/s
 
 
 ########################################################################
- # NEUTRONICS AND GEOMETRY FILES
+# POWER DISTRIBUTION
 
-[ARC]
-    pmatrx = ../test_data/seven_asm_vac/PMATRX
-    geodst = ../test_data/seven_asm_vac/GEODST
-    ndxsrf = ../test_data/seven_asm_vac/NDXSRF
-    znatdn = ../test_data/seven_asm_vac/ZNATDN
-    labels = ../test_data/seven_asm_vac/LABELS
-    nhflux = ../test_data/seven_asm_vac/NHFLUX
-    ghflux = ../test_data/seven_asm_vac/GHFLUX
+[Power]
+    total_power          = 0.0
+    [[ARC]]
+        fuel_material   = metal
+        fuel_alloy      = zr
+        coolant_heating = sodium
+        power_model     = pin_only
+        pmatrx = ../test_data/seven_asm_vac/PMATRX
+        geodst = ../test_data/seven_asm_vac/GEODST
+        ndxsrf = ../test_data/seven_asm_vac/NDXSRF
+        znatdn = ../test_data/seven_asm_vac/ZNATDN
+        labels = ../test_data/seven_asm_vac/LABELS
+        nhflux = ../test_data/seven_asm_vac/NHFLUX
+        ghflux = ../test_data/seven_asm_vac/GHFLUX
 
 
 ########################################################################
@@ -37,16 +42,11 @@
 
 [Core]
     coolant_inlet_temp   = 350.0
-    fuel_material        = metal
-    fuel_alloy           = zr
-    coolant_heating      = sodium
     coolant_material     = sodium_se2anl_425
     length               = 375.0
     assembly_pitch       = 12.0
     bypass_fraction      = 0.1
     gap_model            = flow
-    power_model          = pin_only
-    total_power          = 0.0
 
 
 ########################################################################

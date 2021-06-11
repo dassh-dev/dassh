@@ -1,18 +1,34 @@
 ########################################################################
 # author: Milos Atz
-# date: 2021-05-26
+# date: 2021-06-10
 # comment: DASSH input example (fuel rodded, control unrodded)
 ########################################################################
- # NEUTRONICS AND GEOMETRY FILES
+# SETUP: Problem setup, user options, etc
 
-[ARC]
-    pmatrx = ../test_data/seven_asm_vac/PMATRX
-    geodst = ../test_data/seven_asm_vac/GEODST
-    ndxsrf = ../test_data/seven_asm_vac/NDXSRF
-    znatdn = ../test_data/seven_asm_vac/ZNATDN
-    labels = ../test_data/seven_asm_vac/LABELS
-    nhflux = ../test_data/seven_asm_vac/NHFLUX
-    ghflux = ../test_data/seven_asm_vac/GHFLUX
+[Setup]
+    [[Units]]
+        temperature    = Celsius
+        length         = cm
+        mass_flow_rate = kg/s
+
+
+########################################################################
+# POWER DISTRIBUTION
+
+[Power]
+    power_scaling_factor = 0.1
+    [[ARC]]
+        fuel_material   = metal
+        fuel_alloy      = zr
+        coolant_heating = sodium
+        power_model     = pin_only
+        pmatrx = ../test_data/seven_asm_vac/PMATRX
+        geodst = ../test_data/seven_asm_vac/GEODST
+        ndxsrf = ../test_data/seven_asm_vac/NDXSRF
+        znatdn = ../test_data/seven_asm_vac/ZNATDN
+        labels = ../test_data/seven_asm_vac/LABELS
+        nhflux = ../test_data/seven_asm_vac/NHFLUX
+        ghflux = ../test_data/seven_asm_vac/GHFLUX
 
 
 ########################################################################
@@ -32,16 +48,12 @@
 
 [Core]
     coolant_inlet_temp   = 350.0
-    fuel_material        = metal
-    fuel_alloy           = zr
-    coolant_heating      = sodium
     coolant_material     = sodium_x
     length               = 375.0
     assembly_pitch       = 12.0
     bypass_fraction      = 0.005
     gap_model            = flow
-    power_scaling_factor = 0.1
-    power_model          = pin_only
+
 
 ########################################################################
 # ASSEMBLY DETAILS: Describe a group of assemblies
@@ -83,12 +95,5 @@
         control   = 1, 1, 1, DELTA_TEMP, 150.0
         fuel      = 2, 1, 6, DELTA_TEMP, 150.0
 
+
 ########################################################################
-# SETUP: Problem setup, user options, etc
-
-[Setup]
-
-    [[Units]]
-        temperature    = Celsius
-        length         = cm
-        mass_flow_rate = kg/s

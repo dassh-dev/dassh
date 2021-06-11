@@ -1,19 +1,33 @@
 ########################################################################
 # author: Milos Atz
-# date: 2021-02-23
-# comment: DASSH input example (16 asm positions, absurd layout; put
-#	an assembly in an inactive position)
+# date: 2021-06-10
+# comment: 16 asm positions, absurd layout; put asm in inactive position
 ########################################################################
- # NEUTRONICS AND GEOMETRY FILES
+# SETUP: Problem setup, user options, etc
 
-[ARC]
-    pmatrx = ../test_data/16_asm_silly/PMATRX
-    geodst = ../test_data/16_asm_silly/GEODST
-    ndxsrf = ../test_data/16_asm_silly/NDXSRF
-    znatdn = ../test_data/16_asm_silly/ZNATDN
-    labels = ../test_data/16_asm_silly/LABELS
-    nhflux = ../test_data/16_asm_silly/NHFLX0N
-    ghflux = ../test_data/16_asm_silly/NHFLX0G
+[Setup]
+    [[Units]]
+        temperature    = Celsius
+        length         = cm
+        mass_flow_rate = kg/s
+
+
+########################################################################
+# POWER DISTRIBUTIONS
+
+[Power]
+    total_power          = 3.0e7
+    # power_scaling_factor = 0.1
+    [[ARC]]
+        fuel_material = metal
+        fuel_alloy    = zr
+        pmatrx = ../test_data/16_asm_silly/PMATRX
+        geodst = ../test_data/16_asm_silly/GEODST
+        ndxsrf = ../test_data/16_asm_silly/NDXSRF
+        znatdn = ../test_data/16_asm_silly/ZNATDN
+        labels = ../test_data/16_asm_silly/LABELS
+        nhflux = ../test_data/16_asm_silly/NHFLX0N
+        ghflux = ../test_data/16_asm_silly/NHFLX0G
 
 
 ########################################################################
@@ -21,15 +35,11 @@
 
 [Core]
     coolant_inlet_temp   = 350.0
-    fuel_material        = metal
-    fuel_alloy           = zr
     coolant_material     = sodium
     length               = 400.0
     assembly_pitch       = 12.0
     bypass_fraction      = 0.01
     gap_model            = flow
-    total_power          = 3.0e7
-    # power_scaling_factor = 0.1
 
 
 ########################################################################
@@ -67,12 +77,5 @@
         fuel = 3, 11, 12, FLOWRATE = 10.0
         fuel = 4,  1,  1, FLOWRATE = 10.0  # <-- inactive position
 
+
 ########################################################################
-# SETUP: Problem setup, user options, etc
-
-[Setup]
-
-    [[Units]]
-        temperature    = Celsius
-        length         = cm
-        mass_flow_rate = kg/s

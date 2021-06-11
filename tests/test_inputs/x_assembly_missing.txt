@@ -1,16 +1,20 @@
 ########################################################################
 # author: Milos Atz
-# date: 2021-01-29
+# date: 2021-06-10
 # comment: DASSH input example - missing section
 ########################################################################
-[ARC] # NEUTRONICS AND GEOMETRY FILES
-    pmatrx = ../test_data/empty_cccc/PMATRX
-    geodst = ../test_data/empty_cccc/GEODST1
-    ndxsrf = ../test_data/empty_cccc/NDXSRF1
-    znatdn = ../test_data/empty_cccc/ZNATDN1
-    labels = ../test_data/empty_cccc/LABELS1
-    nhflux = ../test_data/empty_cccc/NHFLUX1
-    ghflux = ../test_data/empty_cccc/GHFLUX1
+# POWER DISTRIBUTIONS
+
+[Power]
+    [[ARC]]
+        fuel_material = nitride
+        pmatrx = ../test_data/empty_cccc/PMATRX
+        geodst = ../test_data/empty_cccc/GEODST1
+        ndxsrf = ../test_data/empty_cccc/NDXSRF1
+        znatdn = ../test_data/empty_cccc/ZNATDN1
+        labels = ../test_data/empty_cccc/LABELS1
+        nhflux = ../test_data/empty_cccc/NHFLUX1
+        ghflux = ../test_data/empty_cccc/GHFLUX1
 
 
 ########################################################################
@@ -21,7 +25,6 @@
     coolant_material   = sodium
     length             = 375.0
     assembly_pitch     = 12.0
-    fuel_material      = nitride
 
 
 ########################################################################
@@ -29,7 +32,11 @@
 # flow rates or temperature limits to one or multiple assemblies.
 # Indicate which assemblies must be grouped together in an orificing
 # calculation.
+
 [Assignment]
     [[ByPosition]]
         reflector =    1, 1, 1, FLOWRATE, 15.0
         fuel      =    2, 1, 6, FLOWRATE, 25.0
+
+
+########################################################################

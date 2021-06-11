@@ -1,51 +1,53 @@
 ########################################################################
 # author: Milos Atz
-# date: 2021-02-25
+# date: 2021-06-10
 # comment: DASSH input example (single double-duct assembly)
 ########################################################################
 # SETUP: Problem setup, user options, etc
 
 [Setup]
-    [[Units]]
-        temperature = Celsius
-        length      = cm
-        flowrate    = kg/s
-    [[Options]]
-        low_flow_mods       = True
-        calc_energy_balance = True
-        axial_mesh_size     = 0.5
+    low_flow_mods       = True
+    calc_energy_balance = True
+    axial_mesh_size     = 0.5
     [[Dump]]
         coolant = True
         duct    = True
         average = True
+    [[Units]]
+        temperature = Celsius
+        length      = cm
+        flowrate    = kg/s
+
 
 ########################################################################
 # NEUTRONICS AND GEOMETRY FILES
 
-[ARC]
-    pmatrx = ../test_data/single_asm_refl/PMATRX
-    geodst = ../test_data/single_asm_refl/GEODST
-    ndxsrf = ../test_data/single_asm_refl/NDXSRF
-    znatdn = ../test_data/single_asm_refl/ZNATDN
-    labels = ../test_data/single_asm_refl/LABELS
-    nhflux = ../test_data/single_asm_refl/NHFLUX
-    ghflux = ../test_data/single_asm_refl/GHFLUX
+[Power]
+    total_power        = 6.001e6
+    [[ARC]]
+        fuel_material   = metal
+        fuel_alloy      = zr
+        coolant_heating = sodium
+        power_model     = pin_only
+        pmatrx = ../test_data/single_asm_refl/PMATRX
+        geodst = ../test_data/single_asm_refl/GEODST
+        ndxsrf = ../test_data/single_asm_refl/NDXSRF
+        znatdn = ../test_data/single_asm_refl/ZNATDN
+        labels = ../test_data/single_asm_refl/LABELS
+        nhflux = ../test_data/single_asm_refl/NHFLUX
+        ghflux = ../test_data/single_asm_refl/GHFLUX
 
 ########################################################################
 # CORE DETAILS: Describe characteristics of the reactor core
 
 [Core]
     coolant_inlet_temp = 350.0
-    fuel_material      = metal
-    fuel_alloy         = zr
     coolant_material   = sodium_se2anl_425
-    coolant_heating    = sodium
     length             = 375.0
     gap_model          = none
     assembly_pitch     = 12.0
     bypass_fraction    = 0.0
-    total_power        = 6.001e6
-    power_model        = pin_only
+
 
 ########################################################################
 # ASSEMBLY DETAILS: Describe a group of assemblies
@@ -53,7 +55,6 @@
 # Can be repeated for as many assemblies as required by the user.
 
 [Assembly]
-
     [[control]]
         num_rings      = 4
         pin_pitch      = 1.630
