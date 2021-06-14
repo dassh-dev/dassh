@@ -39,7 +39,7 @@
     power_scaling_factor = float(min=0.0, default=1.0)
     [[ARC]]
         coolant_heating = option('sodium', 'na', 'sodium-potassium', 'nak', 'lead', 'pb', 'lead-bismuth', 'pb-bi', 'lead-bismuth-eutectic', 'lbe', None, default=None)
-        fuel_material = option('metal', 'oxide', 'nitride')
+        fuel_material = option('metal', 'oxide', 'nitride', default=None)
         fuel_alloy = option('zr', 'zirconium', 'al', 'aluminum', None, default=None)
         power_model = option('distribute', 'pin_only', default='distribute')
         pmatrx = string(default=None)

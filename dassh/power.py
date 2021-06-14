@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-03
+date: 2021-06-14
 author: matz
 Generate power distributions in assembly components based on neutron
 flux; object to assign to individual assemblies
@@ -1010,7 +1010,20 @@ class AssemblyPower(object):
                                    str(comp + 1),  # component index
                                    ])
                     s += ','
-                    s += ','.join([str(x) for x in tmp[reg, comp]])
+                    # Convert coefficients from W/cm to W/m
+                    s += ','.join([str(x * 100) for x in tmp[reg, comp]])
+                    # s += ','.join(
+                    #     [str(asm_id),                         # assembly ID
+                    #      str(i + 1),                          # component ID
+                    #      str(self.z_finemesh[reg] / 100.0),     # cm -> m
+                    #      str(self.z_finemesh[reg + 1] / 100.0), # cm -> m
+                    #      str(comp + 1),                         # index
+                    #      ])
+                    # s += ','
+                    # data = tmp[reg, comp]
+                    # conv = np.power([100], np.arange(1, data.shape[0] + 1))
+                    # data = data * conv
+                    # s += ','.join([str(x) for x in data])
                     s += '\n'
         with open(path, 'a') as f:
             f.write(s)
@@ -1035,6 +1048,14 @@ def _from_file(fpath):
     with open(fpath, 'r', encoding='utf-8-sig') as f:
         pp = np.loadtxt(f, delimiter=',')
 
+    # Axial region boundaries in m; need cm
+    # Power dist coeffs are in W/m; need W/cm
+    pp[:, 2] *= 100.0  # m --> cm
+    pp[:, 3] *= 100.0  # m --> cm
+    for i in range(pp.shape[1] - 5):
+        # pp[:, i + 5] /= 100**(i + 1)  # W/m^i --> W/cm^i
+        pp[:, i + 5] /= 100  # W/m^i --> W/cm^i
+
     components = ['pins', 'duct', 'cool']
     assembly_power_params = []
     # For every assembly
@@ -1048,9 +1069,10 @@ def _from_file(fpath):
                 # params[c] = None
                 continue
 
-            # Do some checks on axial region specifications
+            # Do checks on component indexing and axial region specifications
             _check_axial_reg_same_bnds_for_all_entries(tmp2)
             _check_axial_reg_no_gaps_between_regions(tmp2)
+            _check_component_indexing(tmp2)
 
             # Z-finemesh for component: if not yet defined in dict,
             zfm = np.unique(tmp2[:, (2, 3)])
@@ -1078,6 +1100,37 @@ def _from_file(fpath):
         # Then assign to list for return
         assembly_power_params.append((a, params))
     return assembly_power_params
+
+
+def _check_component_indexing(mat_arr):
+    """Naive check on pin/duct/subchannel indexing on user-input power"""
+    msg = ('Error in user-specified power distribution: Assembly {0} {1} '
+           'indexing; distribution; in axial region {2} < z < {3}, need {4} '
+           'items, but found {5}.')
+    N_axial_regions = len(np.unique(mat_arr[:, 2]))
+    N_idx = np.max(mat_arr[:, 4])
+    error = False
+    if not mat_arr.shape[0] == N_axial_regions * N_idx:
+        for z_lo in np.unique(mat_arr[:, 2]):
+            tmp = mat_arr[mat_arr[:, 2] == z_lo]
+            idx_in_reg = np.unique(tmp[:, 4])
+            if idx_in_reg.shape[0] == N_idx:
+                if not np.allclose(np.arange(1, N_idx + 1), idx_in_reg):
+                    error = True
+                else:
+                    continue
+            else:
+                error = True
+            if error:
+                msg = msg.format(int(mat_arr[0, 0]),
+                                 _user_power_mat_ids[int(mat_arr[0, 1]) - 1],
+                                 tmp[0, 2] / 100,
+                                 tmp[0, 3] / 100,
+                                 int(N_idx),
+                                 len(np.unique(tmp[:, 4]))
+                                 )
+                module_logger.log(40, msg)
+                sys.exit()
 
 
 def _check_axial_reg_between_materials(zfm1, zfm2, a):
@@ -1111,23 +1164,20 @@ def _check_axial_reg_same_bnds_for_all_entries(mat_arr):
         from one assembly
 
     """
-    # If there are N elements (pins, subchannels, etc) of a material, each
-    # region lower bound should occur N times and each upper bound should
-    # occur N times.
-    msg = ('Error in axial bound entries of user-specified power distribution'
+    msg = ('Error in axial bound entries of user-specified power distribution '
            'for assembly {0} {1}; all need to have the same region bounds.')
     msg = msg.format(int(mat_arr[0, 0]),
                      _user_power_mat_ids[int(mat_arr[0, 1]) - 1])
-    N = np.max(mat_arr[:, 4])
-    for zlo in np.unique(mat_arr[:, 2]):
-        if not mat_arr[mat_arr[:, 2] == zlo].shape[0] == N:
+    # Check that for each lower bound, all upper bounds are the same.
+    for z_lo in np.unique(mat_arr[:, 2]):
+        tmp = mat_arr[mat_arr[:, 2] == z_lo]
+        if not np.all(tmp[:, 3] == tmp[0, 3]):
             module_logger.log(40, msg)
             sys.exit()
-    # If there are N elements (pins, subchannels, etc) of a material, each
-    # region upper bound should occur N times and each upper bound should
-    # occur N times.
-    for zhi in np.unique(mat_arr[:, 3]):
-        if not mat_arr[mat_arr[:, 3] == zhi].shape[0] == N:
+    # Check that for each upper bound, all lower bounds are the same.
+    for z_hi in np.unique(mat_arr[:, 3]):
+        tmp = mat_arr[mat_arr[:, 3] == z_hi]
+        if not np.all(tmp[:, 2] == tmp[0, 2]):
             module_logger.log(40, msg)
             sys.exit()
 
@@ -1181,6 +1231,52 @@ def _check_for_negative_power(power_profile, component, a_id):
             msg += f'Index: {str(loc[i][1] + 1).rjust(3)}\n'
         module_logger.log(40, msg)
         sys.exit()
+
+
+def _check_assembly(asm_power, asm_obj):
+    """Check that user-input power matches assembly specifications"""
+    pre = 'Assembly {0} has incorrect number of '
+    if asm_obj.has_rodded:
+        # Number of pins
+        if asm_power.pin_power is not None:
+            msg = pre + 'pins: require {1}, found {2}'
+            found = asm_power.pin_power.shape[1]
+            needed = asm_obj.rodded.n_pin
+            if found != needed:
+                return (False, msg.format('{0}', needed, found))
+        # Number of duct elements
+        if asm_power.duct_power is not None:
+            msg = pre + 'duct elements: require {1}, found {2}'
+            found = asm_power.duct_power.shape[1]
+            needed = asm_obj.rodded.subchannel.n_sc['duct']['total']
+            needed *= (asm_obj.rodded.n_bypass + 1)
+            if found != needed:
+                return (False, msg.format('{0}', needed, found))
+        # Number of coolant subchannels
+        if asm_power.coolant_power is not None:
+            msg = pre + 'coolant subchannels: require {1}, found {2}'
+            found = asm_power.coolant_power.shape[1]
+            needed = asm_obj.rodded.subchannel.n_sc['coolant']['total']
+            if found != needed:
+                return (False, msg.format('{0}', needed, found))
+    # Otherwise, return with no error
+    return (True, None)
+
+
+def _check_core_len(asm_power, core_len):
+    """Check that user-input power axial regions go from z=0.0 to z=core_len"""
+
+    msg = 'Assembly {0} user power lower bound must be 0.0 m; found {1} m'
+    zlo = np.round(np.min(asm_power.z_finemesh) / 100.0, 6)  # cm --> m
+    if zlo != 0.0:
+        return (False, msg.format('{0}', zlo))
+    msg = ('Assembly {0} user power upper bound must be equal '
+           'to core length ({1} m); found {2} m')
+    zhi = np.max(asm_power.z_finemesh) / 100.0  # cm --> m
+    if np.round(zhi, 6) != np.round(core_len, 6):
+        return (False, msg.format('{0}', core_len, zhi))
+    # Otherwise, return with no error
+    return (True, None)
 
 
 def _integrate(pp_pins, pp_duct, pp_cool, n_terms):

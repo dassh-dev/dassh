@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-03
+date: 2021-06-14
 author: matz
 Test power assignment from binary files to reactor components
 """
@@ -27,7 +27,7 @@ import copy
 import subprocess
 # import matplotlib.pyplot as plt
 import dassh
-from dassh import py4c
+
 
 ########################################################################
 # Test Power object (holds DIF3D power distribution)
@@ -420,8 +420,8 @@ def test_user_power_axial_region_error_betw_items(testdir, caplog):
         dassh.power._from_file(
             os.path.join(
                 testdir, 'test_data', 'user_power_ax_reg_test_fail-2.csv'))
-    msg = ('Error in axial bound entries of user-specified power distribution'
-           'for assembly 0 pins; all need to have the same region bounds.')
+    msg = ('Error in axial bound entries of user-specified power distribution '
+           'for assembly 1 pins; all need to have the same region bounds.')
     assert msg in caplog.text
 
 
@@ -435,6 +435,71 @@ def test_user_power_axial_region_error_gap(testdir, caplog):
     msg = ('Error in axial bound entries of user-specified power distribution'
            'for assembly 0 duct; no gaps or overlaps allowed between upper/ '
            'lower bounds of successive regions')
+    assert msg in caplog.text
+
+
+def test_user_power_bad_core_length(testdir, caplog):
+    """Test that DASSH catches user power with improper axial reg specs"""
+    dir = os.path.join(testdir, 'test_data', 'test_bad_user_power_input')
+    inp = dassh.DASSH_Input(
+        os.path.join(testdir, 'test_inputs', 'x_input_bad_user_power.txt')
+    )
+
+    # Core upper bound < core length
+    msg = ('Assembly 1 user power upper bound must be equal '
+           'to core length (2.0 m); found 1.8 m')
+    inp.data['Power']['user_power'] = [
+        os.path.join(testdir, 'test_data', 'user_power_ax_reg_test_fail-4.csv')
+    ]
+    with pytest.raises(SystemExit):
+        dassh.Reactor(inp, path=dir)
+    assert msg in caplog.text
+
+    # Core lower bound > core length
+    caplog.clear()
+    msg = 'Assembly 1 user power lower bound must be 0.0 m; found 0.2 m'
+    inp.data['Power']['user_power'] = [
+        os.path.join(testdir, 'test_data', 'user_power_ax_reg_test_fail-5.csv')
+    ]
+    dir = os.path.join(testdir, 'test_data', 'test_bad_user_power_input')
+    with pytest.raises(SystemExit):
+        dassh.Reactor(inp, path=dir)
+    print(caplog.text)
+    assert msg in caplog.text
+
+
+def test_user_power_bad_indexing_naive(testdir, caplog):
+    """Test that DASSH catches error for user power with bad indexing of
+    pins, duct, coolant through naive check"""
+    dir = os.path.join(testdir, 'test_data', 'test_bad_user_power_input')
+    inp = dassh.DASSH_Input(
+        os.path.join(testdir, 'test_inputs', 'x_input_bad_user_power.txt')
+    )
+
+    msg = ('Error in user-specified power distribution: Assembly 1 pins '
+           'indexing; distribution; in axial region 0.0 < z < 1.0, need 7 '
+           'items, but found 6.')
+    inp.data['Power']['user_power'] = [
+        os.path.join(testdir, 'test_data', 'user_power_idx_test_fail-1.csv')
+    ]
+    with pytest.raises(SystemExit):
+        dassh.Reactor(inp, path=dir)
+    assert msg in caplog.text
+
+
+def test_user_power_bad_indexing(testdir, caplog):
+    """Test that DASSH catches error for user power with bad indexing of
+    pins, duct, coolant through not-naive check"""
+    dir = os.path.join(testdir, 'test_data', 'test_bad_user_power_input')
+    inp = dassh.DASSH_Input(
+        os.path.join(testdir, 'test_inputs', 'x_input_bad_user_power.txt')
+    )
+    msg = 'Assembly 1 has incorrect number of pins: require 7, found 6'
+    inp.data['Power']['user_power'] = [
+        os.path.join(testdir, 'test_data', 'user_power_idx_test_fail-2.csv')
+    ]
+    with pytest.raises(SystemExit):
+        dassh.Reactor(inp, path=dir)
     assert msg in caplog.text
 
 

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-26
+date: 2021-06-11
 author: matz
 Test the temperature sweep across the core
 """
@@ -446,8 +446,16 @@ def test_2asm_ebal(testdir):
     power, one has elevated temperature
 
     """
-    inpath = os.path.join(testdir, 'test_inputs', 'input_2a_flow_diff_asm-2.txt')
-    outpath = os.path.join(testdir, 'test_results', 'test_2asm_ht_flow_diff_asm')
+    inpath = os.path.join(
+        testdir,
+        'test_inputs',
+        'input_2a_flow_diff_asm-2.txt'
+    )
+    outpath = os.path.join(
+        testdir,
+        'test_results',
+        'test_2asm_ht_flow_diff_asm'
+    )
     inp = dassh.DASSH_Input(os.path.join(inpath))
     r = dassh.Reactor(inp, path=outpath, write_output=True)
     # Zero power

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-10
+date: 2021-06-14
 author: matz
 Test the DASSH read_input module and DASSH_input object
 """
@@ -22,6 +22,30 @@ Test the DASSH read_input module and DASSH_input object
 import os
 import pytest
 import dassh
+
+
+def test_bad_fuel_mat(testdir, caplog):
+    """Test that DASSH catches errors in ARC fuel material specification"""
+    # Test 1: "Bad" fuel specification
+    with pytest.raises(SystemExit):
+        dassh.DASSH_Input(
+            os.path.join(testdir,
+                         'test_inputs',
+                         'x_bad_fuel_mat.txt')
+        )
+    expected_error_msg = ('"fuel_material" key in section "Power, ARC" failed '
+                          'validation; check that it meets the requirements')
+    assert expected_error_msg in caplog.text
+    # Test 2: No input to fuel material
+    with pytest.raises(SystemExit):
+        dassh.DASSH_Input(
+            os.path.join(testdir,
+                         'test_inputs',
+                         'x_no_fuel_mat.txt')
+        )
+    expected_error_msg = ('\"fuel_material\" input must be one of '
+                          '{"metal", "oxide", "nitride"}')
+    assert expected_error_msg in caplog.text
 
 
 def test_bad_requested_axial_plane(testdir, caplog):

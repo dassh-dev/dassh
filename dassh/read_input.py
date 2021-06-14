@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-10
+date: 2021-06-14
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -226,7 +226,10 @@ class DASSHPlot_Input(LoggedClass):
         len_unit = inp['Setup']['Units']['length']
         if len_unit is None:
             len_unit = reactor.units['length']
-        lconv = utils.get_length_conversion('m', len_unit)
+        try:
+            lconv = utils.get_length_conversion('m', len_unit)
+        except AssertionError:  # Assertion error raised if len_unit == 'm'
+            lconv = lambda l: l  # No conversion needed, assign identity fxn
 
         # Check inputs for correctness and save
         self._plt_check_params = {
@@ -509,8 +512,11 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         self._cccc_power, self._user_power = self.determine_power_input()
         if not self._cccc_power:
             empty4c = True
-        self.check_4c_input()
-        self.check_user_power()
+        if self._cccc_power:
+            self.check_4c_input()
+            self.check_ARC_fuel_specifications()
+        if self._user_power:
+            self.check_user_power()
         # Assembly
         self.check_unrodded_regions()
         self.check_pin()
@@ -522,6 +528,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         self.check_assignment_assembly_agreement()
         self.check_assignment_boundary_conditions()
         self.check_assignment_against_geodst(empty4c)
+        self.convert_assn_deltaT_to_outletT()
         # Core
         self.check_core_specifications()
         # Setup (optional)
@@ -666,15 +673,6 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
             if not len(tmp) == 1:  # either no entries or more than one
                 # raise OSError('Missing/incorrect input section: ' + sec)
                 self.log('error', f'Missing/incorrect section: {sec}')
-        # # Check whether any power distribution section present
-        # tmp = [False, False]
-        # sec = ['ARC', 'Power']
-        # for i in range(2):
-        #     if f'[{sec[i]}]' in txt:
-        #         tmp[i] = True
-        # if not any(tmp):
-        #     self.log('error', ('Missing power distribution section: '
-        #                        '(need [ARC] and/or [Power]'))
 
     def check_configobj_sections(self):
         """Check the data structure contains the mandatory sections"""
@@ -750,11 +748,16 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
 
     def check_ARC_fuel_specifications(self):
         """Check fuel material and alloy specification for VARPOW"""
-        if (self.data['Power']['ARC']['fuel_material'].lower() not in
-                ['metal', 'oxide', 'nitride']):
-            self.log('error', ('\"fuel_material\" input must be one of '
-                               '{"metal", "oxide", "nitride"}'))
-
+        # Check fuel material specification:
+        msg = ('\"fuel_material\" input must be one of '
+               '{"metal", "oxide", "nitride"}')
+        if self.data['Power']['ARC']['fuel_material'] is not None:
+            if (self.data['Power']['ARC']['fuel_material'].lower() not in
+                    ['metal', 'oxide', 'nitride']):
+                self.log('error', msg)
+        else:
+            self.log('error', msg)
+        # Check fuel alloy specification
         if self.data['Power']['ARC']['fuel_alloy'] is not None:
             if (self.data['Power']['ARC']['fuel_alloy'].lower() not in
                     ['zr', 'zirconium', 'al', 'aluminum']):
@@ -1163,6 +1166,20 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
             msg = (f'Assignment section line {i}: \"{bc}\" must be '
                    f'positive but was given {assn[2][bc]}')
             self._check_nonzero(assn[2][bc], msg)
+
+    def convert_assn_deltaT_to_outletT(self):
+        """Convert 'delta_temp' boundary condition to 'outlet_temp'"""
+        k = 'delta_temp'
+        for i in range(len(self.data['Assignment']['ByPosition'])):
+            if self.data['Assignment']['ByPosition'][i] == []:
+                continue
+            if k in self.data['Assignment']['ByPosition'][i][2].keys():
+                # Get outlet temperature
+                to = (self.data['Assignment']['ByPosition'][i][2][k]
+                      + self.data['Core']['coolant_inlet_temp'])
+                # Remove delta_temperature, save as outlet_temp
+                del self.data['Assignment']['ByPosition'][i][2][k]
+                self.data['Assignment']['ByPosition'][i][2]['outlet_temp'] = to
 
     def check_assignment_against_geodst(self, empty4c=False):
         """Make sure all assigned positions are active in GEODST"""

@@ -14,14 +14,12 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-11
+date: 2021-06-14
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
 ########################################################################
 import os
-import copy
-# import h5py
 import numpy as np
 import subprocess
 import logging
@@ -432,8 +430,6 @@ class Reactor(LoggedClass):
             core_total_power,
             inp.data['Power']['total_power'],
             inp.data['Power']['power_scaling_factor'])
-            # inp.data['Core']['total_power'],
-            # inp.data['Core']['power_scaling_factor'])
         self.total_power = total_power
         return asm_power
 
@@ -541,8 +537,8 @@ class Reactor(LoggedClass):
                     self.asm_templates[atype].active_region.coolant,
                     t_out=T_out_tmp)
             else:
-                msg = ('Could not estimate flow rate / outlet temp'
-                       f'for asm no. {id} ({atype}) from given inputs')
+                msg = ('Could not estimate flow rate / outlet temp for '
+                       f'asm no. {k + 1} ({atype}) from given inputs')
                 self.log('error', msg)
 
             T_out.append(T_out_tmp)
@@ -613,6 +609,13 @@ class Reactor(LoggedClass):
                                                   asm_power[i][3],
                                                   bundle_bnd,
                                                   scale=power_scalar)
+            # Check assembly power against core and assembly specs
+            m = dassh.power._check_core_len(asm.power, self.core_length)
+            if m[0] is False:
+                self.log('error', m[1].format(i + 1))
+            m = dassh.power._check_assembly(asm.power, asm)
+            if m[0] is False:
+                self.log('error', m[1].format(i + 1))
             asm.total_power = asm_power[i][2]
             asm._estimated_T_out = To[i]
             assemblies.append(asm)
@@ -1189,7 +1192,7 @@ class Reactor(LoggedClass):
                                          self._is_adiabatic)
 
     def axial_step_parallel(self, z, dz, worker_pool):
-        """Parallelized version of axial_step
+        """Parallelized version of axial_step; NOT FUNCTIONAL
 
         Parameters
         ----------

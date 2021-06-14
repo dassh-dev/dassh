@@ -1,0 +1,67 @@
+########################################################################
+# author: Milos Atz
+# date: 2021-06-10
+# comment: DASSH input example (single FASTER assembly)
+########################################################################
+# SETUP: Problem setup, user options, etc
+
+
+########################################################################
+
+[Materials]
+    [[sodium_se2anl_csv]]
+        from_file = sodium_se2anl.csv
+
+
+########################################################################
+# POWER DISTRIBUTIONS
+[Power]
+    user_power  = ../test_data/user_power_ax_reg_test_fail-4.csv
+    total_power = 3.0e6
+
+
+########################################################################
+# CORE DETAILS: Describe characteristics of the reactor core
+
+[Core]
+    coolant_inlet_temp = 623.15
+    coolant_material   = sodium_se2anl
+    length             = 2.0000
+    gap_model          = none
+    assembly_pitch     = 0.1175
+    bypass_fraction    = 0.0
+
+
+########################################################################
+# ASSEMBLY DETAILS: Describe a group of assemblies
+# NAME identifies a group of assemblies (e.g. "INNER_DRIVER")
+# Can be repeated for as many assemblies as required by the user.
+
+[Assembly]
+    [[fuel]]
+        num_rings      = 2
+        pin_pitch      = 0.0370
+        pin_diameter   = 0.0300
+        clad_thickness = 0.0050
+        wire_pitch     = 0.8000
+        wire_diameter  = 0.0069
+        duct_ftf       = 0.1096, 0.1156
+        duct_material  = HT9_se2anl
+        corr_mixing    = MIT
+	corr_friction  = NOV
+	corr_flowsplit = MIT
+	corr_nusselt   = DB
+
+
+########################################################################
+# ASSIGN assemblies to positions in the core; assign fixed
+# flow rates or temperature limits to one or multiple assemblies.
+# Indicate which assemblies must be grouped together in an orificing
+# calculation.
+
+[Assignment]
+    [[ByPosition]]
+        fuel = 1, 1, 1, flowrate=10.0
+
+
+########################################################################
