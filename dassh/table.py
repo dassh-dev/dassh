@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-09
+date: 2021-06-15
 author: matz
 Objects and methods to print ASCII tables in Python
 """
@@ -1533,19 +1533,18 @@ class PeakPinTempTable(LoggedClass, DASSH_Table):
         """Get cladding/fuel temperatures at the requested height
         for the requested pin"""
         # Get pin (data[2]) and height (z = data[1])
-        temps = [str(int(data[3])),
-                 self._ffmt2.format(self.len_conv(data[1]))]
+        pin = str(int(data[2]))
+        height = self._ffmt2.format(self.len_conv(data[1]))
+        out = [pin, height]
 
         # Get power
         plin = asm_obj.power.get_power(data[1])
         plin = plin['pins'][int(data[2])] / self.len_conv(1)
-        temps.append(self._ffmt2.format(plin))
+        out.append(self._ffmt2.format(plin))
 
-        # Add temperatures
-        temps += [self._ffmt2.format(self.temp_conv(x))
-                  for x in data[3:]]
-
-        return temps
+        # Add temperatures and return
+        out += [self._ffmt2.format(self.temp_conv(x)) for x in data[3:]]
+        return out
 
 
 ########################################################################
