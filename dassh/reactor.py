@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-14
+date: 2021-06-28
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -1385,9 +1385,9 @@ class Reactor(LoggedClass):
         out += asm_ebal_table.generate(self)
 
         # Core energy balance
-        # if self._options['ebal']:
-        #     interasm_ht_table = dassh.table.InterasmEnergyXferTable()
-        #     out += interasm_ht_table.generate(self)
+        if self._options['ebal']:
+            interasm_ht_table = dassh.table.InterasmEnergyXferTable()
+            out += interasm_ht_table.generate(self)
 
         #     asm_ebal_table = dassh.table.AssemblyEnergyBalanceTable()
         #     out += asm_ebal_table.generate(self)

@@ -1,0 +1,5 @@
+temperature,heat_capacity,density,viscosity,thermal_conductivity
+600,1301,874,0.000275,73.7
+700,1277,852,0.000264,68
+800,1260,828,0.000227,62.9
+900,1252,805,-0.00003,58.34

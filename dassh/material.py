@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-04-29
+date: 2021-06-28
 author: matz
 Containers to hold and update material properties
 """
@@ -118,8 +118,11 @@ class Material(LoggedClass):
         with open(path, 'r') as f:
             cols = f.read().splitlines()[0].split(',')[1:]
 
-        # cols = data.columns[1:]
-        # data = data.to_numpy()
+        # Check that all values are greater than or equal to zero
+        if np.any(data < 0.0):
+            msg = f'Negative values detected in material data {path}'
+            self.log('error', msg)
+
         # define property attributes based on temperature
         # We store only the interpolations, not the data tables
         self._data = {}
@@ -177,11 +180,6 @@ class Material(LoggedClass):
     @property
     def viscosity(self):
         return self._viscosity
-
-    # @property
-    # def beta(self):
-    #     """Volume expansion coefficient for constant-property materials"""
-    #     return self._beta
 
     @property
     def beta(self):

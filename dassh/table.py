@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-15
+date: 2021-06-28
 author: matz
 Objects and methods to print ASCII tables in Python
 """
@@ -1097,13 +1097,13 @@ class AssemblyEnergyBalanceTable(LoggedClass, DASSH_Table):
 
 
 class InterasmEnergyXferTable(LoggedClass, DASSH_Table):
-    """Assembly energy-balance summary table"""
+    """Inter-assembly heat transfer summary table"""
 
     title = "INTER-ASSEMBLY HEAT TRANSFER" + "\n"
     notes = """Notes
-- Tracks energy balance on inter-assembly gap coolant
+- Tracks heat transfer between assemblies and inter-assembly gap coolant
+- Positive values indicate heat gained by assemblies through inter-assembly gap
 - Duct faces are as shown in the key below
-- Each face includes all "side" meshes and 1/2 each corner.
 - Adjacent assembly ID is shown in parentheses next to each value.
 
 Duct face key                  Face 6    =   Face 1
@@ -1115,15 +1115,15 @@ Duct face key                  Face 6    =   Face 1
     Face 6: 11-o'clock         Face 4    =   Face 3
 """
 
-    def __init__(self, col_width=17, col0_width=4, sep='  '):
+    def __init__(self, col_width=16, col0_width=4, sep='  '):
         """Instantiate assembly energy balance summary output table"""
         # Decimal places for rounding, where necessary
-        self.dp = 4
+        self.dp = 3
         # Float formatting option
         self._ffmt = '{' + f':.{self.dp}E' + '}'
-
+        self._ffmt2 = '{:.5E}'
         # Inherit from DASSH_Table
-        DASSH_Table.__init__(self, 6, col_width, col0_width, sep)
+        DASSH_Table.__init__(self, 7, col_width, col0_width, sep)
 
     def make(self, r_obj):
         """Create the table
@@ -1135,24 +1135,45 @@ Duct face key                  Face 6    =   Face 1
 
         """
         # Customize row 0
-        row = ' ' * (self.col0_width) + self.divider
+        row = ' ' * (self.col0_width + self.col_width) + 2 * self.divider
         row += '|-- '
-        row += 'Energy through outer duct face (W); '
+        row += 'Power (W) through outer duct face; '
         row += '(adjacent assembly ID) -->'
         self._table += row + '\n'
-        self.add_row('Asm.', ['Face 1', 'Face 2', 'Face 3',
+        self.add_row('Asm.', ['Power (W)', 'Face 1', 'Face 2', 'Face 3',
                               'Face 4', 'Face 5', 'Face 6'])
         self.add_horizontal_line()
 
         for i in range(len(r_obj.assemblies)):
             # Get heat transfer total per side - need DASSH ID to pull
             # data from the interassembly HT array
-            tmp = r_obj.core.ebal['asm'][i].reshape(6, -1).copy()
-            tmp2 = np.zeros((6, r_obj.core._sc_per_side + 2))
-            tmp2[:, 1:] = tmp
-            tmp2[:, 0] = np.roll(tmp[:, -1], 1)
-            tmp2[:, (0, -1)] *= 0.5
-            eps = np.sum(tmp2, axis=1)
+            per_side = np.zeros(6)
+            s = 0  # side index
+            for sc in range(len(r_obj.core._asm_sc_types[i])):
+                if r_obj.core._asm_sc_types[i][sc] == 1:
+                    if s == 5:
+                        sp1 = 0
+                    else:
+                        sp1 = s + 1
+                    # Corner subchannels; need to split based on half
+                    # length along each face, which can be different
+                    L = (r_obj.core._geom_params['dims'][i][s][1]
+                         + r_obj.core._geom_params['dims'][i][sp1][1])
+                    x1 = r_obj.core._geom_params['dims'][i][s][1] / L
+                    x2 = 1 - x1
+                    per_side[s] += x1 * r_obj.core.ebal['asm'][i][sc]
+                    per_side[sp1] += x2 * r_obj.core.ebal['asm'][i][sc]
+                    # Update side index
+                    s = sp1
+                else:
+                    per_side[s] += r_obj.core.ebal['asm'][i][sc]
+
+            # Multiple table by (-1): energy xfer is on coolant, taken
+            # as q = hA(T_wall - T_coolant); that means that when q < 0,
+            # T_wall < T_coolant and the coolant is losing heat to the
+            # duct, but the duct is gaining heat from the coolant. To see
+            # it from the assembly perspective, need to switch the sign
+            per_side *= -1.0
 
             # Get adjacent assemblies
             adj_id = []
@@ -1164,8 +1185,9 @@ Duct face key                  Face 6    =   Face 1
 
             # Create the row
             row = []
+            row.append(self._ffmt2.format(r_obj.assemblies[i].total_power))
             for col in range(6):
-                entry = self._ffmt.format(eps[col])
+                entry = self._ffmt.format(per_side[col])
                 if adj_id[col] < 0:
                     entry += f' ({_OMIT})'
                 else:

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-14
+date: 2021-06-17
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -946,18 +946,19 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                     self.log('error', msg)
 
     def check_duct(self):
-        """Make sure duct details are physically meaningful"""
-        for asm in self.data['Assembly']:
-            pre = f'Asm: \"{asm}\"; '  # indicate asm for error msg
-            if len(self.data['Assembly'][asm]['duct_ftf']) % 2 != 0:
+        """Make sure duct details are physically meaningful; outer duct outer
+        FTF must be the same for all assembly types"""
+        outer_duct_oftf = []
+        for a in self.data['Assembly']:
+            pre = f'Asm: \"{a}\"; '  # indicate asm for error msg
+            if len(self.data['Assembly'][a]['duct_ftf']) % 2 != 0:
                 msg = ('Number of duct FTF values must be even; need '
                        'inner/outer FTF for each duct')
                 self.log('error', pre + msg)
 
-            for d in range(int(len(self.data['Assembly']
-                                            [asm]['duct_ftf']) / 2)):
-                d1 = self.data['Assembly'][asm]['duct_ftf'][2 * d]
-                d2 = self.data['Assembly'][asm]['duct_ftf'][2 * d + 1]
+            for d in range(int(len(self.data['Assembly'][a]['duct_ftf']) / 2)):
+                d1 = self.data['Assembly'][a]['duct_ftf'][2 * d]
+                d2 = self.data['Assembly'][a]['duct_ftf'][2 * d + 1]
                 # Values must be greater than zero
                 msg = 'Duct FTF must be greater than zero'
                 self._check_nonzero(d1, pre + msg)
@@ -968,6 +969,17 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                 msg = 'Duct outer FTF must be greater than inner FTF'
                 if d1 == d2:
                     self.log('error', pre + msg)
+
+            # Add outer duct outer FTF to list
+            outer_duct_oftf.append(
+                np.round(self.data['Assembly'][a]['duct_ftf'][-1], 9)
+            )
+
+        # Check outer flat-to-flat agreement
+        if not all(x == outer_duct_oftf[0] for x in outer_duct_oftf):
+            self.log('error', 'DASSH requires that outer duct outer '
+                              'flat-to-flat distances be equal for '
+                              'all assemblies.')
 
     def check_bypass_pressure_drop_params(self):
         """Check bypass pressure drop parameters for each assembly
