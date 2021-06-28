@@ -15,7 +15,7 @@
         units = string(default=None)
         value = force_list(default=None)
         rings = integer(min=1, default=None)
-        ignore_unrodded = boolean(default=False)
+        ignore_simple = boolean(default=False)
         assembly_id = force_list(default=None)
         pins = boolean(default=False)
         pin_alpha = float(min=0.0, max=1.0, default=1.0)

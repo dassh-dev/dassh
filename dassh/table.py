@@ -252,7 +252,7 @@ class GeometrySummaryTable(LoggedClass, DASSH_Table):
         assemblies = list(r_obj.asm_templates.values())
         tabdata = self._collect_asm_characteristics(assemblies)
         # Add header (method inherited from DASSH_Table)
-        self.add_row(f'Parameter ({self.len_unit} // sq{self.len_unit})',
+        self.add_row(f'Parameter ({self.len_unit} // {self.len_unit})^2',
                      [f'Assembly {i + 1}' for i
                       in range(len(r_obj.asm_templates))])
         # Add horizontal line (method inherited from DASSH_Table)
@@ -915,7 +915,7 @@ class AssemblyEnergyBalanceTable(LoggedClass, DASSH_Table):
     A - Heat added to coolant through pins or by direct heating (W)
     B - Heat added to duct wall (W)
     C - Heat transferred to assembly-interior coolant through duct wall (W)
-    D - Heat transferred to bypass coolant through duct wall (W) (*)
+    D - Heat transferred to double-duct bypass coolant through duct walls (W)
     E - Assembly coolant mass flow rate (kg/s)
     F - Assembly axially averaged heat capacity (J/kg-K)
     G - Assembly coolant temperature rise (K)

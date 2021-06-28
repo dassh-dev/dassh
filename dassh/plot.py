@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-04-07
+date: 2021-06-28
 author: matz
 Methods to plot DASSH objects (such as hexagonal fuel assemblies and
 the pins and subchannels that comprise them).
@@ -178,7 +178,7 @@ def make_CoreSubchannelPlot(dassh_reactor, plot_data):
                   cmap=_data['cmap'],
                   cbar_label=_data['cbar_label'],
                   rings=plot_data['rings'],
-                  ignore_ur=plot_data['ignore_unrodded'])
+                  ignore_ur=plot_data['ignore_simple'])
         z_str = np.around(_data['bwd_len_conv'](zi), 2)
         fname = '_'.join(['CoreSubchannelPlot', f'z={z_str}'])
         fname += '.png'
@@ -233,13 +233,13 @@ def make_CoreHexPlot(dassh_reactor, plot_data):
 class AssemblyPlot(object):
     """Plot data for an individual assembly"""
 
-    def __init__(self, dassh_asm, unrodded=False):
+    def __init__(self, dassh_asm, simple_model=False):
         """Save the assembly to get all the geometry chars you want,
         but pull out a bunch of stuff to get it easily"""
-        if unrodded:
+        if simple_model:
             # Duct characteristics
             self.duct = {}
-            # If modeling a rodded region as unrodded, need to select
+            # If modeling a rodded region with simple model, need to select
             # the outermost duct. This occurs in core pin plots
             tmp = dassh_asm.active_region.duct_ftf
             while True:
@@ -784,7 +784,7 @@ class SingleNodePlot(AssemblyPlot):
 
     def __init__(self, dassh_asm):
         """Initialize the SubchannelPlot instance"""
-        AssemblyPlot.__init__(self, dassh_asm, unrodded=True)
+        AssemblyPlot.__init__(self, dassh_asm, simple_model=True)
 
     def plot(self, ax, data, cmap, norm, gray=False, lw=0.5, xy_shift=None):
         """Find duct dimensions to plot ducts as overlapping hexagons
