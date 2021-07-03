@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-28
+date: 2021-07-01
 author: matz
 Methods to plot DASSH objects (such as hexagonal fuel assemblies and
 the pins and subchannels that comprise them).
@@ -2066,13 +2066,13 @@ class CorePinPlot(CorePlot):
                 ignore_ur = True
                 ax = snp.plot(ax, 1.0, patch_kwargs['cmap'],
                               patch_kwargs['norm'], ignore_ur, 0.0,
-                              self.asm_xy[asm.id])
+                              self.asm_xy[i])
             # Otherwise plot every pin in the assembly.
             else:
                 ax = self.pp[asm.name]._add_duct_walls(
-                    ax, self.asm_xy[asm.id], lw=0.0)
+                    ax, self.asm_xy[i], lw=0.0)
                 ax = self.pp[asm.name]._add_pins(
-                    ax, asm_data, self.asm_xy[asm.id], **patch_kwargs)
+                    ax, asm_data, self.asm_xy[i], **patch_kwargs)
 
         # Remove axes
         plt.axis('off')

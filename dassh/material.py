@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-28
+date: 2021-06-29
 author: matz
 Containers to hold and update material properties
 """
@@ -119,14 +119,16 @@ class Material(LoggedClass):
             cols = f.read().splitlines()[0].split(',')[1:]
 
         # Check that all values are greater than or equal to zero
-        if np.any(data < 0.0):
+        if np.any(data[~np.isnan(data)] < 0.0):
             msg = f'Negative values detected in material data {path}'
-            self.log('error', msg)
+            self.log('warning', msg)
 
         # define property attributes based on temperature
         # We store only the interpolations, not the data tables
         self._data = {}
-        x = data[:, 0]  # temperatures over which to interpolate
+        # Pull temperatures over which to interpolate; eliminate negative vals
+        x = data[:, 0]         # temperatures over which to interpolate
+        data = data[x > 0, :]  # eliminate rows where temp is negative
         for i in range(len(cols)):
             y = data[:, i + 1]
             x2 = x[y > 0]  # Need to ignore zeros in dependent var

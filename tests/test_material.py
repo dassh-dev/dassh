@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-28
+date: 2021-06-29
 author: matz
 Test DASSH material class
 """
@@ -71,8 +71,9 @@ def test_material_from_table():
 def test_error_table_negative_val(testdir, caplog):
     """Test error when table has negative value"""
     f = os.path.join(testdir, 'test_inputs', 'custom_mat-3.csv')
-    with pytest.raises(SystemExit):
-        Material('badbad', from_file=f)
+    # with pytest.raises(SystemExit):
+    #     Material('badbad', from_file=f)
+    Material('badbad', from_file=f)
     assert 'Negative values detected in material data ' in caplog.text
 
 

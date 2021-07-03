@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-17
+date: 2021-06-29
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -513,7 +513,8 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         if not self._cccc_power:
             empty4c = True
         if self._cccc_power:
-            self.check_4c_input()
+            if not empty4c:
+                self.check_4c_input()
             self.check_ARC_fuel_specifications()
         if self._user_power:
             self.check_user_power()
@@ -684,30 +685,32 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                 if not self.data[sec]:  # empty dictionary entry
                     # raise OSError('Empty input section: ' + sec)
                     self.log('error', f'Empty section: {sec}')
-        any_power = self.determine_power_input()
-        if not any(any_power):
-            self.log('error', ('Empty power distribution sections: '
-                               '(need [ARC] and/or [Power]'))
+        # any_power = self.determine_power_input()
+        # if not any(any_power):
+        #     self.log('error', ('Empty power distribution sections: '
+        #                        '(need [ARC] and/or [Power]'))
 
     def determine_power_input(self):
         """Confirm input has appropriate power specification"""
         incl = [False, False]
-        # Always will have ARC subsection; check that input has all req files
-        tmp = []
-        for k in _ARC:
-            try:
-                if self.data['Power']['ARC'][k][0] is not None:
-                    tmp.append(True)
-                else:
-                    tmp.append(False)
-            except TypeError:
-                if self.data['Power']['ARC'][k] is not None:
-                    tmp.append(True)
-                else:
-                    tmp.append(False)
-        if all(tmp):
+        # If any 4C file in the ARC section is defined, count it
+        if any([self.data['Power']['ARC'].get(k) for k in _ARC]):
             incl[0] = True
-        # If user power is defined, count it
+        # tmp = []
+        # for k in _ARC:
+        #     try:
+        #         if self.data['Power']['ARC'][k][0] is not None:
+        #             tmp.append(True)
+        #         else:
+        #             tmp.append(False)
+        #     except TypeError:
+        #         if self.data['Power']['ARC'][k] is not None:
+        #             tmp.append(True)
+        #         else:
+        #             tmp.append(False)
+        # if all(tmp):
+        #     incl[0] = True
+        # # If user power is defined, count it
         if self.data['Power'].get('user_power') is not None:
             incl[1] = True
         return incl
@@ -719,8 +722,8 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
             # If None, skip; already screened for the failure if all
             # are None and no power is defined.
             if self.data['Power']['ARC'][ft] is None:
-                continue
-            # Single value entries, not list
+                self.log('error', f'Path not specified for binary file {ft}')
+            # Entry is a list
             elif isinstance(self.data['Power']['ARC'][ft], list):
                 # Note: type checking okay here because I'm expecting
                 # values from ConfigObj that are either list or str

@@ -98,6 +98,70 @@ def test_correlation_warnings(caplog):
 ########################################################################
 
 
+def test_nov_sample_problem():
+    """Test the sample problem given in the Novendstern correlation paper;
+    parameters are all calculated and shown in the paper, just using them
+    to demonstrate that I get the same result with the implemented corr."""
+
+    # Dummy class to mock DASSH Coolant, Subchannel, RegionRodded objects
+    class Dummy(object):
+        def __init__(self, **kwargs):
+            for k in kwargs.keys():
+                setattr(self, k, kwargs[k])
+
+    # Dummy Coolant object
+    coolant_properties = {
+        'viscosity': 0.677 * 0.00041337887,  # lb/hrft --> kg/m-s
+        'density': 53.5 * 16.0185}  # lb/ft3 --> kg/m3
+    coolant = Dummy(**coolant_properties)
+
+    # Dummy Subchannel object
+    subchannel = Dummy(**{'n_sc': {'coolant': {'interior': 384,
+                                               'edge': 48,
+                                               'corner': 6,
+                                               'total': 438}}})
+
+    # Dummy Region object
+    fftf = {
+        'n_ring': 9,
+        'n_pin': 217,
+        'duct_ftf': [[4.335 * 2.54 / 100, 4.835 * 2.54 / 100]],
+        'pin_diameter': 0.23 * 2.54 / 100,
+        'pin_pitch': 0.2879 * 2.54 / 100,
+        'wire_diameter': 0.056 * 2.54 / 100,
+        'wire_pitch': 12 * 2.54 / 100,
+        'coolant': coolant,
+        'subchannel': subchannel,
+        'params': {'area': np.array([0.0139 * 2.54 * 2.54 / 100 / 100,
+                                     0.0278 * 2.54 * 2.54 / 100 / 100,
+                                     0.0099 * 2.54 * 2.54 / 100 / 100]),
+                   'de': np.array([0.124 * 2.54 / 100,
+                                   0.151 * 2.54 / 100,
+                                   0.114 * 2.54 / 100])},
+        'bundle_params': {'area': 6.724 * 2.54 * 2.54 / 100 / 100,
+                          'de': 0.128 * 2.54 / 100},
+        'int_flow_rate': 183000 * 0.000125998  # lb/hr --> kg/s
+    }
+    asm = Dummy(**fftf)
+
+    # Calculate the necessary coolant flow parameters: velocity, Re; then
+    # assign to the dummy assembly
+    v_tot = asm.int_flow_rate / asm.coolant.density / asm.bundle_params['area']
+    Re = (asm.coolant.density
+          * v_tot
+          * asm.bundle_params['de']
+          / asm.coolant.viscosity)
+    asm.coolant_int_params = {'Re': Re, 'vel': v_tot}
+
+    # Calculate friction factor, use to determine pressure drop / L
+    ff = dassh.correlations.friction_nov.calculate_bundle_friction_factor(asm)
+    dp = ff * asm.coolant.density * v_tot**2 / 2 / asm.bundle_params['de']
+    ans = 4.64 * 6894.76 / 0.3048
+    diff = ans - dp
+    rel_diff = diff / ans
+    assert rel_diff < 0.002
+
+
 def test_ctd_intermittency_factor(thesis_asm_rr):
     """Test the calculation of intermittency factor used in the
     Cheng-Todreas friction and flow split correlations in the

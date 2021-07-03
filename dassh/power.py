@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-14
+date: 2021-06-30
 author: matz
 Generate power distributions in assembly components based on neutron
 flux; object to assign to individual assemblies
@@ -22,6 +22,7 @@ flux; object to assign to individual assemblies
 ########################################################################
 import numpy as np
 import sys
+import bisect
 import logging
 import dassh
 from dassh.logged_class import LoggedClass
@@ -820,9 +821,13 @@ class AssemblyPower(object):
         # At extremely low power, can get some negative values
         # (~ -1e-6 W/m); want to filter these out as zeros.
         for k in p_lin.keys():
+            # try:
+            #     p_lin[k] = p_lin[k].clip(0.0)
+            # except AttributeError:
+            #     continue
             try:
-                p_lin[k] = p_lin[k].clip(0.0)
-            except AttributeError:
+                p_lin[k][p_lin[k] < 0.0] = 0.0
+            except TypeError:
                 continue
         return p_lin
 
@@ -906,31 +911,16 @@ class AssemblyPower(object):
 
         """
         z_abs = np.around(z_abs, 12)
-        # Identify the lower mesh boundary
-        try:  # Last position where z_in > a value in z_finemesh
-            idx = np.where(self.z_finemesh < z_abs)[0][-1]
-        # Account for z_abs=0.0; this should never occur!
-        except IndexError:
-            idx = np.where(self.z_finemesh == z_abs)[0][0]
-        return idx
-
-    # def get_kfint2(self, z_abs):
-    #     """Get the fine mesh interval for a given axial position
-    #
-    #     Parameters
-    #     ----------
-    #     z_abs : float (or numpy.ndarray of float)
-    #         Axial position in the core (cm)
-    #
-    #     Returns
-    #     -------
-    #     int
-    #         VARIANT mesh cell in which the requested axial
-    #         position is located
-    #
-    #     """
-    #     z_abs = np.around(z_abs, 12)
-    #     return np.searchsorted(self.z_finemesh, z_abs) - 1
+        # # Identify the lower mesh boundary
+        # try:  # Last position where z_in > a value in z_finemesh
+        #     idx = np.where(self.z_finemesh < z_abs)[0][-1]
+        # # Account for z_abs=0.0; this should never occur!
+        # except IndexError:
+        #     idx = np.where(self.z_finemesh == z_abs)[0][0]
+        if z_abs == 0.0:
+            return 0
+        else:
+            return bisect.bisect_left(self.z_finemesh, z_abs) - 1
 
     def estimate_total_power(self, zpts=250):
         """Estimate the total power (W) produced by the assembly using

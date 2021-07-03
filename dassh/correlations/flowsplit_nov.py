@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-04-01
+date: 2021-07-02
 author: matz
 Novendstern correlation (1972) for flow split
 """
@@ -91,5 +91,5 @@ def calc_constants(asm_obj):
 
     """
     c = {}
-    c['fs'] = calculate_flow_split(asm_obj)
+    c['fs'] = calculate_flow_split(asm_obj, shortcut=False)
     return c
