@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-07-01
+date: 2021-08-01
 author: matz
 Methods to plot DASSH objects (such as hexagonal fuel assemblies and
 the pins and subchannels that comprise them).
@@ -764,7 +764,7 @@ class SubchannelPlot(AssemblyPlot):
         matplotlib.axes.Axes object
 
         """
-        xy = self.pin['xy']
+        xy = self.pin['xy'].copy()
         if xy_shift is not None:
             xy += xy_shift
         circles = [plt.Circle((xi, yi), self.pin['radius'])
@@ -1882,7 +1882,6 @@ class CoreSubchannelPlot(CorePlot):
         # Setup the figure
         fig = plt.figure()
         ax = fig.add_subplot(111, aspect='equal')
-
         for i in range(len(self.reactor.assemblies)):
             asm = self.reactor.assemblies[i]
             # Skip if assembly is not included in rings: once you
@@ -1944,8 +1943,7 @@ class CoreSubchannelPlot(CorePlot):
 
         return ax
 
-    def _plot_asm(self, ax, asm, data, asm_xy, pins,
-                  pin_alpha, **patch_kwargs):
+    def _plot_asm(self, ax, asm, data, asm_xy, pins, pin_alpha, **patch_kw):
         """Add subchannel temperature patches to axes
 
         Parameters
@@ -1959,16 +1957,13 @@ class CoreSubchannelPlot(CorePlot):
         ax = self.scp[asm]._add_duct_walls(ax, asm_xy, lw=0.0)
 
         # 1. Add corner channels (hexagons)
-        ax = self.scp[asm]._add_corner_sc(ax, data['int'], asm_xy,
-                                          **patch_kwargs)
+        ax = self.scp[asm]._add_corner_sc(ax, data['int'], asm_xy, **patch_kw)
 
         # 2. Add edge channels (squares)
-        ax = self.scp[asm]._add_edge_sc(ax, data['int'], asm_xy,
-                                        **patch_kwargs)
+        ax = self.scp[asm]._add_edge_sc(ax, data['int'], asm_xy, **patch_kw)
 
         # 3. Add interior channels (triangles)
-        ax = self.scp[asm]._add_int_sc(ax, data['int'], asm_xy,
-                                       **patch_kwargs)
+        ax = self.scp[asm]._add_int_sc(ax, data['int'], asm_xy, **patch_kw)
 
         # 4. If requested, add pins
         if pins:

@@ -14,14 +14,13 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-26
+date: 2021-07-14
 author: matz
 Methods to describe the layout of assemblies in the reactor core and
 the coolant in the gap between them
 """
 ########################################################################
 import numpy as np
-import copy
 from dassh.logged_class import LoggedClass
 from dassh.correlations import nusselt_db
 
@@ -70,7 +69,7 @@ class Core(LoggedClass):
 
     def __init__(self, asm_list_input, asm_pitch, gap_flow_rate,
                  coolant_obj, inlet_temperature=273.15, model='flow',
-                 test=False):
+                 test=False, htc_params_duct=None):
         """Instantiate Core object."""
         LoggedClass.__init__(self, 4, 'dassh.core.Core')
         if model not in ['flow', 'no_flow', 'duct_average', None]:
@@ -95,6 +94,10 @@ class Core(LoggedClass):
              'htc': np.zeros(2)}  # heat transfer coefficients
         self.z = [0.0]
         self.model = model
+        if htc_params_duct:
+            self._htc_params = htc_params_duct
+        else:
+            self._htc_params = [0.025, 0.8, 0.8, 7.0]
 
         # --------------------------------------------------------------
         # Don't run the more complex, tested methods if testing; let
@@ -1299,7 +1302,8 @@ class Core(LoggedClass):
         elif self.model == 'flow':
             nu = nusselt_db.calculate_sc_Nu(
                 self.gap_coolant,
-                self.coolant_gap_params['Re_sc'])
+                self.coolant_gap_params['Re_sc'],
+                self._htc_params)
             self.coolant_gap_params['htc'] = \
                 (self.gap_coolant.thermal_conductivity
                  * nu / self.gap_params['de'])
@@ -1310,7 +1314,7 @@ class Core(LoggedClass):
             self.coolant_gap_params['htc'] = np.ones(self.n_sc)
             self.coolant_gap_params['htc'] *= 0.5 * self.d_gap
         # self.coolant_gap_params['htc'] = np.array([4e4, 4e4])
-        #self._Rcond[:, 1:] *= 0.0
+        # self._Rcond[:, 1:] *= 0.0
 
     ####################################################################
     # COOLANT TEMPERATURE CALCULATION

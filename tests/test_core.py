@@ -347,21 +347,14 @@ def test_interasm_gap_sc_types_full(core_19a_incremental, c_ctrl_asm):
     """Test the type assignment of interassembly gap subchannels"""
     # problem setup: asms have 37 pins; use existing conceptual ctrl asm
     asm_list = [c_ctrl_asm for i in range(19)]
-    # core_19a_incremental.duct_oftf = asm_list[0].duct_oftf
-    # core_19a_incremental.hex_side_len = \
-    #     core_19a_incremental.duct_oftf / np.sqrt(3)
-    # core_19a_incremental.d_gap = \
-    #     core_19a_incremental.asm_pitch - core_19a_incremental.duct_oftf
-    # side-subchannels-per-side = 3
-    # core_19a_incremental._sc_per_asm = 24
-    # core_19a_incremental._sc_per_side = 3
-    # core_19a_incremental.asm_sc_adj = \
-    #     core_19a_incremental.map_interassembly_sc()
-    # sc_types = core_19a_incremental.determine_sc_types()
-    core_19a_incremental._geom_params = \
-        core_19a_incremental._collect_sc_geom_params(asm_list)
-    tmp = core_19a_incremental._determine_gap_sc_types()
-    sc_types = np.array(tmp[1])
+    core_19a_incremental.load(asm_list)
+    # hex_side_len = asm_list[0].duct_oftf / np.sqrt(3)
+    # _asm_sc_xb_side = core_19a_incremental._calculate_gap_xbnds(asm_list)
+    # core_19a_incremental._geom_params = \
+    #     core_19a_incremental._collect_sc_geom_params(asm_list, _asm_sc_xb_side)
+    # tmp = core_19a_incremental._determine_gap_sc_types()
+    # sc_types = np.array(tmp[1])
+    sc_types = core_19a_incremental._sc_types
     corners = np.array([4, 8, 12, 16, 20, 24, 28, 32, 36, 43, 47, 54,
                         58, 65, 69, 73, 77, 81, 85, 92, 96, 100, 107,
                         111, 118, 122, 126, 133, 137, 144, 148, 155,

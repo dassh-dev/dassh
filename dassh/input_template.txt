@@ -58,7 +58,7 @@
     bypass_fraction = float(min=0.0, max=1.0, default=0.0)
     assembly_pitch = float
     gap_model = option('flow', 'no_flow', 'duct_average', 'none', default='no_flow')
-
+    htc_params_duct = float_list(default=None)
 
 [Assembly]
     [[__many__]]

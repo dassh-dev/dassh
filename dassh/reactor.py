@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-28
+date: 2021-07-14
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -705,7 +705,8 @@ class Reactor(LoggedClass):
             gap_fr,
             self.materials[cool_mat],
             inlet_temperature=self.inlet_temp,
-            model=inp_obj.data['Core']['gap_model'])
+            model=inp_obj.data['Core']['gap_model'],
+            htc_params_duct=inp_obj.data['Core']['htc_params_duct'])
         core_obj.load(self.assemblies)
         self.core = core_obj
 

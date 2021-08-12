@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-29
+date: 2021-07-14
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -532,6 +532,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         self.convert_assn_deltaT_to_outletT()
         # Core
         self.check_core_specifications()
+        self.check_htc_params()
         # Setup (optional)
         self.check_units()
         self.check_axial_plane_req()
@@ -1422,6 +1423,27 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
             msg += '\n'
             msg += '\n'.join(['- all', '- coolant', '- duct', '- pins',
                               '- gap', '- average', '- maximum'])
+
+    def check_htc_params(self):
+        """Check user-specified coefficients to DB correlation"""
+        msg_len = "Four HTC correlation parameters required."
+        msg_neg = "HTC correlation parameters must be non-negative."
+        # For each assembly
+        for a in self.data['Assembly']:
+            htc_params = self.data['Assembly'][a]['htc_params_duct']
+            pre = f'Asm: \"{a}\"; '  # indicate asm for error msg
+            if htc_params is not None:
+                if not len(htc_params) == 4:
+                    self.log('error', pre + msg_len)
+                if any(x < 0.0 for x in htc_params):
+                    self.log('error', pre + msg_neg)
+        # For inter-assembly gap
+        htc_params = self.data['Core']['htc_params_duct']
+        if htc_params is not None:
+            if not len(htc_params) == 4:
+                self.log('error', 'Core; ' + msg_len)
+            if any(x < 0.0 for x in htc_params):
+                self.log('error', 'Core; ' + msg_neg)
 
     def _check_nonzero(self, val, msg):
         """If a value is not None, check that it is nonzero."""
