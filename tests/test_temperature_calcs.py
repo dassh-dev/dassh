@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-04-29
+date: 2021-08-13
 author: matz
 Test the DASSH Assembly object
 """
@@ -27,6 +27,8 @@ import dassh
 # from dassh import asm_tables
 
 
+# Use "print_option" to print temperatures and parameters
+# for use in Excel spreadsheet for verification
 print_option = False
 
 
@@ -288,12 +290,12 @@ def test_bypass_gap_verification(simple_ctrl_asm):
         for i in range(len(keys)):
             print(keys[i] + ': ' + '{:.15e}'.format(vals[i]))
 
-    ans = np.array([6.234365421891E+02, 6.236638634010E+02,
-                    6.234365404262E+02, 6.236638634667E+02,
-                    6.234365421891E+02, 6.236638634010E+02,
-                    6.234365404262E+02, 6.236638634667E+02,
-                    6.234365421891E+02, 6.236638634010E+02,
-                    6.234365404262E+02, 6.236638634666E+02])
+    ans = np.array([6.234363702699E+02, 6.236462160477E+02,
+                    6.234363683471E+02, 6.236462161081E+02,
+                    6.234363702699E+02, 6.236462160477E+02,
+                    6.234363683470E+02, 6.236462161081E+02,
+                    6.234363702699E+02, 6.236462160477E+02,
+                    6.234363683470E+02, 6.236462161081E+02])
 
     simple_ctrl_asm._z = 1.29
     z = 1.29

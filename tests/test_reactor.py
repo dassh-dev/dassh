@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-11
+date: 2021-08-13
 author: matz
 Test the temperature sweep across the core
 """
@@ -491,7 +491,7 @@ def test_2asm_ebal(testdir):
     q_duct[-1] = np.sum(r.core.ebal['asm'])
     cp = r.assemblies[0].active_region.coolant.heat_capacity  # constant
     q_dt = mfr * cp * dt
-    assert np.abs(np.sum(q_dt)) < 1e-9
+    assert np.abs(np.sum(q_dt)) < 5e-9
 
 
 def test_silly_core_sweep(testdir):
