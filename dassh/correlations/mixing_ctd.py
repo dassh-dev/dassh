@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-03-09
+date: 2021-08-12
 author: matz
 Cheng-Todreas Detailed mixing correlations: eddy diffusivity and
 swirl velocity (1986)
@@ -109,17 +109,20 @@ def calc_sc_intermittency_factors(asm_obj, Re_bL, Re_bT):
     fs = ctd_fs.calculate_flow_split(asm_obj)
     v_bundle = (asm_obj.int_flow_rate / asm_obj.coolant.density
                 / asm_obj.bundle_params['area'])
-    fs_L = ctd_fs.calculate_flow_split(asm_obj, 'laminar')
-    fs_T = ctd_fs.calculate_flow_split(asm_obj, 'turbulent')
-    for i in range(0, len(y)):
-        Re = (asm_obj.coolant.density * v_bundle * fs[i]
-              * asm_obj.params['de'][i] / asm_obj.coolant.viscosity)
-        Re_iL = (Re_bL * fs_L[i] * asm_obj.params['de'][i]
-                 / asm_obj.bundle_params['de'])
-        Re_iT = (Re_bT * fs_T[i] * asm_obj.params['de'][i]
-                 / asm_obj.bundle_params['de'])
-        y[i] = ((np.log10(Re) - np.log10(Re_iL))
-                / (np.log10(Re_iT) - np.log10(Re_iL)))
+    try:
+        fs_L = asm_obj.corr_constants['fs']['fs']['laminar']
+        fs_T = asm_obj.corr_constants['fs']['fs']['turbulent']
+    except (KeyError, AttributeError):
+        fs_L = ctd_fs.calculate_flow_split(asm_obj, 'laminar')
+        fs_T = ctd_fs.calculate_flow_split(asm_obj, 'turbulent')
+    Re = (asm_obj.coolant.density * v_bundle * fs
+          * asm_obj.params['de'] / asm_obj.coolant.viscosity)
+    Re_iL = (Re_bL * fs_L * asm_obj.params['de']
+             / asm_obj.bundle_params['de'])
+    Re_iT = (Re_bT * fs_T * asm_obj.params['de']
+             / asm_obj.bundle_params['de'])
+    y = ((np.log10(Re) - np.log10(Re_iL))
+         / (np.log10(Re_iT) - np.log10(Re_iL)))
     return y
 
 

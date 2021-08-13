@@ -262,10 +262,16 @@ class _MatInterp(object):
     def __init__(self, x, y):
         self.x = x
         self.y = y
+        self.const = False
+        if np.all(y == y[0]):
+            self.const = True
 
     def __call__(self, x):
         """Return the interpolated result"""
-        return np.interp(x, self.x, self.y)
+        if self.const:
+            return self.y[0]
+        else:
+            return np.interp(x, self.x, self.y)
 
 
 class _MatPoly(object):

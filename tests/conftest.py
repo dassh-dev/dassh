@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-02-25
+date: 2021-08-12
 author: matz
 Pytest fixtures and related test utilities for the whole shebang
 """
@@ -438,7 +438,7 @@ def textbook_rr(textbook_params):
                                       textbook_params[1], flowrate)
 
 
-@pytest.fixture(scope='module')
+@pytest.fixture(scope='function')
 def textbook_active_rr(textbook_rr, textbook_params):
     """Activate the textbook rodded region"""
     return activate_rodded_region(textbook_rr, 300.15)

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-09-18
+date: 2021-08-12
 author: matz
 Upgraded Cheng-Todreas correlation for flow split (2018)
 """
@@ -26,7 +26,7 @@ from . import flowsplit_ctd as fs_ctd
 applicability = fr_uctd.applicability
 
 
-def calculate_flow_split(asm_obj, regime=None):
+def calculate_flow_split(asm_obj, regime=None, beta=1.0):
     """Calculate the flow split into the different types of
     subchannels based on the Upgraded Cheng-Todreas model
 
@@ -37,6 +37,14 @@ def calculate_flow_split(asm_obj, regime=None):
     regime : str or NoneType
         Indicate flow regime for which to calculate flow split
         {'turbulent', 'laminar', None}; default = None
+    beta : float
+        Beta is a factor used to combine the laminar and turbulent
+        flowpslit terms in the transition region. It comes from
+        Cheng's 1984 thesis in which he recommends a value of
+        0.05. There, Figure 4.19 shows the edge flowsplit assuming
+        beta=0.05. However, in reality beta=0.05 gives weird results
+        and beta=1.0 matches what's shown in the figure. Therefore,
+        it'set to 1.0 here by default.
 
     Returns
     -------
@@ -70,17 +78,26 @@ def calculate_flow_split(asm_obj, regime=None):
         return fs_ctd._calculate_flow_split(asm_obj, Cf, 'turbulent')
     else:
         return fs_ctd._calculate_flow_split(asm_obj, Cf, 'transition',
-                                            Re_bnds)
+                                            Re_bnds, beta)
 
 
 def calc_constants(asm_obj):
     """Calculate constants needed by the UCTD flowsplit calculation"""
-    constants = fr_uctd.calc_constants(asm_obj)
-    del constants['Cf_b']
-    constants['na'] = [asm_obj.subchannel.n_sc['coolant']['interior']
-                       * asm_obj.params['area'][0],
-                       asm_obj.subchannel.n_sc['coolant']['edge']
-                       * asm_obj.params['area'][1],
-                       asm_obj.subchannel.n_sc['coolant']['corner']
-                       * asm_obj.params['area'][2]]
-    return constants
+    const = fr_uctd.calc_constants(asm_obj)
+    del const['Cf_b']
+
+    # Total subchannel area for each subchannel type
+    const['na'] = [asm_obj.subchannel.n_sc['coolant']['interior']
+                   * asm_obj.params['area'][0],
+                   asm_obj.subchannel.n_sc['coolant']['edge']
+                   * asm_obj.params['area'][1],
+                   asm_obj.subchannel.n_sc['coolant']['corner']
+                   * asm_obj.params['area'][2]]
+
+    # REGIME RATIO CONSTANTS
+    const['xr'] = fs_ctd._calc_regime_ratio_constants(asm_obj, const['Cf_sc'])
+
+    # Laminar/turbulent: constant flow split!
+    const['fs'] = fs_ctd._calc_constant_flowsplits(asm_obj, const)
+
+    return const

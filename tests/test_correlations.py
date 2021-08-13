@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-07-02
+date: 2021-08-12
 author: matz
 Test the correlations
 """
@@ -474,6 +474,9 @@ def test_flow_split(textbook_active_rr):
     fs = [flowsplit_mit, flowsplit_nov, flowsplit_ctd, flowsplit_uctd]
     res = np.zeros((len(fs), 3))
     for i in range(len(fs)):
+        del textbook_active_rr.corr_constants['fs']
+        textbook_active_rr.corr_constants['fs'] = \
+            fs[i].calc_constants(textbook_active_rr)
         res[i, :] = fs[i].calculate_flow_split(textbook_active_rr)
 
     # In all cases, x1 < x2 and x2 >= x3
