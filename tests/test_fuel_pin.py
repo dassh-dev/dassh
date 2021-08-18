@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-06
+date: 2021-08-18
 author: matz
 Test the clad/fuel pin temperature model
 """
@@ -97,7 +97,7 @@ def test_energy_conservation(pin):
     q = np.array([1000.0])  # W
     dz = 0.025  # m
     # q' (W/m) is input because that's what we have from DASSH
-    q_s = pin._distribute_power(q / dz, dz)
+    q_s = OLD_distribute_power(pin, q / dz, dz)
     # Confirm that last entry is equal to total power
     print(pin.fuel['r'])
     print(pin.fuel['dr'])
@@ -393,3 +393,37 @@ def test_check_new_fuel_calc(pin, se2anl_peaktemp_params):
     T_cl_old = calc_fuel_temps_OLD(pin, q_sums, params['dz'], T_out)
     T_cl = pin.calc_fuel_temps(q_dens, T_out)
     assert T_cl == pytest.approx(T_cl_old)
+
+
+def OLD_distribute_power(self, q_lin, dz):
+    """Distribute the power among the fuel nodes
+
+    Parameters
+    ----------
+    q_lin : numpy.ndarray
+        Linear power (W/m) in each pin at the current axial mesh
+    dz : float
+        Axial mesh step size (m)
+
+    Returns
+    -------
+    numpy.ndarray
+        Total heat (W) generated within each radial fuel node and
+        all nodes interior to it for each pin
+
+    Notes
+    ----
+    This was the original method I used in fuel pin temperature
+    calculation. Saving here for testing purposes.
+
+    """
+    q_dens = q_lin * np.pi * dz / self.fuel['area']  # W/m -> W/m3
+    # Calculate the power at each radial node (Eq. 3.4-8)
+    # q_node = np.zeros(len(self.fuel['rm']) - 1)
+    # const = np.pi * q_density * dz
+    q_node = np.ones((len(self.fuel['rm']) - 1, len(q_lin)))
+    q_node *= q_dens
+    q_node = q_node.transpose()
+    q_node *= self.fuel['drmsq']
+    # Calculate the power sum at each radial node (Eq. 3.4-9)
+    return np.cumsum(q_node, axis=1)
