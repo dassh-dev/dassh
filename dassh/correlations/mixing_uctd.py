@@ -149,29 +149,6 @@ def calc_sc_intermittency_factors(asm_obj, Re_bL, Re_bT):
     return y
 
 
-def calc_sc_intermittency_factors_old(asm_obj, Re_bL, Re_bT):
-    """Calculate the intermittency factors for the interior and edge
-    coolant subchannels; required to find the mixing parameters in
-    the transition region
-
-    Notes
-    -----
-    See Equations 10, 11, and 30-32 in the Cheng-Todreas 1986 paper
-
-    """
-    y = np.zeros(2)
-    fs_L = uctd_fs.calculate_flow_split(asm_obj, 'laminar')
-    fs_T = uctd_fs.calculate_flow_split(asm_obj, 'turbulent')
-    for i in range(len(y)):
-        Re_iL = (Re_bL * fs_L[i] * asm_obj.params['de'][i]
-                 / asm_obj.bundle_params['de'])
-        Re_iT = (Re_bT * fs_T[i] * asm_obj.params['de'][i]
-                 / asm_obj.bundle_params['de'])
-        y[i] = ((np.log10(asm_obj.params['Re'][i]) - np.log10(Re_iL))
-                / (np.log10(Re_iT) - np.log10(Re_iL)))
-    return y
-
-
 def calc_constants(asm_obj):
     """Calculate and store constants for UCTD mixing parameters so
     I don't have to recalculate them at every step"""
