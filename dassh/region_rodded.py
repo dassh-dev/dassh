@@ -687,15 +687,20 @@ class RoddedRegion(LoggedClass, DASSH_Region):
 
         """
         self.coolant.update(temperature)
+        mfr_over_area = self.int_flow_rate / self.bundle_params['area']
 
-        self.coolant_int_params['vel'] = \
-            (self.int_flow_rate / self.coolant.density
-             / self.bundle_params['area'])
+        # Coolant axial velocity
+        # self.coolant_int_params['vel'] = \
+        #     (self.int_flow_rate / self.coolant.density
+        #      / self.bundle_params['area'])
+        self.coolant_int_params['vel'] = mfr_over_area / self.coolant.density
 
         # Bundle Reynolds number
+        # self.coolant_int_params['Re'] = \
+        #     (self.int_flow_rate * self.bundle_params['de']
+        #      / self.coolant.viscosity / self.bundle_params['area'])
         self.coolant_int_params['Re'] = \
-            (self.int_flow_rate * self.bundle_params['de']
-             / self.coolant.viscosity / self.bundle_params['area'])
+            mfr_over_area * self.bundle_params['de'] / self.coolant.viscosity
 
         # Flow split parameters
         if self.corr['fs'] is not None:
