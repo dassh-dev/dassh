@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-17
+date: 2021-08-19
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -32,6 +32,7 @@ from dassh.logged_class import LoggedClass
 from dassh.correlations import check_correlation
 from dassh.region import DASSH_Region
 from dassh.fuel_pin import FuelPin
+from dassh.material import _MatTracker
 
 
 _sqrt3 = np.sqrt(3)
@@ -44,7 +45,8 @@ q_p2sc = np.array([0.166666666666667, 0.25, 0.166666666666667])
 module_logger = logging.getLogger('dassh.assembly')
 
 
-def make_rr_asm(asm_input, name, mat_dict, flow_rate, se2geo=False):
+def make_rr_asm(asm_input, name, mat_dict, flow_rate, se2geo=False,
+                param_update_tol=0.0):
     """Create RoddedRegion object within DASSH Assembly"""
     rr = RoddedRegion(name,
                       asm_input['num_rings'],
@@ -66,7 +68,8 @@ def make_rr_asm(asm_input, name, mat_dict, flow_rate, se2geo=False):
                       asm_input['bypass_gap_loss_coeff'],
                       asm_input['wire_direction'],
                       asm_input['shape_factor'],
-                      se2geo)
+                      se2geo,
+                      param_update_tol)
 
     # Add z lower/upper boundaries
     rr.z = [asm_input['AxialRegion']['rods']['z_lo'],
@@ -176,7 +179,8 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                  wire_diam, clad_thickness, duct_ftf, flow_rate,
                  coolant_mat, duct_mat, htc_params_duct, corr_friction,
                  corr_flowsplit, corr_mixing, corr_nusselt, byp_ff=None,
-                 byp_k=None, wwdir='clockwise', sf=1.0, se2=False):
+                 byp_k=None, wwdir='clockwise', sf=1.0, se2=False,
+                 param_update_tol=0.0):
         """Instantiate RoddedRegion object"""
         # Instantiate Logger
         LoggedClass.__init__(self, 4, 'dassh.RoddedRegion')
@@ -289,6 +293,11 @@ class RoddedRegion(LoggedClass, DASSH_Region):
             self._adj_sw = 3
         else:
             self._adj_sw = 4
+
+        # --------------------------------------------------------------
+        # Set up _MatTracker object
+        if param_update_tol > 0.0:
+            self._coolant_tracker = _MatTracker(self.coolant, param_update_tol)
 
         # --------------------------------------------------------------
         # Set up other parameters
@@ -586,6 +595,8 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         # for each clone; use temperature at "current" clone point
         clone.temp = copy.deepcopy(self.temp)
         clone.ebal = copy.deepcopy(self.ebal)
+        if hasattr(self, '_coolant_tracker'):
+            clone._coolant_tracker = copy.deepcopy(self._coolant_tracker)
         if hasattr(self, 'pin_temps'):
             clone.pin_temps = copy.deepcopy(self.pin_temps)
 
@@ -687,18 +698,22 @@ class RoddedRegion(LoggedClass, DASSH_Region):
 
         """
         self.coolant.update(temperature)
+
+        # Only reason you wouldn't updated all correlated parameters is if
+        # the coolant tracker object says not to. If it says not to, skip
+        # the update. Otherwise, proceed.
+        if hasattr(self, '_coolant_tracker'):
+            self._coolant_tracker.update(self.coolant)
+            # If coolant_tracker says no update, no parameter updates
+            if not self._coolant_tracker.recalculate_params:
+                return
+            # Otherwise, need to do parameter updates and reset tracker
+            else:
+                self._coolant_tracker.reset()
+
+        # Coolant axial velocity, bundle Reynolds number
         mfr_over_area = self.int_flow_rate / self.bundle_params['area']
-
-        # Coolant axial velocity
-        # self.coolant_int_params['vel'] = \
-        #     (self.int_flow_rate / self.coolant.density
-        #      / self.bundle_params['area'])
         self.coolant_int_params['vel'] = mfr_over_area / self.coolant.density
-
-        # Bundle Reynolds number
-        # self.coolant_int_params['Re'] = \
-        #     (self.int_flow_rate * self.bundle_params['de']
-        #      / self.coolant.viscosity / self.bundle_params['area'])
         self.coolant_int_params['Re'] = \
             mfr_over_area * self.bundle_params['de'] / self.coolant.viscosity
 

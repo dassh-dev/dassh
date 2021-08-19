@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-20
+date: 2021-08-19
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -63,7 +63,8 @@ class Assembly(LoggedClass):
     """
 
     def __init__(self, name, loc, asm_input, mat_dict, inlet_temp,
-                 flow_rate, origin=(0.0, 0.0), se2geo=False):
+                 flow_rate, origin=(0.0, 0.0), se2geo=False,
+                 param_update_tol=0.0):
         """Instantiate Assembly object."""
         # Instantiate Logger
         LoggedClass.__init__(self, 4, 'dassh.Assembly')
@@ -87,8 +88,14 @@ class Assembly(LoggedClass):
             self.region = [region_unrodded.make_ur_asm(
                 asm_input, mat_dict, flow_rate, se2geo)]
         else:
-            self.region = [region_rodded.make_rr_asm(
-                asm_input, self.name, mat_dict, flow_rate, se2geo)]
+            self.region = [
+                region_rodded.make_rr_asm(asm_input,
+                                          self.name,
+                                          mat_dict,
+                                          flow_rate,
+                                          se2geo,
+                                          param_update_tol)
+            ]
 
         # Create other requested unrodded regions
         for reg in asm_input['AxialRegion']:

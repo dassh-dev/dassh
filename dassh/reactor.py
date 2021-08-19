@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-07-14
+date: 2021-08-19
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -179,6 +179,8 @@ class Reactor(LoggedClass):
         # Process user input
         self._options['axial_plane'] = inp.data['Setup']['axial_plane']
         self._options['se2geo'] = inp.data['Setup']['se2geo']
+        self._options['param_update_tol'] = \
+            inp.data['Setup']['param_update_tol']
 
         if 'write_output' in kwargs.keys():  # always True in __main__
             self._options['write_output'] = kwargs['write_output']
@@ -345,8 +347,14 @@ class Reactor(LoggedClass):
                     mat_data['gap'] = None
             # make the list of "template" Assembly objects
             asm_templates[a] = dassh.assembly.Assembly(
-                a, (-1, -1), asm_data, mat_data,  self.inlet_temp, mfrx,
-                se2geo=self._options['se2geo'])
+                a,
+                (-1, -1),
+                asm_data,
+                mat_data,
+                self.inlet_temp,
+                mfrx,
+                se2geo=self._options['se2geo'],
+                param_update_tol=self._options['param_update_tol'])
 
         # Store as attribute b/c used later to write summary output
         self.asm_templates = asm_templates
