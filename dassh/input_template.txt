@@ -8,6 +8,7 @@
     se2geo = boolean(default=False)
     debug = boolean(default=False)
     parallel = boolean(default=False)
+    param_update_tol = float(min=0.0, max=1.0, default=0.0)
     [[Dump]]
         all = boolean(default=False)
         coolant = boolean(default=False)

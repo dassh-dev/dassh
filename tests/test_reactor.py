@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-13
+date: 2021-08-19
 author: matz
 Test the temperature sweep across the core
 """
@@ -390,31 +390,53 @@ def cleanup(output_path):
 def test_single_asm(testdir):
     """Perform the temperature sweep for a single assembly; this test
     just makes sure nothing fails"""
-    if 'linux' not in sys.platform:
-        pytest.skip('skipping sweep test, too slow locally')
-
     inpath = os.path.join(testdir, 'test_inputs')
     outpath = os.path.join(testdir, 'test_results', 'test_single_asm')
     cleanup(outpath)
-
     inp = dassh.DASSH_Input(os.path.join(inpath, 'input_single_asm.txt'))
     r = dassh.Reactor(inp, path=outpath, write_output=True)
-    # r.temperature_sweep(verbose=True)
     r.temperature_sweep()
     r.save()
     assert 'dassh.out' in os.listdir(outpath)
     assert np.abs(r.assemblies[0].avg_coolant_temp - 273.15 - 500) < 1.0
 
 
+def test_single_asm_parameter_update_freq(testdir):
+    """Perform the temperature sweep for a single assembly and confirm that
+    the result is close to what's obtained from the previous test."""
+    inpath = os.path.join(testdir, 'test_inputs')
+    outpath = os.path.join(testdir, 'test_results',
+                           'test_single_asm_param_freq')
+    cleanup(outpath)
+    inp = dassh.DASSH_Input(os.path.join(inpath, 'input_single_asm.txt'))
+    # Add in option for param update frequency / cutoff - correlated parameters
+    # are only updated when there's a 1% change in a material property value.
+    # Problem uses "sodium_se2anl" coolant, so the material properties are in
+    # fact dependent on temperature.
+    inp.data['Setup']['param_update_tol'] = 0.01
+    r = dassh.Reactor(inp, path=outpath, write_output=True)
+    r.temperature_sweep()
+    r.save()
+    assert 'dassh.out' in os.listdir(outpath)  # Did it run all the way?
+    # Now check answer against previous
+    anspath = os.path.join(testdir, 'test_results', 'test_single_asm')
+    r_ans = dassh.reactor.load(os.path.join(anspath, 'dassh_reactor.pkl'))
+    dT = (r_ans.assemblies[0].rodded.temp['coolant_int'] -
+          r.assemblies[0].rodded.temp['coolant_int'])
+    # Average temperature change is 150˚C. How much does this update affect
+    # the answer compared to the case in which the correlated parameters are
+    # updated with every step?
+    max_dT = np.max(np.abs(dT))
+    assert max_dT > 0.0           # Confirm there's some difference
+    assert max_dT < 0.005         # degrees celsius
+    assert max_dT / 150.0 < 2e-5  # relative difference
+
+
 def test_3asm_sweep(testdir):
     """Test that DASSH can sweep with unfilled positions"""
-    if 'linux' not in sys.platform:
-        pytest.skip('skipping sweep test, too slow locally')
-
     inpath = os.path.join(testdir, 'test_inputs')
     outpath = os.path.join(testdir, 'test_results', 'test_3a')
     cleanup(outpath)
-
     inp = dassh.DASSH_Input(os.path.join(inpath, 'input_3a.txt'))
     r = dassh.Reactor(inp, path=outpath, write_output=True)
     r.save()

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-29
+date: 2021-08-19
 author: matz
 Containers to hold and update material properties
 """
@@ -295,6 +295,62 @@ class _MatPoly(object):
                 y *= x
                 y += v
             return y
+
+
+class _MatTracker(object):
+    """Keep track of changes in coolant properties to indicate when
+    to update correlated parameters, if applicable
+
+    Parameters
+    ----------
+    mat : DASSH Material object
+        DASSH coolant object with temperature-dependent properties
+    tol : float
+        Relative change in any property above which correlated
+        parameters should be updated
+
+    Notes
+    -----
+    Material properties are updated every step. However, if material
+    properties are constant, or if the temperature has changed very
+    little such that the change in material properties is small, there
+    is no need to perform the more costly updates to the correlated
+    parameters (mixing, flowsplit, friction, HTC).
+
+    This object tracks changes in material properties to limit the
+    frequency with which correlated parameters are updated. This will
+    limit computational expense in the regions where temperatures are
+    not changing (e.g. in the radial and axial periphery of the core)
+    and focus it in the regions where temperatures are changing more
+    rapidly (in the fuel).
+
+    """
+    def __init__(self, mat, tol):
+        """Initialize _MatTracker object"""
+        self._dat0 = [mat.viscosity,
+                      mat.density,
+                      mat.heat_capacity,
+                      mat.thermal_conductivity]
+        self._dat = [0.0, 0.0, 0.0, 0.0]
+        self._tol = tol
+        self._count = 0
+        self.recalculate_params = False
+
+    def update(self, mat):
+        """Update state, check whether to update correlated parameters"""
+        self._dat = [mat.viscosity,
+                     mat.density,
+                     mat.heat_capacity,
+                     mat.thermal_conductivity]
+        for i in range(4):
+            if abs(self._dat[i] - self._dat0[i]) / self._dat0[i] > self._tol:
+                self.recalculate_params = True
+                self._count += 1
+
+    def reset(self):
+        self._dat0 = self._dat
+        self._dat = []
+        self.recalculate_params = False
 
 
 ########################################################################
