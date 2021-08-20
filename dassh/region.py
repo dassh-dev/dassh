@@ -14,13 +14,12 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-20
+date: 2021-08-20
 author: matz
 Methods to describe the axial regions in an assembly
 """
 ########################################################################
 import numpy as np
-import dassh
 
 
 class DASSH_Region(object):
@@ -165,88 +164,88 @@ class DASSH_Region(object):
         #   - "all meshes"
         return self.temp['duct_surf'][-1, -1, :]
 
-    def activate(self, previous_reg):
-        """Activate region based on temperatures in previous region
-
-        Parameters
-        ----------
-        previous_reg : DASSH Region
-            Previous region to get average coolant temperatures to
-            assign to new region
-
-        Notes
-        -----
-        It is assumed that the coolant is mixed across region
-        transitions. Therefore, the coolant temperature in every
-        node in the new region should be equal to the overall
-        average coolant temperature from the previous region.
-
-        Bypass coolant channels are not preserved across regions. It
-        is assumed that the bypass gap coolant, if present, will be
-        mixed with the primary interior coolant before entering the
-        new axial region.
-
-        """
-        # Make sure region is not yet activated
-        msg = "Cannot activate region if it has been already activated"
-        assert (np.allclose(self.temp['coolant_int'], 1)
-                and np.allclose(self.temp['duct_mw'], 1)
-                and np.allclose(self.temp['duct_surf'], 1)), msg
-
-        # Claim the DASSH Material objects from the previous region
-        # self.coolant = previous_reg.coolant
-        # self.duct = previous_reg.duct
-        # if hasattr(previous_reg, 'struct'):
-        #     self.struct = previous_reg.struct
-
-        # Coolant temperatures: assume mixing
-        avg_cool_temp = previous_reg.avg_coolant_temp
-        avg_cool_int_temp = previous_reg.avg_coolant_int_temp
-        self.temp['coolant_int'] *= avg_cool_temp
-        if 'coolant_byp' in self.temp.keys():
-            self.temp['coolant_byp'] *= avg_cool_temp
-
-        # Duct temperatures: outermost duct is always continued into
-        # the next region, but inner ducts may be added or subtracted
-        # - If the duct continues in the next region, approximate the
-        #   temperatures on the new mesh based on temperatures in the
-        #   previous region (e.g. the outermost duct).
-        # - If the duct is removed, nothing.
-        # - If a duct is added, set surface/midwall temperatures equal
-        #   to the average interior coolant temperature.
-
-        # Outer duct temperatures - interpolate
-        self.temp['duct_mw'][-1] = \
-            dassh.mesh_functions.interpolate_quad(
-                previous_reg.x_pts,
-                previous_reg.temp['duct_mw'][-1],
-                self.x_pts)
-        for s in range(2):
-            self.temp['duct_surf'][-1, s] = \
-                dassh.mesh_functions.interpolate_quad(
-                    previous_reg.x_pts,
-                    previous_reg.temp['duct_surf'][-1, s],
-                    self.x_pts)
-
-        # Any other ducts: set equal to average interior coolant
-        # temperature
-        if len(self.temp['duct_mw']) > 1:
-            for d in range(len(self.temp['duct_mw']) - 1):
-                self.temp['duct_mw'][d] *= avg_cool_int_temp
-                self.temp['duct_surf'][d, :] *= avg_cool_int_temp
-
-        # Duct temperatures: apply average temperature
-        # for d in range(0, len(self.temp['duct_mw']) - 1):
-        #     self.temp['duct_mw'][d] *= avg_cool_temp
-        #     self.temp['duct_surf'][d] *= avg_cool_temp
-        #
-        # # Outer duct mw, surface temp should stay the same
-        # self.temp['duct_mw'][-1] *= previous_reg.avg_duct_mw_temp[-1]
-        # self.temp['duct_surf'][-1] = np.average(previous_reg
-        #                                         .duct_outer_surf_temp)
-
-        # Energy balance - initiate temperature tracking
-        self.ebal['temp_in'] = avg_cool_temp
+    # def activate(self, previous_reg):
+    #     """Activate region based on temperatures in previous region
+    #
+    #     Parameters
+    #     ----------
+    #     previous_reg : DASSH Region
+    #         Previous region to get average coolant temperatures to
+    #         assign to new region
+    #
+    #     Notes
+    #     -----
+    #     It is assumed that the coolant is mixed across region
+    #     transitions. Therefore, the coolant temperature in every
+    #     node in the new region should be equal to the overall
+    #     average coolant temperature from the previous region.
+    #
+    #     Bypass coolant channels are not preserved across regions. It
+    #     is assumed that the bypass gap coolant, if present, will be
+    #     mixed with the primary interior coolant before entering the
+    #     new axial region.
+    #
+    #     """
+    #     # Make sure region is not yet activated
+    #     msg = "Cannot activate region if it has been already activated"
+    #     assert (np.allclose(self.temp['coolant_int'], 1)
+    #             and np.allclose(self.temp['duct_mw'], 1)
+    #             and np.allclose(self.temp['duct_surf'], 1)), msg
+    #
+    #     # Claim the DASSH Material objects from the previous region
+    #     # self.coolant = previous_reg.coolant
+    #     # self.duct = previous_reg.duct
+    #     # if hasattr(previous_reg, 'struct'):
+    #     #     self.struct = previous_reg.struct
+    #
+    #     # Coolant temperatures: assume mixing
+    #     avg_cool_temp = previous_reg.avg_coolant_temp
+    #     avg_cool_int_temp = previous_reg.avg_coolant_int_temp
+    #     self.temp['coolant_int'] *= avg_cool_temp
+    #     if 'coolant_byp' in self.temp.keys():
+    #         self.temp['coolant_byp'] *= avg_cool_temp
+    #
+    #     # Duct temperatures: outermost duct is always continued into
+    #     # the next region, but inner ducts may be added or subtracted
+    #     # - If the duct continues in the next region, approximate the
+    #     #   temperatures on the new mesh based on temperatures in the
+    #     #   previous region (e.g. the outermost duct).
+    #     # - If the duct is removed, nothing.
+    #     # - If a duct is added, set surface/midwall temperatures equal
+    #     #   to the average interior coolant temperature.
+    #
+    #     # Outer duct temperatures - interpolate
+    #     self.temp['duct_mw'][-1] = \
+    #         dassh.mesh_functions.interpolate_quad(
+    #             previous_reg.x_pts,
+    #             previous_reg.temp['duct_mw'][-1],
+    #             self.x_pts)
+    #     for s in range(2):
+    #         self.temp['duct_surf'][-1, s] = \
+    #             dassh.mesh_functions.interpolate_quad(
+    #                 previous_reg.x_pts,
+    #                 previous_reg.temp['duct_surf'][-1, s],
+    #                 self.x_pts)
+    #
+    #     # Any other ducts: set equal to average interior coolant
+    #     # temperature
+    #     if len(self.temp['duct_mw']) > 1:
+    #         for d in range(len(self.temp['duct_mw']) - 1):
+    #             self.temp['duct_mw'][d] *= avg_cool_int_temp
+    #             self.temp['duct_surf'][d, :] *= avg_cool_int_temp
+    #
+    #     # Duct temperatures: apply average temperature
+    #     # for d in range(0, len(self.temp['duct_mw']) - 1):
+    #     #     self.temp['duct_mw'][d] *= avg_cool_temp
+    #     #     self.temp['duct_surf'][d] *= avg_cool_temp
+    #     #
+    #     # # Outer duct mw, surface temp should stay the same
+    #     # self.temp['duct_mw'][-1] *= previous_reg.avg_duct_mw_temp[-1]
+    #     # self.temp['duct_surf'][-1] = np.average(previous_reg
+    #     #                                         .duct_outer_surf_temp)
+    #
+    #     # Energy balance - initiate temperature tracking
+    #     self.ebal['temp_in'] = avg_cool_temp
 
     def _activate_base(self, previous_reg):
         """Activate region coolant temperatures based on temperatures
@@ -311,12 +310,15 @@ class DASSH_Region(object):
         # - If a duct is added, set surface/midwall temperatures equal
         #   to the average interior coolant temperature.
 
-        # Outer duct temperature (ignore surface temperatures)
+        # Outer duct midwall temperature (ignore surface temperatures)
+        # May update in subsequent action
         self.temp['duct_mw'][-1] *= previous_reg.avg_duct_mw_temp[-1]
+        self.temp['duct_surf'][-1] *= previous_reg.avg_duct_mw_temp[-1]
 
         # Other ducts: set equal to average interior coolant temp
         for d in range(len(self.temp['duct_mw']) - 1):
             self.temp['duct_mw'][d] *= avg_cool_int_temp
+            self.temp['duct_surf'][d] *= avg_cool_int_temp
 
     # def update_peak_temp(self, z):
     #     """Update trackers on peak coolant and duct temperature"""

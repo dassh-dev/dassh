@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-19
+date: 2021-08-20
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -760,24 +760,10 @@ class Reactor(LoggedClass):
         for a in range(len(self.assemblies)):
             asm = self.assemblies[a]
             for reg in asm.region:
-                # map_fine2coarse, map_coarse2fine = \
-                #     dassh.mesh_functions.setup_lin_interp_arrays(
-                #         reg.x_pts, self.core.x_pts)
                 xb_reg = reg.calculate_xbnds()
-                # map_fine2coarse, poop = \
-                #     dassh.mesh_functions._map_asm2gap(
-                #         xb_reg, self.core.x_bnds)
-                # map_fine2coarse, map_coarse2fine = \
-                #     dassh.mesh_functions._identify_nearest_neighbors(
-                #         reg.x_pts, self.core.x_pts)
                 map_fine2coarse, map_coarse2fine = \
                     dassh.mesh_functions._map_asm2gap(
                         xb_reg, self.core._asm_sc_xbnds[a])
-                # xb_reg2 = reg.calculate_xbnds2()
-                # poop, map_coarse2fine = \
-                #     dassh.mesh_functions._map_asm2gap2(
-                #         xb_reg2, self.core.x_bnds2)
-
                 reg._map = {}
                 reg._map['gap2duct'] = map_fine2coarse
                 reg._map['duct2gap'] = map_coarse2fine
@@ -1088,36 +1074,6 @@ class Reactor(LoggedClass):
         # 1. Calculate gap coolant temperatures at the j+1 level
         #    based on duct wall temperatures at the j level.
         if self.core.model is not None:
-            # [interpolate_temps(a.x_pts,
-            #                    a.duct_outer_surf_temp,
-            #                    self.core.x_pts)
-            #  for a in self.assemblies])
-            # t_duct = np.array(
-            #     [dassh.mesh_functions.interpolate_quad(
-            #         a.x_pts,
-            #         a.duct_outer_surf_temp,
-            #         self.core.x_pts,
-            #         xparams=a.xparams['duct2gap'],
-            #         yparams=a.yparams['duct2gap'])
-            #      for a in self.assemblies])
-            # t_duct = np.array(
-            #     [dassh.mesh_functions.interpolate_lin2(
-            #         a.x_pts,
-            #         a.duct_outer_surf_temp,
-            #         self.core.x_pts)
-            #      for a in self.assemblies])
-            # asm_to_replace = [128, 129, 169, 172, 216,
-            #                   170, 171, 217, 220, 270]
-            # side_to_replace = np.array([[1, 2, 3],
-            #                             [2, 0, 0],
-            #                             [2, 0, 0],
-            #                             [1, 2, 3],
-            #                             [1, 2, 3],
-            #                             [5, 0, 0],
-            #                             [4, 5, 6],
-            #                             [4, 5, 6],
-            #                             [5, 0, 0],
-            #                             [5, 0, 0]])
             t_duct = np.array(
                 [dassh.mesh_functions.map_across_gap(
                     a.duct_outer_surf_temp,
@@ -1160,7 +1116,7 @@ class Reactor(LoggedClass):
         next_step = step + 1
         if next_step < self.z.size:
             for ai in range(len(self.assemblies)):
-                if self.assemblies[ai].check_region_update2(self.z[next_step]):
+                if self.assemblies[ai].check_region_update(self.z[next_step]):
                     self.assemblies[ai].update_region(
                         self.z[next_step],
                         self.core.adjacent_coolant_gap_temp(ai),
@@ -1174,20 +1130,6 @@ class Reactor(LoggedClass):
             pass
         else:
             for i in range(len(self.assemblies)):
-                # gap_adj_temps = interpolate_temps(
-                #     self.core.x_pts,
-                #     self.core.adjacent_coolant_gap_temp(i),
-                #     self.assemblies[i].x_pts)
-                # gap_temp = dassh.mesh_functions.interpolate_quad(
-                #     self.core.x_pts,
-                #     self.core.adjacent_coolant_gap_temp(i),
-                #     self.assemblies[i].x_pts,
-                #     xparams=self.assemblies[i].xparams['gap2duct'],
-                #     yparams=self.assemblies[i].yparams['gap2duct'])
-                # gap_htc = self.core.coolant_gap_params['htc']
-                # gap_adj_temps = dassh.mesh_functions.map_across_gap(
-                #     self.core.adjacent_coolant_gap_temp(i),
-                #     self.assemblies[i].active_region._map['gap2duct'])
                 gap_htc = dassh.mesh_functions.map_across_gap(
                     self.core.adjacent_coolant_gap_htc(i),
                     self.assemblies[i].active_region._map['gap2duct'])
@@ -1285,26 +1227,10 @@ class Reactor(LoggedClass):
     def _calculate_asm_temperatures(self, asm, i, z, dz, dump_step):
         """Calculate assembly coolant and duct temperatures"""
         # Update the region if necessary
-        # asm.check_region_update(z)
         # Find and approximate gap temperatures next to each asm
-        # gap_adj_temps = interpolate_temps(
-        #     self.core.x_pts,
-        #     self.core.adjacent_coolant_gap_temp(i),
-        #     asm.x_pts)
         if self.core.model is None:
             gap_temp = np.ones(asm.duct_outer_surf_temp.shape[0])
             gap_htc = np.ones(asm.duct_outer_surf_temp.shape[0])
-        # elif asm.active_region.is_rodded:
-            # gap_temp = dassh.mesh_functions.interpolate_quad(
-            #     self.core.x_pts,
-            #     self.core.adjacent_coolant_gap_temp(i),
-            #     asm.x_pts,
-            #     xparams=asm.xparams['gap2duct'],
-            #     yparams=asm.yparams['gap2duct'])
-            # gap_temp = dassh.mesh_functions.interpolate_lin2(
-            #     self.core.x_pts,
-            #     self.core.adjacent_coolant_gap_temp(i),
-            #     asm.x_pts)
         else:
             gap_htc = dassh.mesh_functions.map_across_gap(
                 self.core.adjacent_coolant_gap_htc(i),
@@ -1314,23 +1240,9 @@ class Reactor(LoggedClass):
                  * self.core.adjacent_coolant_gap_htc(i)),
                 asm.active_region._map['gap2duct'])
             gap_temp = gap_temp / gap_htc
-        # else:
-        #     gap_htc = dassh.mesh_functions.map_across_gap(
-        #         self.core.adjacent_coolant_gap_htc(i),
-        #         asm.active_region._map['gap2duct'])
-        #     gap_temp = dassh.mesh_functions.map_across_gap(
-        #         self.core.adjacent_coolant_gap_temp(i),
-        #         asm.active_region._map['gap2duct']) / gap_htc
-        #     # poop = self.core.adjacent_coolant_gap_temp(i).reshape(6, -1)
-        #     # gap_temp = gap_temp.reshape(6, -1)
-        #     # gap_temp[:, -1] = poop[:, -1]
-        #     # gap_temp = gap_temp.flatten()
-        #     # gap_adj_temps = map_across_gap(
-        #     #     self.core.adjacent_coolant_gap_temp(i),
-        #     #     asm.active_region._map['gap2duct'])
+        # Perform the calculation, write the results to CSV
         asm.calculate(z, dz, gap_temp, gap_htc,
                       self._is_adiabatic, self._options['ebal'])
-        # Write the results
         if dump_step:
             asm.write(self._options['dump']['files'], gap_temp)
         return asm
@@ -1397,13 +1309,6 @@ class Reactor(LoggedClass):
         if self._options['ebal']:
             interasm_ht_table = dassh.table.InterasmEnergyXferTable()
             out += interasm_ht_table.generate(self)
-
-        #     asm_ebal_table = dassh.table.AssemblyEnergyBalanceTable()
-        #     out += asm_ebal_table.generate(self)
-        #
-        #     # Core energy balance
-        #     core_ebal_table = dassh.table.CoreEnergyBalanceTable()
-        #     out += core_ebal_table.generate(self)
 
         # Coolant temperatures
         coolant_table = dassh.table.CoolantTempTable()
@@ -1574,14 +1479,6 @@ def import_power_VARIANT(data, w_dir, t_pt=0):
 
     """
     # Create DASSH Power object
-    # core_power = dassh.power.Power(
-    #     os.path.join(w_dir, 'varpow_MatPower.out'),
-    #     os.path.join(w_dir, 'varpow_MonoExp.out'),
-    #     os.path.join(w_dir, 'VARPOW.out'),
-    #     os.path.join(w_dir, data['ARC']['geodst'][t_pt]),
-    #     user_power=data['Core']['total_power'],
-    #     scalar=data['Core']['power_scaling_factor'],
-    #     model=data['Core']['power_model'])
     core_power = dassh.power.Power(
         os.path.join(w_dir, 'varpow_MatPower.out'),
         os.path.join(w_dir, 'varpow_MonoExp.out'),
@@ -1590,7 +1487,6 @@ def import_power_VARIANT(data, w_dir, t_pt=0):
         model=data['Power']['ARC']['power_model'])
 
     # Raise negative power warning
-    # negative_power = list(core_power.values())[0].negative_power
     negative_power = core_power.negative_power
     if negative_power < 0.0:  # Note: level 30 is "warning"
         module_logger.log(30, 'Negative powers found and set equal '
@@ -1600,312 +1496,5 @@ def import_power_VARIANT(data, w_dir, t_pt=0):
                               + '{:0.3e}'.format(negative_power))
 
     return core_power
-#
-#
-# def map_across_gap(vector_in, map):
-#     """Map values across assembly/gap mesh disagreements
-#
-#     Parameters
-#     ----------
-#     t_in : numpy.ndarray
-#         Temperatures on the original basis
-#     map : numpy.ndarray
-#         Map to convert temperatures to the new basis
-#
-#     Returns
-#     -------
-#     numpy.ndarray
-#         Temperatures on the new basis
-#
-#     """
-#     # If no mapping required, just return the input temperatures
-#     if vector_in.shape[0] == map.shape[0]:
-#         return vector_in
-#     else:
-#         return np.dot(map, vector_in)
-#
-#
-# def _map_asm2gap(xb_reg, xb_core, normalize=True):
-#     """Make maps to convert between axial region radial mesh and radial
-#     mesh of the inter-assembly gap"""
-#     mapping_f2c = np.zeros((xb_reg.shape[0] - 1, xb_core.shape[0] - 1))
-#     # CME: Coarse mesh element
-#     # FME: Fine mesh element
-#     # LBND/UBND: low-bound / upper-bound
-#     for CME in range(mapping_f2c.shape[0]):
-#         CME_LBND = xb_reg[CME]
-#         CME_UBND = xb_reg[CME + 1]
-#         FME = np.searchsorted(xb_core, xb_reg[CME]) - 1
-#         FME_UBND = xb_core[FME + 1]
-#         mapping_f2c[CME, FME] = min([CME_UBND - CME_LBND,
-#                                      FME_UBND - CME_LBND])
-#         while FME_UBND < CME_UBND:
-#             FME += 1
-#             FME_LBND = xb_core[FME]
-#             FME_UBND = xb_core[FME + 1]
-#             mapping_f2c[CME, FME] = min([CME_UBND - FME_LBND,
-#                                          FME_UBND - FME_LBND])
-#     # Normalize
-#     dx_reg = xb_reg[1:] - xb_reg[:-1]
-#     m_f2c = (mapping_f2c.T / dx_reg).T
-#     dx_core = xb_core[1:] - xb_core[:-1]
-#     m_c2f = (mapping_f2c / dx_core).T
-#     # Combine half-corner and trim array so first entries correspond
-#     # to first edge channels
-#     m_f2c[-1, :] += m_f2c[0, :]
-#     m_f2c[:, -1] += m_f2c[:, 0]
-#     m_f2c[-1] *= 0.5
-#     m_f2c = m_f2c[1:, 1:]
-#     m_c2f[-1, :] += m_c2f[0, :]
-#     m_c2f[:, -1] += m_c2f[:, 0]
-#     m_c2f[-1] *= 0.5
-#     m_c2f = m_c2f[1:, 1:]
-#     return m_f2c, m_c2f
-#
-#
-# def _map_asm2gap2(xb_reg, xb_core):
-#     """x"""
-#     mapping_f2c = np.zeros((xb_reg.shape[0] - 1, xb_core.shape[0] - 1))
-#     # CME: Coarse mesh element
-#     # FME: Fine mesh element
-#     # LBND/UBND: element low-bound / upper-bound
-#     for CME in range(mapping_f2c.shape[0]):
-#         CME_LBND = xb_reg[CME]
-#         CME_UBND = xb_reg[CME + 1]
-#         FME = np.searchsorted(xb_core, xb_reg[CME]) - 1
-#         FME_UBND = xb_core[FME + 1]
-#         mapping_f2c[CME, FME] = min([CME_UBND - CME_LBND,
-#                                      FME_UBND - CME_LBND])
-#         while FME_UBND < CME_UBND:
-#             FME += 1
-#             FME_LBND = xb_core[FME]
-#             FME_UBND = xb_core[FME + 1]
-#             mapping_f2c[CME, FME] = min([CME_UBND - FME_LBND,
-#                                          FME_UBND - FME_LBND])
-#     # Normalize
-#     dx_reg = xb_reg[1:] - xb_reg[:-1]
-#     m_f2c = (mapping_f2c.T / dx_reg).T
-#     dx_core = xb_core[1:] - xb_core[:-1]
-#     m_c2f = (mapping_f2c / dx_core).T
-#
-#     # Expand to include corner duct <--> gap mapping
-#     m_f2c2 = np.zeros((m_f2c.shape[0] + 1, m_f2c.shape[1] + 1))
-#     m_f2c2[:-1, :-1] = m_f2c
-#     m_f2c2[-1, -1] = 1
-#
-#     # Expand to all 6 sides
-#     poop_f2c = np.zeros((6 * m_f2c2.shape[0], 6 * m_f2c2.shape[1]))
-#     inds_to_fill = np.zeros((6, 2), dtype=int)
-#     inds_to_fill[:, 0] = np.arange(0, poop_f2c.shape[0], m_f2c2.shape[0])
-#     inds_to_fill[:, 1] = np.arange(0, poop_f2c.shape[1], m_f2c2.shape[1])
-#     for inds in inds_to_fill:
-#         ix2 = inds[0] + m_f2c2.shape[0]
-#         iy2 = inds[1] + m_f2c2.shape[1]
-#         poop_f2c[inds[0]:ix2, :][:, inds[1]:iy2] = m_f2c2
-#
-#     # Do the same for the other one
-#     # Expand to include corner duct <--> gap mapping
-#     m_c2f2 = np.zeros((m_c2f.shape[0] + 1, m_c2f.shape[1] + 1))
-#     m_c2f2[:-1, :-1] = m_c2f
-#     m_c2f2[-1, -1] = 1
-#
-#     # Expand to all 6 sides
-#     poop_c2f = np.zeros((m_c2f2.shape[0] * 6, m_c2f2.shape[1] * 6))
-#     inds_to_fill = np.zeros((6, 2), dtype=int)
-#     inds_to_fill[:, 0] = np.arange(0, poop_c2f.shape[0], m_c2f2.shape[0])
-#     inds_to_fill[:, 1] = np.arange(0, poop_c2f.shape[1], m_c2f2.shape[1])
-#     for inds in inds_to_fill:
-#         ix2 = inds[0] + m_c2f2.shape[0]
-#         iy2 = inds[1] + m_c2f2.shape[1]
-#         poop_c2f[inds[0]:ix2, :][:, inds[1]:iy2] = m_c2f2
-#
-#     return poop_f2c, poop_c2f
-
-#
-# def approximate_temps(x, y, x_new, asm_lstsq_params=None, order=2):
-#     """Approximate a vector of temperatures to a coarser or finer mesh
-#
-#     Parameters
-#     ----------
-#     x : numpy.ndarray
-#         The positions of the original mesh centroids along a hex
-#         side; length must be greater than 1
-#     y : numpy.ndarray
-#         The original temperatures at those centroids; length must
-#         be greater than 1
-#     x_new : numpy.ndarray
-#         The positions of the new mesh centroids to which the new
-#         temperatures will be approximated
-#     asm_lstsq_params : dict (optional)
-#         If provided, can bypass the setup portions of the Legendre
-#         polynomial fit to data
-#     order : int (optional)
-#         Order of the Legendre polynomial basis (default = 2)
-#
-#     Returns
-#     -------
-#     numpy.ndarray
-#         The approximated temperatures at positions x_new
-#
-#     Notes
-#     -----
-#     Used in DASSH to deal with mesh disagreement in the interassembly
-#     gap between assemblies with different number of pins
-#
-#     """
-#     # If no interpolation needed, just return the original array
-#     if np.array_equal(x, x_new):
-#         return y
-#
-#     # Otherwise...
-#     # Dress up the temperatures for the interpolation
-#     ym = copy.deepcopy(y)
-#     ym.shape = (6, int(ym.shape[0] / 6))
-#     to_append = np.roll(ym[:, -1], 1)
-#     to_append.shape = (6, 1)
-#     ym = np.hstack((to_append, ym))
-#
-#     # If len(x_old) == 2 (only corners): No need for legendre fit!
-#     # The approximation is just a linear fit between the two corners
-#     if len(x) == 2:
-#         y_new = np.linspace(ym[:, 0], ym[:, 1], len(x_new))
-#         y_new = y_new.transpose()
-#
-#     # If len(x_new) == 2 (only corners): No need for legendre fit!
-#     # Can just return the corner temperatures and be done with it.
-#     elif len(x_new) == 2:
-#         y_new = ym[:, (0, -1)]
-#
-#     # Otherwise, bummer: you have to fit polynomial and generate
-#     # approximate values on the new mesh x points
-#     else:
-#         # y_new = np.zeros((6, len(x_new)))
-#         # for side in range(6):
-#         #     coeff = np.polynomial.legendre.legfit(x, ym[side], order)
-#         #     y_new[side] = np.polynomial.legendre.legval(x_new, coeff)
-#
-#         if asm_lstsq_params is None:
-#             coeff = np.polynomial.legendre.legfit(x, ym.transpose(), 2)
-#         else:
-#             c, resids, rank, s = np.linalg.lstsq(
-#                 asm_lstsq_params['lhs_over_scl'],
-#                 ym.T,
-#                 asm_lstsq_params['rcond'])
-#             coeff = (c.T / asm_lstsq_params['scl']).T
-#         y_new = np.polynomial.legendre.legval(x_new, coeff)
-#
-#         # Use the exact corner temps from original array
-#         y_new[:, -1] = ym[:, -1]
-#
-#     # Get rid of the stuff you added and return the flattened array
-#     y_new = y_new[:, 1:]
-#     return y_new.flatten()
-
-#
-# def interpolate_temps(x, y, x_new, lstsq_params=None):
-#     """Approximate a vector of temperatures to a coarser or finer mesh
-#
-#     Parameters
-#     ----------
-#     x : numpy.ndarray
-#         The positions of the original mesh centroids along a hex
-#         side; length must be greater than 1
-#     y : numpy.ndarray
-#         The original temperatures at those centroids; length must
-#         be greater than 1
-#     x_new : numpy.ndarray
-#         The positions of the new mesh centroids to which the new
-#         temperatures will be approximated
-#     lstsq_params : dict (optional)
-#         If provided, can bypass the setup portions of the
-#         interpolation fit to data
-#
-#     Returns
-#     -------
-#     numpy.ndarray
-#         The interpolated temperatures at positions x_new
-#
-#     Notes
-#     -----
-#     Used in DASSH to deal with mesh disagreement in the interassembly
-#     gap between assemblies with different number of pins
-#
-#     """
-#     # If no interpolation needed, just return the original array
-#     if np.array_equal(x, x_new):
-#         return y
-#
-#     # Otherwise...
-#     # Dress up the temperatures for the interpolation
-#     ym = copy.deepcopy(y)
-#     ym.shape = (6, int(ym.shape[0] / 6))
-#     to_append = np.roll(ym[:, -1], 1)
-#     to_append.shape = (6, 1)
-#     ym = np.hstack((to_append, ym))
-#
-#     # If len(x_old) == 2 (only corners): No need to call interpolation
-#     # fxn - the interpolation is just a linear fit between two corners
-#     if len(x) == 2:
-#         y_new = np.linspace(ym[:, 0], ym[:, 1], len(x_new))
-#         y_new = y_new.transpose()
-#
-#     # If len(x_new) == 2 (only corners): No need for legendre fit!
-#     # Can just return the corner temperatures and be done with it.
-#     elif len(x_new) == 2:
-#         y_new = ym[:, (0, -1)]
-#
-#     # Otherwise, bummer: you have to do the linear interpolation to
-#     # get values on the new mesh x points
-#     else:
-#         y_new = np.zeros((6, len(x_new)))
-#         for i in range(6):
-#             y_new[i] = np.interp(x_new, x, ym[i])
-#
-#         # Use the exact corner temps from original array
-#         y_new[:, -1] = ym[:, -1]
-#
-#     # Get rid of the stuff you added and return the flattened array
-#     y_new = y_new[:, 1:]
-#     return y_new.flatten()
-
-#
-# def interpolate_temps(x, y, x_new, xparams, yparams):
-#     """Approximate a vector of temperatures to a coarser or finer mesh
-#
-#     Parameters
-#     ----------
-#     x : numpy.ndarray
-#         The positions of the original mesh centroids along a hex
-#         side; length must be greater than 1
-#     y : numpy.ndarray
-#         The original temperatures at those centroids; length must
-#         be greater than 1
-#     x_new : numpy.ndarray
-#         The positions of the new mesh centroids to which the new
-#         temperatures will be approximated
-#     xparams : numpy.ndarray (optional)
-#         If provided, can bypass the setup portions of the
-#         quadratic interpolation fit to data
-#     yparams : numpy.ndarray (optional)
-#         Indices with which to slice y-data to shortcut some of the
-#         quadratic interpolation setup
-#
-#     Returns
-#     -------
-#     numpy.ndarray
-#         The interpolated temperatures at positions x_new
-#
-#     Notes
-#     -----
-#     Used in DASSH to deal with mesh disagreement in the interassembly
-#     gap between assemblies with different number of pins
-#
-#     """
-#     # return interpolation.interpolate_lin(x, y, x_new)
-#     return interpolation.interpolate_lin(x, y, x_new, xparams, yparams)
-
-
-def err_cb(error):
-    raise error
 
 ########################################################################

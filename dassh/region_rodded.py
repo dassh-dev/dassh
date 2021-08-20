@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-19
+date: 2021-08-20
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -920,9 +920,9 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         # Update pressure drop (now that correlations are updated)
         self._pressure_drop += self.calculate_pressure_drop(dz)
 
-    def activate2(self, previous_reg, t_gap, h_gap, adiabatic):
+    def activate(self, previous_reg, t_gap, h_gap, adiabatic):
         """Activate region by averaging coolant temperatures from
-        previous region and calculating new SS duct temperatures
+        previous region and calculating new steady state duct temps
 
         Parameters
         ----------
@@ -952,6 +952,9 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         # power: previous region was not a pin bundle and therefore
         # did not have power generated in the duct.
         p_duct = np.zeros(self.temp['duct_mw'].size)
+        self._update_coolant_int_params(self.avg_coolant_int_temp)
+        if self.n_bypass > 0:
+            self._update_coolant_byp_params(self.avg_coolant_byp_temp)
         self._calc_duct_temp(p_duct, t_gap, h_gap, adiabatic)
 
     ####################################################################

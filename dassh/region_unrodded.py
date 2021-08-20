@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-27
+date: 2021-08-20
 author: matz
 Methods for unrodded axial regions; to be used within Assembly objects
 """
@@ -372,7 +372,7 @@ class SingleNodeHomogeneous(DASSH_Region):
         # Update pressure drop (now that correlations are updated)
         self._pressure_drop += self.calculate_pressure_drop(dz)
 
-    def activate2(self, previous_reg, t_gap, h_gap, adiabatic):
+    def activate(self, previous_reg, t_gap, h_gap, adiabatic):
         """Activate region by averaging coolant temperatures from
         previous region and calculating new SS duct temperatures
 
@@ -401,6 +401,7 @@ class SingleNodeHomogeneous(DASSH_Region):
 
         # Make new duct temperature calculation based on new coolant
         # temperatures and input gap temperatures / HTC.
+        self._update_coolant_params(self.temp['coolant_int'][0])
         self._calc_duct_temp(t_gap, h_gap, adiabatic)
 
     def _calc_coolant_temp(self, dz, power, adiabatic=False, ebal=False):

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-27
+date: 2021-08-20
 author: matz
 Test the DASSH Assembly object
 """
@@ -402,15 +402,8 @@ def test_rr_temp_properties(c_fuel_rr):
     ans = np.ones(c_fuel_rr.subchannel.n_sc['coolant']['total']) * 623.15
     assert np.array_equal(c_fuel_rr.temp['coolant_int'], ans)
 
-    # Duct wall temperatures
+    # Duct midwall temperatures
     ans = np.ones((1, c_fuel_rr.subchannel.n_sc['duct']['total'])) * 623.15
-    # print(c_fuel_rr.temp['duct_mw'])
-    # print(ans)
-    # print(c_fuel_rr.temp['duct_mw'].shape)
-    # print(ans.shape)
-    # print(c_fuel_rr.temp['duct_mw'] - ans)
-    print(c_fuel_rr.temp['duct_mw'][0, 0])
-    print(ans[0, 0])
     np.testing.assert_array_almost_equal(
         c_fuel_rr.temp['duct_mw'], ans, decimal=12)
 
@@ -879,7 +872,7 @@ def test_bypass_perturb_wall_temps(c_ctrl_rr):
                         assert res[0, s] == pytest.approx(test)
                         # assert res[s] != inlet_temp
                 else:
-                    assert res[0, s] == 0.0
+                    assert res[0, s] == pytest.approx(0.0)
 
             # Unperturb the temperature
             c_ctrl_rr.temp['duct_surf'][i, surf[i], w_sc] -= perturb_temp
