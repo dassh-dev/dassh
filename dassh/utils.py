@@ -14,18 +14,19 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 20201-05-09
+date: 2021-08-20
 author: matz
 Utility methods
 """
 ########################################################################
-# import logging
-# import numpy as np
-# module_logger = logging.getLogger('dassh.setup')
+import logging
+module_logger = logging.getLogger('dassh.utils')
 
 
 ########################################################################
 # UNIT CONVERSION
+# Not recommended; users should use SI units. Implemented and tested
+# to streamline comparisons with legacy codes that do not use SI units
 ########################################################################
 
 
@@ -36,7 +37,7 @@ _in = ['in', 'inch', 'inches']
 _ft = ['ft', 'foot', 'feet']
 _degC = ['c', 'degc', 'celsius']
 _degF = ['f', 'degf', 'fahrenheit']
-_degK = ['k', 'degK', 'kelvin']
+_degK = ['k', 'degk', 'kelvin']
 _lb = ['lb', 'lbs', 'pound', 'pounds']
 _kg = ['kg', 'kgs', 'kilogram', 'kilograms']
 _sec = ['s', 'sec', 'secs', 'second', 'seconds']
@@ -50,42 +51,84 @@ _DEFAULT_UNITS = {'temperature': _degK,
                   'time': _sec}
 
 
+def format_unit(in_unit):
+    """Take whatever is input and turn it into something recognizable"""
+    if in_unit.lower() in _cm:
+        return 'cm'
+    elif in_unit.lower() in _mm:
+        return 'mm'
+    elif in_unit.lower() in _m:
+        return 'm'
+    elif in_unit.lower() in _in:
+        return 'in'
+    elif in_unit.lower() in _ft:
+        return 'ft'
+    elif in_unit.lower() in _degC:
+        return 'c'
+    elif in_unit.lower() in _degF:
+        return 'f'
+    elif in_unit.lower() in _degK:
+        return 'k'
+    elif in_unit.lower() in _lb:
+        return 'lb'
+    elif in_unit.lower() in _kg:
+        return 'kg'
+    elif in_unit.lower() in _sec:
+        return 'sec'
+    elif in_unit.lower() in _min:
+        return 'min'
+    elif in_unit.lower() in _hr:
+        return 'hr'
+    else:
+        error_msg = f'Do not recognize input unit: {in_unit}'
+        module_logger.log(40, error_msg)
+        raise ValueError(error_msg)
+
+
+def _preprocess_units(in_unit, out_unit):
+    """Standardize unit formatting, check that units are not the same"""
+    in_unit = format_unit(in_unit)
+    out_unit = format_unit(out_unit)
+    if in_unit == out_unit:
+        error_msg = 'Cannot convert unit to itself'
+        module_logger.log(40, error_msg)
+        raise ValueError(error_msg)
+    return in_unit, out_unit
+
+
 def get_length_conversion(in_unit, out_unit):
     """Return the function that does the desired unit conversion to
     or from meters"""
-    _cm = ['cm', 'centimeter', 'centimeters']
-    _mm = ['mm', 'millimeter', 'millimeters']
-    _m = ['m', 'meter', 'meters']
-    _in = ['in', 'inch', 'inches']
-    _ft = ['ft', 'foot', 'feet']
-
-    assert in_unit != out_unit
+    in_unit, out_unit = _preprocess_units(in_unit, out_unit)
     error_msg = 'Unrecognized length unit: '
-
-    if in_unit.lower() in _m:
-        if out_unit.lower() in _cm:
+    if in_unit in _m:
+        if out_unit in _cm:
             return _meters_to_centimeters
-        elif out_unit.lower() in _mm:
+        elif out_unit in _mm:
             return _meters_to_millimeters
-        elif out_unit.lower() in _in:
+        elif out_unit in _in:
             return _meters_to_inches
-        elif out_unit.lower() in _ft:
+        elif out_unit in _ft:
             return _meters_to_feet
         else:
+            module_logger.log(40, error_msg + out_unit)
             raise ValueError(error_msg + out_unit)
-    elif out_unit.lower() in _m:
-        if in_unit.lower() in _cm:
+    elif out_unit in _m:
+        if in_unit in _cm:
             return _centimeters_to_meters
-        elif in_unit.lower() in _mm:
+        elif in_unit in _mm:
             return _millimeters_to_meters
-        elif in_unit.lower() in _in:
+        elif in_unit in _in:
             return _inches_to_meters
-        elif in_unit.lower() in _ft:
+        elif in_unit in _ft:
             return _feet_to_meters
         else:
+            module_logger.log(40, error_msg + out_unit)
             raise ValueError(error_msg + out_unit)
     else:
-        raise ValueError('Only convert to/from meters')
+        error_msg = 'Only convert to/from meters'
+        module_logger.log(40, error_msg)
+        raise ValueError(error_msg)
 
 
 def _centimeters_to_meters(length):
@@ -131,26 +174,26 @@ def _meters_to_feet(length):
 def get_temperature_conversion(in_unit, out_unit):
     """Return the function that does the desired unit conversion to
     or from Kelvin"""
-
-    assert in_unit != out_unit
+    in_unit, out_unit = _preprocess_units(in_unit, out_unit)
     error_msg = 'Unrecognized temperature unit: '
-
-    if in_unit.lower() in _degK:
-        if out_unit.lower() in _degC:
+    if in_unit in _degK:
+        if out_unit in _degC:
             return _kelvin_to_celsius
-        elif out_unit.lower() in _degF:
+        elif out_unit in _degF:
             return _kelvin_to_fahrenheit
         else:
             raise ValueError(error_msg + out_unit)
-    elif out_unit.lower() in _degK:
-        if in_unit.lower() in _degC:
+    elif out_unit in _degK:
+        if in_unit in _degC:
             return _celsius_to_kelvin
-        elif in_unit.lower() in _degF:
+        elif in_unit in _degF:
             return _fahrenheit_to_kelvin
         else:
             raise ValueError(error_msg + out_unit)
     else:
-        raise ValueError('Only convert to/from Kelvin')
+        error_msg = 'Only convert to/from Kelvin'
+        module_logger.log(40, error_msg)
+        raise ValueError(error_msg)
 
 
 def _celsius_to_kelvin(temp):
@@ -176,22 +219,22 @@ def _kelvin_to_fahrenheit(temp):
 def get_mass_conversion(in_unit, out_unit):
     """Return the function that does the desired unit conversion to
     or from kilograms"""
-
-    assert in_unit != out_unit
+    in_unit, out_unit = _preprocess_units(in_unit, out_unit)
     error_msg = 'Unrecognized mass unit: '
-
-    if in_unit.lower() in _kg:
-        if out_unit.lower() in _lb:
+    if in_unit in _kg:
+        if out_unit in _lb:
             return _kilograms_to_pounds
         else:
             raise ValueError(error_msg + out_unit)
-    elif out_unit.lower() in _kg:
-        if in_unit.lower() in _lb:
+    elif out_unit in _kg:
+        if in_unit in _lb:
             return _pounds_to_kilograms
         else:
             raise ValueError(error_msg + out_unit)
     else:
-        raise ValueError('Only convert to/from kilograms')
+        error_msg = 'Only convert to/from kilograms'
+        module_logger.log(40, error_msg)
+        raise ValueError(error_msg)
 
 
 def _pounds_to_kilograms(mass):
@@ -207,26 +250,26 @@ def _kilograms_to_pounds(mass):
 def get_time_conversion(in_unit, out_unit):
     """Return the function that does the desired unit conversion to
     or from seconds"""
-
-    assert in_unit != out_unit
+    in_unit, out_unit = _preprocess_units(in_unit, out_unit)
     error_msg = 'Unrecognized time unit: '
-
-    if in_unit.lower() in _sec:
-        if out_unit.lower() in _min:
+    if in_unit in _sec:
+        if out_unit in _min:
             return _seconds_to_minutes
-        if out_unit.lower() in _hr:
+        if out_unit in _hr:
             return _seconds_to_hours
         else:
             raise ValueError(error_msg + out_unit)
-    elif out_unit.lower() in _sec:
-        if in_unit.lower() in _min:
+    elif out_unit in _sec:
+        if in_unit in _min:
             return _minutes_to_seconds
-        if in_unit.lower() in _hr:
+        if in_unit in _hr:
             return _hours_to_seconds
         else:
             raise ValueError(error_msg + in_unit)
     else:
-        raise ValueError('Only convert to/from seconds')
+        error_msg = 'Only convert to/from seconds'
+        module_logger.log(40, error_msg)
+        raise ValueError(error_msg)
 
 
 def _minutes_to_seconds(time):
@@ -257,36 +300,10 @@ def parse_mfr_units(in_unit):
     elif 'per' in in_unit:
         mass_time = in_unit.split('per')
     else:
-        raise ValueError('Do not understand mass flow rate unit '
-                         f'specification: {in_unit}')
+        msg = f'Do not understand mass flow rate unit input: {in_unit}'
+        module_logger.log(40, msg)
+        raise ValueError(msg)
     return [mass_time[0].split(' ')[0], mass_time[1].split(' ')[-1]]
-
-
-# def _kg_min_to_kg_sec(mfr):
-#     """Convert mass flow rate from kg/min to kg/s"""
-#     return _minutes_to_seconds(mfr)
-#
-#
-# def _kg_hr_to_kg_sec(mfr):
-#     """Convert mass flow rate from kg/h to kg/s"""
-#     return _hours_to_seconds(mfr)
-#
-#
-# def _lb_sec_to_kg_sec(mfr):
-#     """Convert mass flow rate from lb/s to kg/s"""
-#     return _pounds_to_kilograms(mfr)
-#
-#
-# def _lb_min_to_kg_sec(mfr):
-#     """Convert mass flow rate from lb/min to kg/s"""
-#     mfr = _pounds_to_kilograms(mfr)
-#     return _minutes_to_seconds(mfr)
-#
-#
-# def _lb_hr_to_kg_sec(mfr):
-#     """Convert mass flow rate from lb/h to kg/s"""
-#     mfr = _pounds_to_kilograms(mfr)
-#     return _hours_to_seconds(mfr)
 
 
 ########################################################################
@@ -331,38 +348,9 @@ def Q_equals_mCdT(power, t_in, coolant_obj, t_out=None, mfr=None):
         return t_out
 
     else:
-        raise ValueError('Need to specify mass flow rate or outlet temp')
-
-
-########################################################################
-
-
-def dif3d_loc_to_dassh_loc(dif3d_loc):
-    """If user specifies DIF3D indexing (counter-clockwise), convert
-    to DASSH indexing (clockwise)
-
-    Notes
-    -----
-    Also should work the other way (dassh_loc -> dif3d_loc)
-
-    """
-    # First assembly in ring is the same for DASSH/DIF3D indexing
-    if dif3d_loc[1] == 0:
-        return dif3d_loc
-    # Otherwise, the ring will be the same but the position is reversed
-    else:
-        asm_in_ring = 6 * dif3d_loc[0]
-        return (dif3d_loc[0], asm_in_ring - dif3d_loc[1])
-
-
-def dassh_loc_to_dif3d_id(dassh_loc):
-    """If DASSH indexing, assembly ID needs to be modified to grab the
-    correct power, which is generated based on DIF3D indexing"""
-    if dassh_loc[0] == 0:
-        return 0
-    else:
-        dif3d_loc = dif3d_loc_to_dassh_loc(dassh_loc)
-        return 3 * (dif3d_loc[0] - 1) * dif3d_loc[0] + dif3d_loc[1] + 1
+        msg = 'Need to specify mass flow rate or outlet temp'
+        module_logger.log(40, msg)
+        raise ValueError(msg)
 
 
 ########################################################################
