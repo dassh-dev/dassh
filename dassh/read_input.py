@@ -228,7 +228,7 @@ class DASSHPlot_Input(LoggedClass):
             len_unit = reactor.units['length']
         try:
             lconv = utils.get_length_conversion('m', len_unit)
-        except AssertionError:  # Assertion error raised if len_unit == 'm'
+        except ValueError:  # Assertion error raised if len_unit == 'm'
             lconv = lambda l: l  # No conversion needed, assign identity fxn
 
         # Check inputs for correctness and save

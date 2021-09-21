@@ -702,7 +702,7 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         """
         self.coolant.update(temp)
 
-        # Only reason you wouldn't updated all correlated parameters is if
+        # Only reason you wouldn't update all correlated parameters is if
         # the coolant tracker object says not to. If it says not to, skip
         # the update. Otherwise, proceed.
         if use_mat_tracker:
@@ -956,7 +956,8 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         # power: previous region was not a pin bundle and therefore
         # did not have power generated in the duct.
         p_duct = np.zeros(self.temp['duct_mw'].size)
-        self._update_coolant_int_params(self.avg_coolant_int_temp)
+        self._update_coolant_int_params(self.avg_coolant_int_temp,
+                                        use_mat_tracker=False)
         if self.n_bypass > 0:
             self._update_coolant_byp_params(self.avg_coolant_byp_temp)
         self._calc_duct_temp(p_duct, t_gap, h_gap, adiabatic)

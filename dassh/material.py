@@ -205,32 +205,42 @@ class Material(LoggedClass):
     @temperature.setter
     def temperature(self, temperature):
         if not temperature > 0:
-            self.log('error', 'Temperature must be greater than 0; '
-                              f'given {temperature} K')
+            msg = (f'Material "{self.name}" temperature must '
+                   f'be > 0; given {temperature} K')
+            self.log('error', msg)
         self._temperature = temperature
 
     @heat_capacity.setter
     def heat_capacity(self, heat_capacity):
         if not heat_capacity > 0:
-            self.log('error', 'Heat capacity must be greater than 0')
+            msg = (f'Material "{self.name}" heat capacity '
+                   f'must be > 0; given {heat_capacity}')
+            self.log('error', msg)
         self._heat_capacity = heat_capacity
 
     @density.setter
     def density(self, density):
         if not density > 0:
-            self.log('error', 'Density must be greater than 0')
+            msg = (f'Material "{self.name}" density '
+                   f'must be > 0; given {density}')
+            self.log('error', msg)
         self._density = density
 
     @thermal_conductivity.setter
     def thermal_conductivity(self, thermal_conductivity):
         if not thermal_conductivity >= 0:
-            self.log('error', 'Thermal conductivity must be greater than 0')
+            msg = (f'Material "{self.name}" thermal conductivity must '
+                   f'be >= 0; given {thermal_conductivity}')
+            self.log('error', msg)
         self._thermal_conductivity = thermal_conductivity
 
     @viscosity.setter
     def viscosity(self, viscosity):
         if not viscosity > 0:
-            self.log('error', 'Dynamic viscosity must be greater than 0')
+            msg = (f'Material "{self.name}" dynamic viscosity '
+                   f'must be > 0; given {viscosity}')
+            self.log('error', msg)
+
         self._viscosity = viscosity
 
     @beta.setter

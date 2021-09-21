@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-29
+date: 2021-09-21
 author: matz
 Test DASSH material class
 """
@@ -100,7 +100,7 @@ def test_bad_temperature(caplog):
     m = Material('sodium')
     with pytest.raises(SystemExit):
         m.update(0.0)
-    assert 'greater than 0' in caplog.text
+    assert 'must be > 0; given' in caplog.text
 
 
 def test_bad_property(caplog):
@@ -114,7 +114,7 @@ def test_bad_property(caplog):
     m = Material('test', coeff_dict=c)
     with pytest.raises(SystemExit):
         m.update(400.0)
-    assert 'viscosity must be greater than 0' in caplog.text
+    assert 'viscosity must be > 0; given' in caplog.text
 
 
 def test_sodium_interpolated_value():

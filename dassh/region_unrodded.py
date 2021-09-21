@@ -907,7 +907,7 @@ def calculate_min_dz(reg, temp_lo, temp_hi, adiabatic_duct=False):
     _temp_in = reg.coolant.temperature
     for temp in [temp_lo, temp_hi]:
         # Interior coolant parameters and dz requirement
-        reg._update_coolant_params(temp)
+        reg._update_coolant_params(temp, use_mat_tracker=False)
         if reg.model == 'simple':
             if not adiabatic_duct:
                 if reg._conv_approx:
@@ -958,5 +958,5 @@ def calculate_min_dz(reg, temp_lo, temp_hi, adiabatic_duct=False):
         min_dz.append(dz)
 
     # Reset the coolant temperature
-    reg._update_coolant_params(_temp_in)
+    reg._update_coolant_params(_temp_in, use_mat_tracker=False)
     return min(min_dz), 0

@@ -44,4 +44,4 @@ import dassh.py4c as py4c
 np.set_printoptions(threshold=sys.maxsize, linewidth=500)
 
 
-__version__ = '0.7.4'
+__version__ = '0.7.5'

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-18
+date: 2021-09-21
 author: matz
 Cheng-Todreas Detailed mixing correlations: eddy diffusivity and
 swirl velocity (1986)
@@ -70,20 +70,20 @@ def calculate_mixing_params(asm_obj):
         Re_bl, Re_bt = ctd_ff.calculate_Re_bounds(asm_obj)
 
     if asm_obj.coolant_int_params['Re'] <= Re_bl:
-        eddy = eddy['laminar']
-        swirl = swirl['laminar']
+        eddy_diffusivity = eddy['laminar']
+        swirl_velocity = swirl['laminar']
     elif asm_obj.coolant_int_params['Re'] >= Re_bt:
-        eddy = eddy['turbulent']
-        swirl = swirl['turbulent']
+        eddy_diffusivity = eddy['turbulent']
+        swirl_velocity = swirl['turbulent']
     else:  # Transition regime; use intermittency factor
         x = calc_sc_intermittency_factors(asm_obj, Re_bl, Re_bt)
-        eddy = ((eddy['turbulent']
-                 - eddy['laminar']) * x[0]**(2 / 3.0)
-                + eddy['laminar'])
-        swirl = ((swirl['turbulent']
-                  - swirl['laminar']) * x[1]**(2 / 3.0)
-                 + swirl['laminar'])
-    return eddy * asm_obj.L[0][0], swirl
+        eddy_diffusivity = eddy['turbulent'] - eddy['laminar']
+        eddy_diffusivity *= x[0]**(2 / 3.0)
+        eddy_diffusivity += eddy['laminar']
+        swirl_velocity = swirl['turbulent'] - swirl['laminar']
+        swirl_velocity *= x[1]**(2 / 3.0)
+        swirl_velocity += swirl['laminar']
+    return eddy_diffusivity * asm_obj.L[0][0], swirl_velocity
 
 
 def calc_sc_intermittency_factors(asm_obj, Re_bL, Re_bT):
@@ -149,6 +149,7 @@ def calc_sc_intermittency_factors(asm_obj, Re_bL, Re_bT):
     Re_iT = (Re_bT * fs_T * asm_obj.params['de']
              / asm_obj.bundle_params['de'])
     y = np.log10(Re / Re_iL) / np.log10(Re_iT / Re_iL)
+    y[y < 0] = 0.0  # Clip any negative values to zero!
     return y
 
 
