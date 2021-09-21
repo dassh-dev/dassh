@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-20
+date: 2021-09-21
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -678,14 +678,17 @@ class RoddedRegion(LoggedClass, DASSH_Region):
     # UPDATE PROPERTIES
     ####################################################################
 
-    def _update_coolant_int_params(self, temperature):
+    def _update_coolant_int_params(self, temp, use_mat_tracker=True):
         """Update correlated bundle coolant parameters based
         on current average coolant temperature
 
         Parameters
         ----------
-        temperature : float
+        temp : float
             Average coolant temperature
+        use_mat_tracker : boolean
+            Use material property tol in DASSH coolant Material object
+            to limit pin bundle correlation updates
 
         Notes
         -----
@@ -697,19 +700,20 @@ class RoddedRegion(LoggedClass, DASSH_Region):
             'swirl': swirl velocity
 
         """
-        self.coolant.update(temperature)
+        self.coolant.update(temp)
 
         # Only reason you wouldn't updated all correlated parameters is if
         # the coolant tracker object says not to. If it says not to, skip
         # the update. Otherwise, proceed.
-        if hasattr(self, '_coolant_tracker'):
-            self._coolant_tracker.update(self.coolant)
-            # If coolant_tracker says no update, no parameter updates
-            if not self._coolant_tracker.recalculate_params:
-                return
-            # Otherwise, need to do parameter updates and reset tracker
-            else:
-                self._coolant_tracker.reset()
+        if use_mat_tracker:
+            if hasattr(self, '_coolant_tracker'):
+                self._coolant_tracker.update(self.coolant)
+                # If coolant_tracker says no update, no parameter updates
+                if not self._coolant_tracker.recalculate_params:
+                    return
+                # Otherwise, need to do parameter updates and reset tracker
+                else:
+                    self._coolant_tracker.reset()
 
         # Coolant axial velocity, bundle Reynolds number
         mfr_over_area = self.int_flow_rate / self.bundle_params['area']
@@ -2317,7 +2321,7 @@ def _import_mixing_correlation(name, bundle):
 ########################################################################
 
 
-def calculate_min_dz(bundle, temp_lo, temp_hi, adiabatic=False):
+def calculate_min_dz(bundle, temp_lo, temp_hi, adiabatic=False, poop=False):
     """Evaluate dz for the bundle at the assembly inlet and outlet
     temperatures; minimum value is taken to be the constraint
 
@@ -2355,7 +2359,7 @@ def calculate_min_dz(bundle, temp_lo, temp_hi, adiabatic=False):
 
     for temp in [temp_lo, temp_hi]:
         # Interior coolant parameters and dz requirement
-        bundle._update_coolant_int_params(temp)
+        bundle._update_coolant_int_params(temp, use_mat_tracker=False)
         tmp_dz, tmp_sc = _calculate_int_dz(bundle, which_adiabatic)
         min_dz.append(tmp_dz)
         sc_code.append(tmp_sc)
@@ -2368,7 +2372,7 @@ def calculate_min_dz(bundle, temp_lo, temp_hi, adiabatic=False):
             sc_code.append(tmp_sc)
 
     # Reset the coolant temperature
-    bundle._update_coolant_int_params(_temp_in)
+    bundle._update_coolant_int_params(_temp_in, use_mat_tracker=False)
     if bundle.n_bypass > 0:
         bundle._update_coolant_byp_params([_temp_in] * bundle.n_bypass)
 

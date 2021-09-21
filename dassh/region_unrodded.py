@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-20
+date: 2021-09-21
 author: matz
 Methods for unrodded axial regions; to be used within Assembly objects
 """
@@ -248,7 +248,7 @@ class SingleNodeHomogeneous(DASSH_Region):
         else:
             return self._mratio
 
-    def _update_coolant_params(self, temperature):
+    def _update_coolant_params(self, temp, use_mat_tracker=True):
         """Update correlated bundle coolant parameters based
         on current average coolant temperature
 
@@ -256,6 +256,9 @@ class SingleNodeHomogeneous(DASSH_Region):
         ----------
         temperature : float
             Average coolant temperature
+        use_mat_tracker : boolean
+            Use material property tol in DASSH coolant Material object
+            to limit pin bundle correlation updates in rr_equiv
 
         Notes
         -----
@@ -267,9 +270,10 @@ class SingleNodeHomogeneous(DASSH_Region):
             'swirl': swirl velocity
 
         """
-        self.coolant.update(temperature)
+        self.coolant.update(temp)
         if self._rr_equiv is not None:
-            self._rr_equiv._update_coolant_int_params(temperature)
+            self._rr_equiv._update_coolant_int_params(
+                temp, use_mat_tracker)
             # Bundle-average velocity
             self.coolant_params['vel'] = \
                 self._rr_equiv.coolant_int_params['vel']
