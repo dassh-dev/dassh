@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-07-14
+date: 2021-09-24
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -947,7 +947,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                 if clr < 0.0:  # leave a little bit of wiggle room
                     clr = '{:0.6e}'.format(clr)
                     msg = '\n'.join([msg1.format(clr), msg2, msg3])
-                    self.log('error', msg)
+                    self.log('error', pre + msg)
 
     def check_duct(self):
         """Make sure duct details are physically meaningful; outer duct outer
