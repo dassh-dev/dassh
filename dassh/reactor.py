@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-20
+date: 2021-10-20
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -87,13 +87,25 @@ class Reactor(LoggedClass):
     - oriface method to iteratively call sweep method
 
     """
-    def __init__(self, dassh_input, path=None, calc_power=True, **kwargs):
+    def __init__(self, dassh_input, path=None, calc_power=True,
+                 timestep=0, **kwargs):
         """Initialize Reactor object for DASSH simulation
 
         Parameters
         ----------
         dassh_input : DASSH_Input object
             DASSH input from read_input.DASSH_Input
+        path : str (optional)
+            Path to working directory where DASSH should be executed
+            (default = None; perform calculations next to input file)
+        calc_power : boolean (optional)
+            Indicate whether power distributions should be calculated
+            or read from existing VARPOW outputs (default = True)
+        timestep : int (optional)
+            Indicate timestep for which to generate power distributions
+            (default = 0)
+        kwargs : dict
+            Many; see "_setup_options" method for more
 
         """
         LoggedClass.__init__(self, 0, 'dassh.reactor.Reactor')
@@ -116,7 +128,7 @@ class Reactor(LoggedClass):
 
         # Set up power, obtain axial region boundaries
         self.log('info', 'Setting up power distribution')
-        self._setup_power(dassh_input, calc_power)
+        self._setup_power(dassh_input, calc_power, timestep)
         self._setup_axial_region_bnds(dassh_input)
 
         # Set up DASSH Assemblies by first creating templates, then
@@ -224,16 +236,20 @@ class Reactor(LoggedClass):
         if any(self._options['dump'].values()):
             self._options['dump']['any'] = True
 
-    def _setup_power(self, inp, calc_power_flag):
+    def _setup_power(self, inp, calc_power_flag, timestep=0):
         """Create the power distributions from ARC binary files or
         user specifications
 
         Parameters
         ----------
         inp : DASSH_Input object
+            Contains filepaths necessary for power distribution
         calc_power_flag : bool
             Flag indicating whether to run VARPOW to calculate power
             distribution from ARC binary files
+        timestep : int (optional)
+            Indicate for which timestep the power distribution should
+            be created
 
         """
         # NEED TO FIGURE OUT HOW TO TREAT MULTI-TIMEPOINT PROBLEMS
@@ -252,20 +268,21 @@ class Reactor(LoggedClass):
                        'binary files')
                 self.log('info', msg)
                 self.power['dif3d'] = \
-                    calc_power_VARIANT(inp.data, self.path)
+                    calc_power_VARIANT(inp.data, self.path, timestep)
             else:  # Go find it in the working directory
                 msg = ('Reading core power profile from VARPOW '
                        'output files')
                 self.log('info', msg)
                 self.power['dif3d'] = \
-                    import_power_VARIANT(inp.data, self.path)
+                    import_power_VARIANT(inp.data, self.path, timestep)
 
         # 2. Read user power, if given
-        if inp.data['Power']['user_power'][0] is not None:
+        if inp.data['Power']['user_power'][timestep] is not None:
             msg = ('Reading user-specified power profiles from '
-                   + inp.data['Power']['user_power'][0])
+                   + inp.data['Power']['user_power'][timestep])
             self.power['user'] = \
-                dassh.power._from_file(inp.data['Power']['user_power'][0])
+                dassh.power._from_file(
+                    inp.data['Power']['user_power'][timestep])
 
     def _setup_axial_region_bnds(self, inp):
         """Get axial mesh points from ARC binary files, user-specified

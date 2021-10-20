@@ -14,13 +14,12 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-09-28
+date: 2021-10-18
 author: matz
 Main DASSH calculation procedure
 """
 ########################################################################
 import os
-# import numpy as np
 import sys
 import dassh
 import argparse
@@ -48,7 +47,6 @@ def main(args=None):
                         action='store_false',
                         help='Skip VARPOW calculation if done previously')
     args = parser.parse_args(args)
-    # dassh_path = os.path.dirname(os.path.abspath(__file__))
 
     # Enable the profiler, if desired
     if args.profile:
@@ -60,50 +58,69 @@ def main(args=None):
     in_path = os.path.split(args.inputfile)[0]
     dassh_logger = dassh.logged_class.init_root_logger(in_path, 'dassh')
 
-    # Pre-processing: read input file and set up DASSH objects
+    # Pre-processing
+    # Read input file and set up DASSH input object
     dassh_logger.log(_log_info, f'Reading input: {args.inputfile}')
     dassh_input = dassh.DASSH_Input(args.inputfile)
-    reactor = dassh.Reactor(dassh_input,
-                            calc_power=args.no_power_calc,
-                            write_output=True)
 
-    # Perform the sweep
-    dassh_logger.log(_log_info, 'Performing temperature sweep...')
-    reactor.temperature_sweep(verbose=args.verbose)
+    # DASSH calculation without orificing optimization
+    if dassh_input.data['Orificing'] is False:
+        arg_dict = {'save_reactor': args.save_reactor,
+                    'verbose': args.verbose,
+                    'no_power_calc': args.no_power_calc}
+        run_dassh(dassh_input, dassh_logger, arg_dict)
 
-    # Post-processing: write output, save reactor if desired
-    dassh_logger.log(_log_info, 'Temperature sweep complete')
-    if args.save_reactor and sys.version_info >= (3, 7):
-        reactor.save()
-    elif dassh_input.data['Plot']:
-        reactor.save()  # just in case figure generation fails
+    # Orificing optimization with DASSH
     else:
-        pass
-    dassh_logger.log(_log_info, 'Output written')
-
-    # Post-processing: generate figures, if desired
-    if ('Plot' in dassh_input.data.keys()
-            and len(dassh_input.data['Plot']) > 0):
-        dassh_logger.log(_log_info, 'Generating figures')
-        dassh.plot.plot_all(dassh_input, reactor)
-
-    # if dassh_input.orificing:
-    #   dassh_logger.log(_log_info, 'Entering orificing optimization')
-    #   while not converged:
-    #       predict groups and mass flow rates:
-    #           reactor.orificing() ??
-    #       dassh_logger.log(_log_info, 'Performing temperature sweep...')
-    #       reactor.temperature_sweep(verbose=args.verbose)
-    #       dassh_logger.log(_log_info, 'Temperature sweep complete')
-    #       check_convergence
+        dassh.orificing.optimize(dassh_input, dassh_logger)
+        # raise NotImplementedError('haha')
 
     # Finish the calculation
     dassh_logger.log(_log_info, 'DASSH execution complete')
     # Print/dump profiler results
     if args.profile:
         pr.disable()
-        # pr.print_stats()
         pr.dump_stats('dassh_profile.out')
+
+
+def run_dassh(dassh_input, dassh_logger, args):
+    """Run DASSH without orificing optimization"""
+    # For each timestep in the DASSH input, create the necessary DASSH
+    # DASSH objects, run DASSH, and process the results
+    need_subdir = False
+    if dassh_input.timepoints > 1:
+        need_subdir = True
+    for i in range(dassh_input.timepoints):
+        working_dir = None
+        if need_subdir:
+            working_dir = os.path.join(dassh_input.path,
+                                       f'timestep_{i + 1}')
+        print('\n')
+        dassh_logger.log(_log_info, f'Timestep {i + 1}')
+        reactor = dassh.Reactor(dassh_input,
+                                calc_power=args['no_power_calc'],
+                                path=working_dir,
+                                timestep=i,
+                                write_output=True)
+        # Perform the sweep
+        dassh_logger.log(_log_info, 'Performing temperature sweep...')
+        reactor.temperature_sweep(verbose=args['verbose'])
+
+        # Post-processing: write output, save reactor if desired
+        dassh_logger.log(_log_info, 'Temperature sweep complete')
+        if args['save_reactor'] and sys.version_info >= (3, 7):
+            reactor.save()
+        elif dassh_input.data['Plot']:
+            reactor.save()  # just in case figure generation fails
+        else:
+            pass
+        dassh_logger.log(_log_info, 'Output written')
+
+        # Post-processing: generate figures, if desired
+        if ('Plot' in dassh_input.data.keys()
+                and len(dassh_input.data['Plot']) > 0):
+            dassh_logger.log(_log_info, 'Generating figures')
+            dassh.plot.plot_all(dassh_input, reactor)
 
 
 def plot():

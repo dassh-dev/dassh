@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-09-28
+date: 2021-10-18
 author: Milos Atz, Micheal Smith
 """
 ########################################################################
@@ -38,6 +38,7 @@ from dassh.fuel_pin import *
 from dassh._ascii import *
 from dassh.plot import *
 from dassh import mesh_functions
+from dassh.orificing import *
 import dassh.py4c as py4c
 
 

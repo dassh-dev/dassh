@@ -24,6 +24,7 @@
         length = string(default='m')
         mass_flow_rate = string(default='kg/s')
 
+
 [Materials]
     [[__many__]]
         thermal_conductivity = force_list(default=None)
@@ -60,6 +61,7 @@
     assembly_pitch = float
     gap_model = option('flow', 'no_flow', 'duct_average', 'none', default='no_flow')
     htc_params_duct = float_list(default=None)
+
 
 [Assembly]
     [[__many__]]
@@ -106,3 +108,13 @@
             zr_frac = force_list(default=list(0.0))
             porosity = force_list(default=list(0.0))
 
+
+[Orificing]
+    assemblies_to_group = force_list(min=1, default=None)
+    n_groups = integer(min=1, default=None)
+    group_cutoff = float(min=0.001, max=1.0, default=0.05)
+    group_cutoff_delta = float(min=0.00001, max=1.0, default=0.001)
+    value_to_optimize = option('peak coolant temp', 'peak clad MW temp', 'peak clad ID temp', 'peak fuel temp', default=None)
+    bulk_coolant_temp = float(default=None)
+    iteration_limit = integer(min=1, default=10)
+    pressure_drop_limit = float(min=0.0, default=None)

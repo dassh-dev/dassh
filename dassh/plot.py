@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-01
+date: 2021-10-18
 author: matz
 Methods to plot DASSH objects (such as hexagonal fuel assemblies and
 the pins and subchannels that comprise them).
@@ -100,7 +100,7 @@ def plot_all(dassh_inp, dassh_reactor):
 
 def make_SubchannelPlot(dassh_reactor, plot_data):
     """Generate the assembly subchannel figures"""
-    f = 'temp_coolant_int.csv'
+    f = os.path.join(dassh_reactor.path, 'temp_coolant_int.csv')
     try:
         _data = _prepare_input(dassh_reactor, plot_data, f)
     except FileNotFoundError:
@@ -126,13 +126,14 @@ def make_SubchannelPlot(dassh_reactor, plot_data):
                               'asm' + str(asm_id),
                               f'z={z_str}'])
             fname += '.png'
+            fname = os.path.join(dassh_reactor.path, fname)
             plt.savefig(fname, bbox_inches='tight', dpi=_data['dpi'])
             plt.close()
 
 
 def make_PinPlot(dassh_reactor, plot_data):
     """Generate the assembly pin-by-pin figures"""
-    f = 'temp_pin.csv'
+    f = os.path.join(dassh_reactor.path, 'temp_pin.csv')
     try:
         _data = _prepare_input(dassh_reactor, plot_data, f)
     except FileNotFoundError:
@@ -156,13 +157,14 @@ def make_PinPlot(dassh_reactor, plot_data):
                 fname = '_'.join(['PinPlot', 'asm' + str(asm_id),
                                   value, f'z={z_str}'])
                 fname += '.png'
+                fname = os.path.join(dassh_reactor.path, fname)
                 plt.savefig(fname, bbox_inches='tight', dpi=_data['dpi'])
                 plt.close()
 
 
 def make_CoreSubchannelPlot(dassh_reactor, plot_data):
     """Generate the core-wide subchannel figures"""
-    f = 'temp_coolant_int.csv'
+    f = os.path.join(dassh_reactor.path, 'temp_coolant_int.csv')
     try:
         _data = _prepare_input(dassh_reactor, plot_data, f)
     except FileNotFoundError:
@@ -182,13 +184,14 @@ def make_CoreSubchannelPlot(dassh_reactor, plot_data):
         z_str = np.around(_data['bwd_len_conv'](zi), 2)
         fname = '_'.join(['CoreSubchannelPlot', f'z={z_str}'])
         fname += '.png'
+        fname = os.path.join(dassh_reactor.path, fname)
         plt.savefig(fname, bbox_inches='tight', dpi=_data['dpi'])
         plt.close()
 
 
 def make_CorePinPlot(dassh_reactor, plot_data):
     """Make core pin-by-pin figures"""
-    f = 'temp_pin.csv'
+    f = os.path.join(dassh_reactor.path, 'temp_pin.csv')
     try:
         _data = _prepare_input(dassh_reactor, plot_data, f)
     except FileNotFoundError:
@@ -208,6 +211,7 @@ def make_CorePinPlot(dassh_reactor, plot_data):
             z_str = np.around(_data['bwd_len_conv'](zi), 2)
             fname = '_'.join(['CorePinPlot', v, f'z={z_str}'])
             fname += '.png'
+            fname = os.path.join(dassh_reactor.path, fname)
             plt.savefig(fname, bbox_inches='tight', dpi=_data['dpi'])
             plt.close()
 
@@ -1630,12 +1634,6 @@ class CoreHexPlot(CorePlot):
         # don't have to go through these iterations.
         return fs
 
-    # @staticmethod
-    # def _count_rings(n_asm):
-    #     """Given some number of assemblies, count hex rings"""
-    #     nr = int(np.ceil(0.5 * (1 + np.sqrt(1 + 4 * (n_asm - 1) // 3))))
-    #     return nr
-
     def make_power(self, dassh_reactor, plot_data):
         """Generate the total assembly power hex plot"""
         data = np.array([sum(list(a._power_delivered.values())) / 1e6
@@ -1650,8 +1648,9 @@ class CoreHexPlot(CorePlot):
                   cmap=plot_data['cmap'],
                   cbar_label=cbl,
                   data_label=plot_data['data_label'])
-        plt.savefig('CoreHexPlot_total_power.png',
-                    bbox_inches='tight', dpi=plot_data['dpi'])
+        fname = os.path.join(dassh_reactor.path,
+                             'CoreHexPlot_total_power.png')
+        plt.savefig(fname, bbox_inches='tight', dpi=plot_data['dpi'])
         plt.close()
 
     def make_axial_peak(self, dassh_reactor, plot_data, value):
@@ -1681,8 +1680,9 @@ class CoreHexPlot(CorePlot):
                   cbar_label=cbar_lab,
                   data_label=plot_data['data_label'],
                   omit_nonvalue_rings=plot_data['omit_nonvalue_rings'])
-        plt.savefig(f'CoreHexPlot_{value}.png',
-                    bbox_inches='tight', dpi=plot_data['dpi'])
+        fname = os.path.join(dassh_reactor.path,
+                             f'CoreHexPlot_{value}.png',)
+        plt.savefig(fname, bbox_inches='tight', dpi=plot_data['dpi'])
         plt.close()
 
     def make_radial_peak_or_avg(self, dassh_reactor, plot_data, value):
@@ -1734,6 +1734,7 @@ class CoreHexPlot(CorePlot):
                 fname = '_'.join(['CoreHexPlot',
                                   value,
                                   f'z={z_str}.png'])
+                fname = os.path.join(dassh_reactor.path, fname)
                 plt.savefig(fname, bbox_inches='tight',
                             dpi=plot_data['dpi'])
                 plt.close()
