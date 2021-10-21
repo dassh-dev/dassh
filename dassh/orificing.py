@@ -317,15 +317,15 @@ def _match_optimization_keys(value_to_optimize):
     return k1, k2
 
 
-def group_by_power(orifice_input, dassh_rx):
+def group_by_power(dassh_input, orifice_input):
     """Group assemblies by power or linear power
 
     Parameters
     ----------
+    dassh_input : DASSH_Input object
+        Contains power distribution paths for each timestep
     orifice_input : dict
         Dictionary of orificing optimization inputs provided by user
-    dassh_rx : DASSH Reactor object
-        Contains all details about the reactor system
 
     Returns
     -------
@@ -334,19 +334,41 @@ def group_by_power(orifice_input, dassh_rx):
 
     Notes
     -----
-    Will need to update this method for when orificing optimization is
-    performed for multiple cycles: need to get power parameters from each
-    cycle, average, then perform grouping.
+    Creates Reactor object for each timestep; uses this to extract
+    the grouping parameter (total power or linear power)
 
     """
     if orifice_input['value_to_optimize'] == 'peak coolant temp':
         group_by = 'power'
     else:
         group_by = 'linear_power'
-    power_array = _get_power(dassh_rx,
-                             orifice_input['assemblies_to_group'],
-                             group_by=group_by)
-    group_data = _group(power_array,
+    # Create Reactor objects to generate power distributions for
+    # use in grouping algorithm. This is basically the first bit
+    # of __main__.run_dassh(), but it  extracts power distribution
+    # info instead of doing the temperature sweep
+    power_parameters = []
+    need_subdir = False
+    if input.timepoints > 1:
+        need_subdir = True
+    for i in range(input.timepoints):
+        working_dir = None
+        if need_subdir:
+            working_dir = os.path.join(input.path, f'timestep_{i + 1}')
+        print('\n')
+        # logger.log(20, f'Timestep {i + 1}')
+        dassh_rx = dassh.Reactor(input,
+                                 calc_power=True,
+                                 path=working_dir,
+                                 timestep=i,
+                                 write_output=False)
+        power_parameters.append(
+            _get_power(dassh_rx,
+                       orifice_input['assemblies_to_group'],
+                       group_by=group_by))
+    # Take average across each timestep
+    tmp = np.average([x[:, 1] for x in power_parameters], axis=0)
+    avg_power_array = np.array((power_parameters[0][:, 0], tmp))
+    group_data = _group(avg_power_array,
                         orifice_input['n_groups'],
                         orifice_input['group_cutoff'],
                         orifice_input['group_cutoff_delta'])
@@ -382,17 +404,10 @@ def _get_power(dassh_rx, asm_to_group, group_by='linear_power'):
                 id.append(a.id)
                 power.append(a.total_power)
     elif group_by == 'linear_power':
-        # Get peak linear power in each assembly (pin-average value)
-        # Estimate with 200 points; should get close to the max
-        z = np.linspace(0.0, dassh_rx.core_length, 200)
         for a in dassh_rx.assemblies:
             if a.name in asm_to_group:
-                peak_lin_power = np.zeros(z.shape[0])
-                for zi in range(z.shape[0]):
-                    peak_lin_power[zi] = np.average(
-                        a.power.get_power(z[zi])['pins'])
                 id.append(a.id)
-                power.append(np.max(peak_lin_power))
+                power.append(a.power.calculate_avg_peak_linear_power())
     else:
         raise ValueError('Argument "group_by" must be either "power" '
                          + f'or "linear_power"; input {group_by} not '
