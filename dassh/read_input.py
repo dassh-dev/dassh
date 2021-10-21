@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-09-24
+date: 2021-10-21
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -625,7 +625,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
             raise ValueError('should have caught this elswhere')
 
     def _get_cccc_timepoints(self, txt):
-        """Determine whether input contains multiple time points."""
+        """Determine whether input contains multiple timesteps."""
         # Use GEODST as time point ref e.g. txt = 'geodst_input = ... '
         tpts = []
         for cccc_inp in ['geodst', 'ndxsrf', 'znatdn',

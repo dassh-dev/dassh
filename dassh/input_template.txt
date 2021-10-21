@@ -44,7 +44,7 @@
         fuel_material = option('metal', 'oxide', 'nitride', default=None)
         fuel_alloy = option('zr', 'zirconium', 'al', 'aluminum', None, default=None)
         power_model = option('distribute', 'pin_only', default='distribute')
-        pmatrx = string(default=None)
+        pmatrx = force_list(min=1, default=None)
         geodst = force_list(min=1, default=None)
         ndxsrf = force_list(min=1, default=None)
         znatdn = force_list(min=1, default=None)

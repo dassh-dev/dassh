@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-09-24
+date: 2021-10-20
 author: matz
 Generate power distributions in assembly components based on neutron
 flux; object to assign to individual assemblies
