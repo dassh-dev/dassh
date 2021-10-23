@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-10-20
+date: 2021-10-22
 author: matz
 Generate power distributions in assembly components based on neutron
 flux; object to assign to individual assemblies
@@ -141,7 +141,6 @@ class Power(LoggedClass):
 
         # --------------------------------------------------------------
         # Calculate assembly total power; rearrange material power dens
-        n_asm = len(finemesh_to_activenode[finemesh_to_activenode != 0])
         n_pos = int(np.max(-finemesh_to_activenode))
         n_ring = core.count_rings(n_pos)
         if n_ring == 1:
@@ -974,7 +973,7 @@ class AssemblyPower(object):
         for mesh in range(self.pin_power.shape[0]):
             roots = np.roots(deriv[mesh])
             roots = roots.real[abs(roots.imag) < 1e-5]
-            roots = roots[-0.5 <= roots <= 0.5]
+            roots = roots[(-0.5 <= roots) & (roots <= 0.5)]
             x = np.concatenate(([-0.5, 0.5], roots))
             x = x.reshape(x.shape[0], 1)
             x_exp = np.power(x, exponents.reshape(1, -1))
