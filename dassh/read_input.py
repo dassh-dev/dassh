@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-10-21
+date: 2021-10-22
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -628,14 +628,18 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         """Determine whether input contains multiple timesteps."""
         # Use GEODST as time point ref e.g. txt = 'geodst_input = ... '
         tpts = []
-        for cccc_inp in ['geodst', 'ndxsrf', 'znatdn',
+        for cccc_inp in ['pmatrx', 'geodst', 'ndxsrf', 'znatdn',
                          'labels', 'nhflux', 'ghflux']:
+            # Find the line in the input file
             idx = [idx for idx, s in enumerate(txt) if cccc_inp in s][0]
-            tpts.append(len(txt[idx].split('=')[1].split(',')))
+            # Parse the line to see how many inputs there are
+            subtxt = txt[idx].split('#')[0]  # eliminate comments
+            subtxt = subtxt.split('=')[1]  # get input value
+            tpts.append(len(subtxt.split(',')))
         if not all(x == tpts[0] for x in tpts):
             msg = ('Inconsistent number of 4C files given; the number '
-                   'of GEODST / NDXSRF / ZNATDN / LABELS / NHFLUX / '
-                   'GHFLUX files must be equal')
+                   'of PMATRX / GEODST / NDXSRF / ZNATDN / LABELS / '
+                   'NHFLUX / GHFLUX files must be equal')
             self.log('error', msg)
         else:
             return tpts[0]
