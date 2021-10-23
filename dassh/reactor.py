@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-10-20
+date: 2021-10-22
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -165,9 +165,10 @@ class Reactor(LoggedClass):
         self.log('info', f'{len(self.z) - 1} axial steps required')
         # Warn if axial steps too small (< 0.5 mm) or too many (> 4k)
         if self.req_dz < 0.0005 or len(self.z) - 1 > 2500:
-            msg = ('Your axial step size is very small so this '
-                   'problem might take a while to solve;\nConsider '
-                   'checking input for flow maldistribution.')
+            msg = ('Axial step size is very small so this problem '
+                   'might take a while to solve')
+            self.log('warning', msg)
+            msg = ('Consider checking input for flow maldistribution.')
             self.log('warning', msg)
 
         # Raise warning if est. coolant temp will exceed extreme limit
@@ -681,8 +682,10 @@ class Reactor(LoggedClass):
                 dz, sc = dassh.assembly.calculate_min_dz(
                     asm, self.inlet_temp, asm._estimated_T_out,
                     self._is_adiabatic)
-                self.log('info', msg1.format(asm.id, str(sc), dz_old))
-                self.log('info', msg2.format(dz))
+                self.log('info_file',
+                         msg1.format(asm.id, str(sc), dz_old))
+                self.log('info_file',
+                         msg2.format(dz))
             self.min_dz['dz'].append(dz)
             self.min_dz['sc'].append(sc)
 
