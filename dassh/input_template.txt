@@ -117,4 +117,5 @@
     value_to_optimize = option('peak coolant temp', 'peak clad MW temp', 'peak clad ID temp', 'peak fuel temp', default=None)
     bulk_coolant_temp = float(default=None)
     iteration_limit = integer(min=1, default=10)
+    convergence_tol = float(min=1e-6, default=1e-3)
     pressure_drop_limit = float(min=0.0, default=None)

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-10-22
+date: 2021-10-25
 author: matz
 Main DASSH calculation procedure
 """
@@ -85,13 +85,19 @@ def main(args=None):
         pr.dump_stats('dassh_profile.out')
 
 
-def run_dassh(dassh_input, dassh_logger, args):
+def run_dassh(dassh_input, dassh_logger, rx_args, parallel=False):
     """Run DASSH without orificing optimization"""
     # For each timestep in the DASSH input, create the necessary DASSH
     # DASSH objects, run DASSH, and process the results
     need_subdir = False
     if dassh_input.timepoints > 1:
         need_subdir = True
+        if parallel:
+            import multiprocessing as mp
+            n_procs = min((mp.cpu_count(), dassh_input.timepoints))
+            pool = mp.Pool(processes=n_procs)
+            workers = []
+
     for i in range(dassh_input.timepoints):
         working_dir = None
         if need_subdir:
@@ -100,7 +106,27 @@ def run_dassh(dassh_input, dassh_logger, args):
             working_dir = os.path.join(
                 dassh_input.path, f'timestep_{i + 1}')
         # Set up working dirs, run DASSH, write output, make plots
-        _run_dassh(dassh_input, dassh_logger, args, i, working_dir)
+        if parallel:
+            workers.append(
+                pool.apply_async(
+                    _run_dassh,
+                    args=(dassh_input,
+                          dassh_logger,
+                          rx_args,
+                          i,
+                          working_dir, )
+                )
+            )
+        else:
+            _run_dassh(dassh_input, dassh_logger, rx_args, i, working_dir)
+
+    # Clean up from parallel execution, if applicable
+    if parallel:
+        for w in workers:
+            w.get()
+        pool.terminate()
+        pool.close()
+        pool.join()
 
 
 def _run_dassh(dassh_inp, dassh_log, args, timestep, wdir, link=None):
