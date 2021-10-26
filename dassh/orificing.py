@@ -14,31 +14,24 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-10-25
+date: 2021-10-26
 author: matz
 Main DASSH calculation procedure
 
 To do
 -----
-- Do power setup and grouping before parametric study - then use VARPOW
-    output from power setup in parametric study
 - Assemblies not included in the orificing calculation are currently
     given flow rate based on the "DELTA_TEMP" condition, which means
     that they can have different FR for each timestep depending on
     their power; should calculate an average power level at the outset
     during power setup and assign as fixed value.
-- Actual bulk coolant temp is slightly less than expected. Why?
-- Add parallel capability to __main__.run_dassh for multiple timesteps
-- Instead of averaging ratio between parametric estimate for T_opt and
-    previous sweep results, calculate the ratio based on the timestep
-    that gave the max value for T_opt (for each assembly).
 
 """
 ########################################################################
 import copy
+import os
 import numpy as np
 import dassh
-import os
 
 
 class Orificing(object):
@@ -53,6 +46,10 @@ class Orificing(object):
         Given from __main__
 
     """
+    _VARPOW_FILES = ('VARPOW.out',
+                     'varpow_MatPower.out',
+                     'varpow_MonoExp.out')
+
     def __init__(self, dassh_input, root_logger):
         self._logger = root_logger
         self._base_input = dassh_input
@@ -86,21 +83,20 @@ class Orificing(object):
         msg = f"Requested number of groups: {self.orifice_input[k]}"
         self._logger.log(20, msg)
 
-        msg = "Performing single-assembly parametric calculations"
-        self._logger.log(20, msg)
-        self._parametric = {}
-        with dassh.logged_class.LoggingContext(self._logger, 40):
-            self._parametric['data'], self._parametric['asm_idx'] = \
-                self.run_parametric()
-
-        # msg = "Performing perfect-orificing calculation"
-        # self._logger.log(20, msg)
-        # data_perfect = self.run_dassh_perfect()
-
         msg = "Grouping assemblies"
         self._logger.log(20, msg)
         with dassh.logged_class.LoggingContext(self._logger, 40):
             self.group_by_power()
+
+        msg = "Performing single-assembly parametric calculations"
+        self._logger.log(20, msg)
+        self._parametric = {}
+        with dassh.logged_class.LoggingContext(self._logger, 40):
+            self.run_parametric()
+
+        # msg = "Performing perfect-orificing calculation"
+        # self._logger.log(20, msg)
+        # data_perfect = self.run_dassh_perfect()
 
         # Iterate to converge to coolant flow distribution among groups
         # that maintains overall bulk outlet temperature constraint and
@@ -115,6 +111,9 @@ class Orificing(object):
             print(summary_data)
             if self._check_flow_convergence(summary_data):
                 break
+
+        # Write results to CSV files
+        self.write(iter_data)
 
     def _do_iter(self, iter, data_prev=None, t_out=None):
         """Update coolant flow distributions between orifice groups
@@ -186,6 +185,7 @@ class Orificing(object):
         avg = np.average(summary_data[:, -1])
         max_dev = np.max(summary_data[:, -1] - avg)
         max_rdev = max_dev / (avg - self.t_in)
+        print('Convergence: ', max_rdev)
         if max_rdev <= self.orifice_input['convergence_tol']:
             return True
         else:
@@ -195,9 +195,14 @@ class Orificing(object):
     # DASSH INPUT PREPARATION AND EXECUTION
     ####################################################################
 
-    def run_parametric(self):
+    def run_parametric(self, n_pts=12):
         """Perform parametric calculations on a single assembly to
         generate data to use for initial orifice grouping
+
+        Parameters
+        ----------
+        n_pts : int
+            Number of points to use in the parametric sweep
 
         Returns
         -------
@@ -207,60 +212,85 @@ class Orificing(object):
                set of parametric sweep data in (1)
 
         """
-        # For each assembly, append data to a list
-        # Create some shortcuts for optimization and lookup keys
-        x = ('Assignment', 'ByPosition')
+        wd = os.path.join(self._base_input.path, '_parametric')
+        self._parametric = {}
+        # Instantiate DASSH Reactor - need to know which assemblies are
+        # associated with which parametric data.
+        lookup_rx = os.path.join(self._base_input.path, '_power')
         try:
+            rx = dassh.reactor.load(
+                os.path.join(lookup_rx, 'dassh_reactor.pkl'))
+        except FileNotFoundError:
+            lookup_rx = os.path.join(lookup_rx, 'timestep_1')
+            rx = dassh.reactor.load(
+                os.path.join(lookup_rx, 'dassh_reactor.pkl'))
+
+        # For each type of assembly to be grouped, pull a matching
+        # assembly object from the Reactor (the first matching
+        # assembly you find); calculate average power of all
+        # assemblies of that type.
+        asm_obj = []
+        asm_power = []
+        asm_ids = []
+        asm_names = []
+        for i in range(len(self.orifice_input['assemblies_to_group'])):
+            name = self.orifice_input['assemblies_to_group'][i]
+            asm_list = [a for a in rx.assemblies if a.name == name]
+            asm_ids += [[a.id, i] for a in asm_list]
+            n_asm = len(asm_list)
+            asm_names.append(name)
+            asm_obj.append(asm_list[0])
+            asm_power.append(0.0)
+            for a in asm_list:
+                asm_power[-1] += a.total_power
+            asm_power[-1] /= n_asm
+        asm_ids = np.array(asm_ids, dtype=int)
+        self._parametric['asm_ids'] = asm_ids[asm_ids[:, 0].argsort()]
+        self._parametric['asm_names'] = asm_names
+
+        # For each assembly, append data to a list
+        self._parametric['data'] = []
+
+        # Try to look up data first
+        found = False
+        lookup_data = [f'data_{asm_name}.csv' for asm_name in
+                       self.orifice_input['assemblies_to_group']]
+        if os.path.exists(wd):
+            wd_files = os.listdir(wd)
+            if all([f in wd_files for f in lookup_data]):
+                found = True
+                for f in lookup_data:
+                    self._parametric['data'].append(
+                        np.loadtxt(os.path.join(wd, f), delimiter=','))
+                return
+
+        # If you can't find it, need to compute it
+        if not found:
+            # Set up subdirectory for this calculation
+            os.makedirs(
+                os.path.join(self._base_input.path, '_parametric'),
+                exist_ok=True)
+            # Re-use precomputed power distributions
+            for f in self._VARPOW_FILES:
+                src = os.path.join(rx.path, f)
+                dassh.utils._symlink(src, os.path.join(wd, f))
+
+            # Create some shortcuts for optimization and lookup keys
+            x = ('Assignment', 'ByPosition')
             data = []
-            for i in range(len(self.orifice_input['assemblies_to_group'])):
-                asm_name = self.orifice_input['assemblies_to_group'][i]
-                _data = np.loadtxt(
-                    os.path.join(self._base_input.path,
-                                 '_parametric',
-                                 f'data_{asm_name}.csv'),
-                    delimiter=',')
-                data.append(_data)
-            asm_ids = np.loadtxt(
-                os.path.join(self._base_input.path,
-                             '_parametric',
-                             'asm_ids.csv'),
-                delimiter=',')
-        except OSError:
-            data = []
-            # Instantiate DASSH Reactor
-            rx = dassh.Reactor(self._base_input, path='_parametric')
-            # For each type of assembly to be grouped, pull a matching
-            # assembly object from the Reactor (the first matching
-            # assembly you find); calculate average power of all
-            # assemblies of that type.
-            asm_ids = []
-            asm_obj = []
-            asm_power = []
-            for atype in self.orifice_input['assemblies_to_group']:
-                asm_list = [a for a in rx.assemblies if a.name == atype]
-                n_asm = len(asm_list)
-                asm_obj.append(asm_list[0])
-                _asm_power = 0.0
-                _asm_ids = []
-                for a in asm_list:
-                    _asm_power += a.total_power
-                    _asm_ids.append(a.id)
-                asm_power.append(_asm_power / n_asm)
-                asm_ids.append(_asm_ids)
+            # Loop over Assembly objects to run parametric calcs
+            for i in range(len(asm_obj)):
                 # Set up a generic single-assembly input from the original
                 inp_1asm = self._setup_input_parametric(
                     asm_obj[i].id,
                     asm_obj[i].name,
                     asm_obj[i].loc,
                     asm_power[i])
-                # Set up subdirectory for this calculation
-                os.makedirs(inp_1asm.path, exist_ok=True)
                 # Initialize data array
                 # Columns:  1) Power (MW) / Flow rate (kg/s)
                 #           2) Power (MW)
                 #           3) Flow rate (kg/s)
                 #           4) Target peak temperature (K)
-                n_pts = 12
                 _data = np.zeros((n_pts, 5))
                 _data[:, 0] = np.geomspace(0.05, 1.0, n_pts)  # MW / (kg/s)
                 _data[:, 1] = asm_power[i]  # Watts
@@ -285,16 +315,12 @@ class Orificing(object):
                         _data[j, 4] = r1a.assemblies[0]._peak[
                             self._opt_keys[0]][0]
                     del r1a
-                np.savetxt(
-                    os.path.join(inp_1asm.path,
-                                 f'data_{asm_obj[i].name}.csv'),
-                    _data,
-                    delimiter=',')
+                # Save parametric data for this assembly type to CSV
+                _datapath = os.path.join(
+                    inp_1asm.path, f'data_{asm_obj[i].name}.csv')
+                np.savetxt(_datapath, _data, delimiter=',')
                 data.append(_data)
-            np.savetxt(os.path.join(inp_1asm.path, 'asm_ids.csv'),
-                       asm_ids,
-                       delimiter=',')
-        return data, asm_ids
+        self._parametric['data'] = data
 
     def run_dassh_perfect(self):
         """Execute DASSH assuming perfect orificing for each assembly
@@ -371,7 +397,7 @@ class Orificing(object):
             os.makedirs(wd_path, exist_ok=True)
             # Try to skip the power calculation by using ones you've
             # precalculated from previous iterations
-            found = self._find_precalculated_power_distributions(wd_path)
+            found = self._find_precalculated_power_dist(wd_path)
             args = {'save_reactor': True,        # Save Reactor object
                     'verbose': False,            # Don't print stuff
                     'no_power_calc': not found}  # Do the power calc?
@@ -462,13 +488,10 @@ class Orificing(object):
                 {'flowrate': m_asm[i]}
         return inp
 
-    def _find_precalculated_power_distributions(self, wdpath):
+    def _find_precalculated_power_dist(self, wdpath):
         """See if you can link previously calculated power
         distributions rather than recalculating"""
-        # Look for power distributions in "_perfect" or "_iter1"
-        varpow_files = ('VARPOW.out',
-                        'varpow_MatPower.out',
-                        'varpow_MonoExp.out')
+        # Look for power distributions in "_power" or "_iter1"
         linked = 0
         expected = 0
         found = False
@@ -484,7 +507,7 @@ class Orificing(object):
                         if not os.path.exists(destpath):
                             os.makedirs(destpath, exist_ok=True)
                         expected += 3
-                        for ff in varpow_files:
+                        for ff in self._VARPOW_FILES:
                             src = os.path.join(p, f, ff)
                             if os.path.exists(src):
                                 dest = os.path.join(destpath, ff)
@@ -493,7 +516,7 @@ class Orificing(object):
                 # Get VARPOW files that aren't in subdir, if applicable
                 if any(['varpow' in x for x in os.listdir(p)]):
                     expected += 3
-                    for ff in varpow_files:
+                    for ff in self._VARPOW_FILES:
                         src = os.path.join(p, ff)
                         if os.path.exists(os.path.join(p, ff)):
                             dest = os.path.join(wdpath, ff)
@@ -608,7 +631,7 @@ class Orificing(object):
 
         """
         self._power = []
-        self._power_to_grp = []
+        self._lin_power = []
 
         # For each timestep, collect assembly power and power
         # parameter (either integral power or peak linear power)
@@ -632,31 +655,36 @@ class Orificing(object):
                                          timestep=i,
                                          write_output=False)
                 dassh_rx.save()
+
+            # Go through each assembly and get the power
             _power = []
-            _power_to_grp = []
+            _lin_power = []
             _id = []
             for a in dassh_rx.assemblies:
                 if a.name in self.orifice_input['assemblies_to_group']:
                     _id.append(a.id)
                     _power.append(a.total_power)
-                    if group_by == 'linear_power':
-                        _power_to_grp.append(
-                            a.power.calculate_avg_peak_linear_power())
-                    elif group_by == 'power':
-                        _power_to_grp.append(a.total_power)
-                    else:  # Here for safety, should never be raised
-                        raise ValueError(
-                            'Argument "group_by" must be "power" '
-                            + f'or "linear_power"; input {group_by} '
-                            + 'not recognized')
+                    _lin_power.append(
+                        a.power.calculate_avg_peak_linear_power())
+
             self._power.append(np.array((_id, _power)).T)
-            self._power_to_grp.append(np.array((_id, _power_to_grp)).T)
+            self._lin_power.append(np.array((_id, _lin_power)).T)
 
         # Take average for each assembly
         tmp = np.average([x[:, 1] for x in self._power], axis=0)
         self._power = np.array((self._power[0][:, 0], tmp)).T
-        tmp = np.average([x[:, 1] for x in self._power_to_grp], axis=0)
-        self._power_to_grp = np.array((self._power_to_grp[0][:, 0], tmp)).T
+        tmp = np.average([x[:, 1] for x in self._lin_power], axis=0)
+        self._lin_power = np.array((self._lin_power[0][:, 0], tmp)).T
+
+        # Save one of the above as the power to use in grouping
+        if group_by == 'linear_power':
+            self._power_to_grp = self._lin_power
+        elif group_by == 'power':
+            self._power_to_grp = self._power
+        else:  # Here for safety, should never be raised
+            raise ValueError(
+                'Argument "group_by" must be "power" or "linear_power";'
+                + f' input {group_by} not recognized')
 
     def _group(self, params):
         """Divide assemblies into orifice groups based on some parameter
@@ -800,22 +828,6 @@ class Orificing(object):
                 xyi[:, 1] = self._parametric['data'][i][:, -1]
                 xy.append(xyi[xyi[:, 0].argsort()])
 
-        # Temporary indexing array to determine which
-        # assemblies are of which type
-        if 'type_idx' not in self._parametric.keys():
-            tmp = np.zeros(self.group_data.shape[0], dtype=int)
-            if self._parametric['asm_idx'].ndim > 1:
-                for i in range(tmp.shape[0]):
-                    for j in range(len(self._parametric['asm_idx'])):
-                        if (self.group_data[i, 0]
-                                in self._parametric['asm_idx'][j]):
-                            tmp[i] = j
-                            match = True
-                            break
-                    if not match:
-                        raise ValueError('Unknown assembly type')
-            self._parametric['type_idx'] = tmp
-
         # Total mass flow rate to achieve bulk coolant temperature
         # If first iteration, estimate based on total power
         if res_prev is None:
@@ -864,8 +876,8 @@ class Orificing(object):
             for g in range(self.orifice_input['n_groups'] - 1):
                 m_new = m[self.group_data[:, -1] == g] * d_optvar[g]
                 if m_lim is not None:
-                    asm_type_in_grp = self._parametric['type_idx'][
-                        self.group_data[:, -1] == g]
+                    asm_type_in_grp = self._parametric['asm_ids'][
+                        self.group_data[:, -1] == g, 1]
                     m_lim_grp = m_lim[asm_type_in_grp]
                     if np.any(m_new > m_lim_grp):
                         m_new[:] = np.min(m_lim_grp)
@@ -960,7 +972,7 @@ class Orificing(object):
             ])
             # Choose the appropriate ratio for the right asm type
             ratio = ratio[np.arange(ratio.shape[0]),
-                          self._parametric['type_idx']]
+                          self._parametric['asm_ids'][:, 1]]
         else:
             # If no previous sweep data, do the interpolation using
             # power-to-flow ratio as the independent variable
@@ -973,8 +985,89 @@ class Orificing(object):
         for i in range(len(xy)):
             new.append(np.interp(x_interp, xy[i][:, 0], xy[i][:, 1]))
         new = np.array(new).T
-        new = new[np.arange(new.shape[0]), self._parametric['type_idx']]
+        new = new[np.arange(new.shape[0]),
+                  self._parametric['asm_ids'][:, 1]]
         return new * ratio
 
+    ####################################################################
+    # WRITE RESULTS TO CSV
+    ####################################################################
+
+    def write(self, results):
+        """Write results of orificing optimization to CSV"""
+        self._write_results_assembly(results)
+        # self._write_results_group(results)
+
+    def _write_results_assembly(self, results):
+        """Generate results per assembly from orificing optimization
+
+        Parameters
+        ----------
+        results : numpy.nadarray
+            Results from the last iteration
+
+        Notes
+        -----
+        orificing_result_assembly.csv
+            1. Assembly ID
+            2. Assembly type (string)
+            3. Total power
+            4. Peak linear power
+            5. Group ID
+            6. Flow rate
+            *** 7. Peak velocity
+            *** 8. Pressure drop
+            9. Average bulk outlet temperature
+            10. Peak bulk outlet temperature
+            *** 11. Peak clad temperature
+            12. Peak fuel CL temperature
+
+        """
+        asm_ids = np.unique(results[:, 1]).astype(int)
+        # n_asm = asm_ids.shape[0]
+        to_write = ''
+        for i in range(asm_ids.shape[0]):
+            avg_bulk_coolant_temp = np.average(
+                results[results[:, 1] == asm_ids[i], 4])
+            max_bulk_coolant_temp = np.max(
+                results[results[:, 1] == asm_ids[i], 4])
+            max_opt_temp = np.max(
+                results[results[:, 1] == asm_ids[i], 5])
+            line = [asm_ids[i],
+                    self._parametric['asm_names'][
+                        self._parametric['asm_ids'][i, 1]],
+                    self._power[i, 1],
+                    self._lin_power[i, 1],
+                    int(self.group_data[i, -1]),
+                    results[i, 3],
+                    '---',
+                    '---',
+                    avg_bulk_coolant_temp,
+                    max_bulk_coolant_temp,
+                    '---',
+                    max_opt_temp]
+            to_write += ','.join([str(l) for l in line]) + '\n'
+        with open('orificing_result_assembly.csv', 'w') as f:
+            f.write(to_write)
+
+    def _write_results_group(self, results):
+        """Generate results per group from orificing optimization
+
+        orificing_result_group.csv
+            1. Group ID
+            2. Number of assemblies in group
+            3. Average power
+            4. Peak power
+            5. Flow rate
+            3. Average bulk outlet temperature
+            4. Peak bulk outlet temperature
+            5. Max peak outlet temperature
+            6. Average peak clad temperature
+            7. Max peak clad temperature
+            8. Average peak fuel CL temperature
+            9. Max peak fuel CL temperature
+
+        """
+        pass
 
 ########################################################################
