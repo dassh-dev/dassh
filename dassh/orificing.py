@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-10-26
+date: 2021-11-01
 author: matz
 Main DASSH calculation procedure
 
@@ -25,11 +25,18 @@ To do
     that they can have different FR for each timestep depending on
     their power; should calculate an average power level at the outset
     during power setup and assign as fixed value.
+- Parallel execution (on kookie) has super scattered logging. Should
+    execute with logger context as error only - no sweep updates, but
+    that's probably okay.
+- Need unit tests that check results for simple problem.
+    1. 37-assembly example with low-fidelity model; peak coolant temp?
+    2. 7-assembly example for fuel pin variable
 
 """
 ########################################################################
 import copy
 import os
+import sys
 import numpy as np
 import dassh
 
@@ -57,6 +64,7 @@ class Orificing(object):
         coolant_name = dassh_input.data['Core']['coolant_material']
         self.coolant = dassh_input.materials[coolant_name]
         self.t_in = dassh_input.data['Core']['coolant_inlet_temp']
+        self._dp_limit = np.zeros(self.orifice_input['n_groups'])
 
         # Setup lookup keys
         x = 'value_to_optimize'
@@ -69,10 +77,13 @@ class Orificing(object):
         elif self.orifice_input[x] == 'peak fuel temp':
             self._opt_keys = ('pin', 'fuel_cl')
         else:  # Here for safety; shouldn't be raised b/c input limits
-            raise ValueError('Do not understand optimiation variable')
+            msg = 'Do not understand optimiation variable; given '
+            msg += f'"{self.orifice_input[x]}"'
+            self._logger.log(40, msg)
+            sys.exit()
 
     def optimize(self):
-        """x"""
+        """Perform that orificing optimzation"""
         # Initial setup
         msg = "DASSH orificing optimization calculation"
         self._logger.log(20, msg)
@@ -111,9 +122,14 @@ class Orificing(object):
             print(summary_data)
             if self._check_flow_convergence(summary_data):
                 break
+            if np.any(self._dp_limit):
+                msg = ("Breaking optimization iteration due to "
+                       "incurred pressure drop limit")
+                self._logger.log(20, msg)
+                break
 
         # Write results to CSV files
-        self.write(iter_data)
+        self.write_results(iter_data)
 
     def _do_iter(self, iter, data_prev=None, t_out=None):
         """Update coolant flow distributions between orifice groups
@@ -122,8 +138,8 @@ class Orificing(object):
         msg = f"Iter {iter}: Distributing coolant flow among groups"
         self._logger.log(20, msg)
         m, tlim = self.distribute(data_prev, t_out)
-        print('T_opt_max: ', tlim)
         mx, nx = np.unique(m, return_counts=True)
+        print('T_opt_max: ', tlim)
         print('Asm per group: ', nx[::-1])
         print('Flow rates: ', mx[::-1])
         print('Total flow rate: ', np.sum(m))
@@ -403,8 +419,7 @@ class Orificing(object):
                     'no_power_calc': not found}  # Do the power calc?
             dassh_inp = self._setup_input_orifice(mfr)
             dassh_inp.path = wd_path
-            dassh.__main__.run_dassh(dassh_inp, self._logger,
-                                     args, parallel=True)
+            dassh.__main__.run_dassh(dassh_inp, self._logger, args)
             results = self._get_dassh_results(dassh_inp.path)
             np.savetxt(data_path, results, delimiter=',')
         return results
@@ -444,6 +459,9 @@ class Orificing(object):
 
         # Eliminate orificing optimization input
         inp.data['Orificing'] = False
+
+        # No parallelism for the parametric calculation
+        inp.data['Setup']['parallel'] = False
 
         # Change the path to the proper subdir
         inp.path = os.path.join(inp.path, '_parametric')
@@ -682,9 +700,11 @@ class Orificing(object):
         elif group_by == 'power':
             self._power_to_grp = self._power
         else:  # Here for safety, should never be raised
-            raise ValueError(
-                'Argument "group_by" must be "power" or "linear_power";'
-                + f' input {group_by} not recognized')
+            msg = ('Argument "group_by" must be "power" or '
+                   + f'"linear_power"; input {group_by} not '
+                   + 'recognized')
+            self._logger.log(40, msg)
+            sys.exit()
 
     def _group(self, params):
         """Divide assemblies into orifice groups based on some parameter
@@ -744,7 +764,7 @@ class Orificing(object):
                    + '"group_cutoff" and "group_cutoff_delta" '
                    + 'parameters')
             self._logger.log(40, msg)
-            print('hi')  # Should do system.exit
+            sys.exit()
 
         # Attach grouping to group parameter data and return
         group_data = np.zeros((params.shape[0], 3))
@@ -855,9 +875,10 @@ class Orificing(object):
             dp_limit = self.orifice_input['pressure_drop_limit'] * 1e6
             m_lim = np.zeros(len(self._parametric['data']))
             for i in range(m_lim.shape[0]):
-                m_lim[i] = np.interp(dp_limit,
-                                     self._parametric['data'][i][:, 3],
-                                     self._parametric['data'][i][:, 2])
+                m_lim[i] = np.interp(
+                    dp_limit,
+                    self._parametric['data'][i][:, 3][::-1],
+                    self._parametric['data'][i][:, 2][::-1])
 
         # First guess - give all groups an average flow rate.
         m = np.ones(self.group_data.shape[0])
@@ -869,7 +890,7 @@ class Orificing(object):
         iter = 0
         tol = 1.0
         iter_lim = 50
-        dp_warning = False
+        # dp_warning = False
         while convergence > tol and iter < iter_lim:
             # Update flow rates
             m_remaining = m_total
@@ -881,7 +902,8 @@ class Orificing(object):
                     m_lim_grp = m_lim[asm_type_in_grp]
                     if np.any(m_new > m_lim_grp):
                         m_new[:] = np.min(m_lim_grp)
-                        dp_warning = True
+                        # dp_warning = True
+                        self._dp_limit[g] = 1
                 m[self.group_data[:, -1] == g] = m_new
                 m_remaining -= np.sum(m_new)
             last_idx = (self.group_data[:, -1] ==
@@ -916,11 +938,27 @@ class Orificing(object):
         # print(f'Convergence (want less than {tol}): ', convergence)
         # Check conservation of mass - this should never fail
         if not abs(np.sum(m) - m_total) < 1e-6:
-            raise ValueError("Mass flow rate not conserved")
+            self._logger.log(40, "Mass flow rate not conserved")
+            sys.exit()
         # Report whether the pressure drop mass flow rate limit was met
-        if dp_warning:
-            print("Warning: Peak mass flow rate restricted to accommodate "
-                  + "user-specified pressure drop limit")
+        if np.any(self._dp_limit):  # if dp_warning:
+            msg = ("Warning: Peak mass flow rate restricted to "
+                   + "accommodate user-specified pressure drop limit")
+            self._logger.log(30, msg)
+        # If multiple groups hit the pressure drop limit, the problem
+        # is poorly posed (i.e. the limit is too tight to achieve adequate
+        # cooling). Doubt this situation would ever occur, not sure what
+        # to do about it if it does.
+        if np.sum(self._dp_limit) > 1:
+            msg = "Multiple groups constrained by pressure drop limit"
+            self._logger.log(40, msg)
+            sys.exit()
+        # Raise error if we did not achieve requested number of groups
+        if np.unique(m).shape[0] != self.orifice_input['n_groups']:
+            msg = ("Flow allocation did not achieve "
+                   + "requested number of orifice groups")
+            self._logger.log(40, msg)
+            sys.exit()
         # Return results
         return m, max(group_max)
 
@@ -961,11 +999,7 @@ class Orificing(object):
                     np.interp(res_prev[:, 3], xy[i][:, 0], xy[i][:, 1]))
             interpolated_pts = np.array(interpolated_pts)
             ratio = y_data / interpolated_pts
-            # Average over all cycles for each assembly
-            # ratio = np.array([
-            #     np.average(ratio[:, res_prev[:, 1] == i], axis=1)
-            #     for i in np.unique(res_prev[:, 1])
-            # ])
+            # Take maximum over all cycles for each assembly
             ratio = np.array([
                 np.max(ratio[:, res_prev[:, 1] == i], axis=1)
                 for i in np.unique(res_prev[:, 1])
@@ -993,10 +1027,10 @@ class Orificing(object):
     # WRITE RESULTS TO CSV
     ####################################################################
 
-    def write(self, results):
+    def write_results(self, results):
         """Write results of orificing optimization to CSV"""
         self._write_results_assembly(results)
-        # self._write_results_group(results)
+        self._write_results_group(results)
 
     def _write_results_assembly(self, results):
         """Generate results per assembly from orificing optimization
