@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-10-22
+date: 2021-11-01
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -556,6 +556,10 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
             if not isinstance(self.data['Power']['ARC'][f], list):
                 self.data['Power']['ARC'][f] = \
                     [self.data['Power']['ARC'][f]] * self.timepoints
+
+        # Check user request for parallel calculation - need to do after
+        # setting up self.timepoints attribute
+        self.check_parallel()
 
         # Convert units to DASSH defaults
         self.convert_units()
@@ -1357,6 +1361,22 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
             msg += '\n'.join(['- all', '- coolant', '- duct', '- pins',
                               '- gap', '- average', '- maximum'])
 
+    def check_parallel(self):
+        """Check user request for parallel calculation"""
+        if self.data['Setup']['parallel']:
+            if self.timepoints == 1:
+                msg = 'No parallelism for single timestep; ignoring...'
+                self.log('warning', msg)
+                self.data['Setup']['parallel'] = False
+            else:  # self.timepoints > 1
+                if self.data['Setup']['n_cpu'] == 1:
+                    msg = ('Parallel execution requested but '
+                           '"n_cpu"=1; ignoring...')
+                    self.log('warning', msg)
+                    self.data['Setup']['parallel'] = False
+                else:
+                    pass
+
     def check_htc_params(self):
         """Check user-specified coefficients to DB correlation"""
         msg_len = "Four HTC correlation parameters required."
@@ -1681,10 +1701,8 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
             pin_keys = ['peak clad MW temp', 'peak clad ID temp',
                         'peak fuel temp']
             if self.data['Orificing']['value_to_optimize'] in pin_keys:
-                k1 = 'FuelModel'      # <-- using to shorten lines
-                k2 = 'clad_material'
                 for a in self.data['Orificing']['assemblies_to_group']:
-                    if self.data['Assembly'][a][k1][k2] is None:
+                    if 'FuelModel' not in self.data['Assembly'][a].keys():
                         self.log('error',
                                  'Cannot perform orificing '
                                  + 'optimization on pin temperatures '
@@ -1753,6 +1771,12 @@ def convert_temperature(data):
     original_inlet_temp = data['Core']['coolant_inlet_temp']
     data['Core']['coolant_inlet_temp'] = \
         conv(data['Core']['coolant_inlet_temp'])
+
+    # Convert orificing target temperature, if pressent
+    if data['Orificing']:
+        if data['Orificing']['bulk_coolant_temp'] is not None:
+            data['Orificing']['bulk_coolant_temp'] = \
+                conv(data['Orificing']['bulk_coolant_temp'])
 
     # Assembly outlet temperature assignments
     for i in range(len(data['Assignment']['ByPosition'])):

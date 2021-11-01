@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-14
+date: 2021-11-01
 author: matz
 Test the DASSH read_input module and DASSH_input object
 """
@@ -501,38 +501,100 @@ def test_assignment_missing_assemblies(testdir):
                 if len(x) > 0]) == 31
 
 
-#
-# def test_unit_conversion(testdir):
-#     """Test some unit conversions"""
-#     inp = dassh.DASSH_Input(os.path.join(testdir, 'test_inputs',
-#                                          'input_unit_convs.txt'))
-#     inp_conv = copy.deepcopy(inp)
-#     inp_conv = dassh.dassh_setup.convert_units(inp_conv)
-#
-#     # Check temperatures
-#     assert (inp_conv.data['Core']['coolant_inlet_temp'] ==
-#             pytest.approx((inp.data['Core']['coolant_inlet_temp'] - 32)
-#                           * 5 / 9 + 273.15))
-#     assert (inp_conv.data['Assignment']['ByPosition'][0][3] ==
-#             pytest.approx((inp.data['Assignment']['ByPosition'][0][3] - 32)
-#                           * 5 / 9 + 273.15))
-#
-#     # Check lengths
-#     assert (inp_conv.data['Core']['height'] ==
-#             pytest.approx(inp.data['Core']['height'] * 12 * 2.54 / 100))
-#     assert all([(inp_conv.data['Assembly']['fuel']['duct_ftf'][i] ==
-#                  pytest.approx((inp.data['Assembly']['fuel']
-#                                         ['duct_ftf'][i]
-#                                 * 12 * 2.54 / 100)))
-#                 for i in range(len(inp_conv.data['Assembly']['fuel']
-#                                                 ['duct_ftf']))])
-#     for p in ['pin_pitch', 'pin_diameter', 'clad_thickness',
-#               'wire_pitch', 'wire_diameter']:
-#         assert (inp_conv.data['Assembly']['fuel'][p] ==
-#                 pytest.approx(inp.data['Assembly']['fuel'][p]
-#                               * 12 * 2.54 / 100.))
-#     # Check mass flow rate
-#     assert (inp_conv.data['Assignment']['ByPosition'][1][3] ==
-#             pytest.approx(inp.data['Assignment']['ByPosition'][1][3]
-#                           * 0.000125998, 1e-4))
-#
+def test_ignore_parallel_ncpu(testdir, caplog):
+    """Test that DASSH ignores request for parellelism if n_cpu=1"""
+    inp = dassh.DASSH_Input(
+        os.path.join(
+            testdir,
+            'test_inputs',
+            'x_input_parallel-1.txt'))
+    msg = 'Parallel execution requested but "n_cpu"=1; ignoring...'
+    assert msg in caplog.text
+    assert inp.data['Setup']['parallel'] is False
+
+
+def test_ignore_parallel_one_timestep(testdir, caplog):
+    """Test that parallelism request ignored if only one timestep"""
+    inp = dassh.DASSH_Input(
+        os.path.join(
+            testdir,
+            'test_inputs',
+            'x_input_parallel-2.txt'))
+    msg = 'No parallelism for single timestep; ignoring...'
+    assert msg in caplog.text
+    assert inp.data['Setup']['parallel'] is False
+
+
+def test_okay_parallel_input(testdir):
+    """Test that appropriate user input enables parallel calc"""
+    inp = dassh.DASSH_Input(
+        os.path.join(
+            testdir,
+            'test_inputs',
+            'input_parallel.txt'))
+    assert inp.data['Setup']['parallel'] is True
+
+
+def test_bad_orificing_input_missing_key(testdir, caplog):
+    """Test that input fails if missing orificing keys"""
+    with pytest.raises(SystemExit):
+        dassh.DASSH_Input(
+            os.path.join(
+                testdir,
+                'test_inputs',
+                'x_input_orificing-1.txt'))
+    msg = 'Orificing input "bulk_coolant_temp" must be specified'
+    assert msg in caplog.text
+
+
+def test_bad_orificing_input_wrong_asm_name(testdir, caplog):
+    """Test that input fails if orificing asm type not in input"""
+    with pytest.raises(SystemExit):
+        dassh.DASSH_Input(
+            os.path.join(
+                testdir,
+                'test_inputs',
+                'x_input_orificing-2.txt'))
+    msg = ('Orificing input "assemblies_to_group" must contain assembly '
+           'types specified in "Assembly"; do not recognize "fuelx"')
+    assert msg in caplog.text
+
+
+def test_bad_orificing_input_negative_dt(testdir, caplog):
+    """Fail if target coolant outlet temp less than core inlet temp"""
+    with pytest.raises(SystemExit):
+        dassh.DASSH_Input(
+            os.path.join(
+                testdir,
+                'test_inputs',
+                'x_input_orificing-3.txt'))
+    msg = ('Orificing input "bulk_coolant_temp" must be '
+           + 'greater than "Core/coolant_inlet_temp"')
+    assert msg in caplog.text
+
+
+def test_bad_orificing_input_missing_optvar(testdir, caplog):
+    """Fail if DASSH input missing orificing optimization var"""
+    # e.g. user wants to optimize on clad temperature but is missing
+    # the "FuelModel" section in the input file
+    with pytest.raises(SystemExit):
+        dassh.DASSH_Input(
+            os.path.join(
+                testdir,
+                'test_inputs',
+                'x_input_orificing-4.txt'))
+    msg = ('Cannot perform orificing optimization on pin temperatures '
+           + 'for Assembly "fuel": no FuelModel input section')
+    assert msg in caplog.text
+
+
+def test_passing_orificing_input(testdir):
+    """Test that proper orificing input can be created"""
+    inp = dassh.DASSH_Input(
+        os.path.join(
+            testdir,
+            'test_inputs',
+            'input_orificing.txt'))
+    assert inp.data['Orificing'] is not None
+    assert inp.data['Orificing']['bulk_coolant_temp'] == \
+        pytest.approx(773.15)

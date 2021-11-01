@@ -65,9 +65,11 @@ def main(args=None):
 
     # DASSH calculation without orificing optimization
     if dassh_input.data['Orificing'] is False:
-        arg_dict = {'save_reactor': args.save_reactor,
-                    'verbose': args.verbose,
-                    'no_power_calc': args.no_power_calc}
+        arg_dict = {
+            'save_reactor': args.save_reactor,
+            'verbose': args.verbose,
+            'no_power_calc': args.no_power_calc
+        }
         run_dassh(dassh_input, dassh_logger, arg_dict)
 
     # Orificing optimization with DASSH
@@ -85,16 +87,19 @@ def main(args=None):
         pr.dump_stats('dassh_profile.out')
 
 
-def run_dassh(dassh_input, dassh_logger, rx_args, parallel=False):
+def run_dassh(dassh_input, dassh_logger, rx_args):
     """Run DASSH without orificing optimization"""
     # For each timestep in the DASSH input, create the necessary DASSH
     # DASSH objects, run DASSH, and process the results
     need_subdir = False
     if dassh_input.timepoints > 1:
         need_subdir = True
-        if parallel:
+        if dassh_input.data['Setup']['parallel']:
             import multiprocessing as mp
-            n_procs = min((mp.cpu_count(), dassh_input.timepoints))
+            if dassh_input.data['Setup']['n_cpu'] is not None:
+                n_procs = dassh_input.data['Setup']['n_cpu']
+            else:
+                n_procs = min((mp.cpu_count(), dassh_input.timepoints))
             pool = mp.Pool(processes=n_procs)
             workers = []
 
@@ -106,7 +111,7 @@ def run_dassh(dassh_input, dassh_logger, rx_args, parallel=False):
             working_dir = os.path.join(
                 dassh_input.path, f'timestep_{i + 1}')
         # Set up working dirs, run DASSH, write output, make plots
-        if parallel:
+        if dassh_input.data['Setup']['parallel']:
             workers.append(
                 pool.apply_async(
                     _run_dassh,
@@ -121,7 +126,7 @@ def run_dassh(dassh_input, dassh_logger, rx_args, parallel=False):
             _run_dassh(dassh_input, dassh_logger, rx_args, i, working_dir)
 
     # Clean up from parallel execution, if applicable
-    if parallel:
+    if dassh_input.data['Setup']['parallel']:
         for w in workers:
             w.get()
         pool.terminate()
