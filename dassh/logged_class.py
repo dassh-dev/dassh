@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-10-22
+date: 2021-10-29
 author: matz (inherited from Dr. A. Nelson)
 Log messages, warnings, and errors produced by each class in DASSH
 """
@@ -137,16 +137,16 @@ class LoggedClass(object):
         if level in ["error", "critical"]:
             use_indent = 0
 
-        low_level = level.lower()
-        if low_level in ["info", "warning", "error", "critical", "debug"]:
-            func = getattr(self._logger, low_level)
+        log_level = level.lower()
+        if log_level in ["info", "warning", "error", "critical", "debug"]:
+            func = getattr(self._logger, log_level)
             func(use_indent * " " + message)
-            if low_level in ["error", "critical"]:
+            if log_level in ["error", "critical"]:
                 sys.exit(1)
-        elif low_level in ["info_file"]:
+        elif log_level in ["info_file"]:
             self._logger.log(FILE_LOG_LEVEL, use_indent * " " + message)
         else:
-            raise ValueError("Invalid level: {}".format(low_level))
+            raise ValueError("Invalid level: {}".format(log_level))
 
 
 class DuplicateFilter:
