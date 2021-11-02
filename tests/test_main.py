@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-02-25
+date: 2021-11-02
 author: matz
 Test container for general execution
 """
@@ -24,25 +24,14 @@ import numpy as np
 import dassh
 import subprocess
 import pytest
-import shutil
 
 
-def dassh_setup(infile_path, outpath):
-    # Remove the DASSH reactor object, if it exists
-    if os.path.exists(outpath):
-        shutil.rmtree(outpath)
-    os.makedirs(outpath, exist_ok=True)
-    infile_name = os.path.split(infile_path)[1]
-    shutil.copy(infile_path, os.path.join(outpath, infile_name))
-    return os.path.join(outpath, infile_name)
-
-
-def test_1conservation_simple_1(testdir):
+def test_1conservation_simple_1(testdir, wdir_setup):
     """Test that an adiabatic, single-assembly sweep results in energy
     being conserved; power delivered only to pins"""
     inpath = os.path.join(testdir, 'test_inputs', 'input_conservation-1.txt')
     outpath = os.path.join(testdir, 'test_results', 'conservation-1')
-    path_to_tmp_infile = dassh_setup(inpath, outpath)
+    path_to_tmp_infile = wdir_setup(inpath, outpath)
     return_code = subprocess.call(['dassh',
                                    path_to_tmp_infile,
                                    '--save_reactor'])
@@ -69,7 +58,7 @@ def test_1conservation_simple_1(testdir):
     assert diff < 1e-6
 
 
-def test_conv_approx_interior(testdir):
+def test_conv_approx_interior(testdir, wdir_setup):
     """Test convection approximation for duct wall connection gives
     similar results to the original implementation"""
     r_obj = {}
@@ -77,7 +66,7 @@ def test_conv_approx_interior(testdir):
         inpath = os.path.join(testdir, 'test_inputs',
                               f'input_conv_approx_{x}.txt')
         outpath = os.path.join(testdir, 'test_results', 'conv_approx', x)
-        path_to_tmp_infile = dassh_setup(inpath, outpath)
+        path_to_tmp_infile = wdir_setup(inpath, outpath)
         return_code = subprocess.call(['dassh',
                                        path_to_tmp_infile,
                                        '--save_reactor'])
@@ -103,7 +92,7 @@ def test_conv_approx_interior(testdir):
     assert max_rel_diff < 0.0025
 
 
-def test_conv_approx_byp(testdir):
+def test_conv_approx_byp(testdir, wdir_setup):
     """Test low flow approximation for duct wall connection gives
     similar results to the original implementation"""
     # temp_int = {}
@@ -114,7 +103,7 @@ def test_conv_approx_byp(testdir):
                               f'input_conv_approx_byp_{x}.txt')
         outpath = os.path.join(testdir, 'test_results',
                                'input_conv_approx_byp', x)
-        path_to_tmp_infile = dassh_setup(inpath, outpath)
+        path_to_tmp_infile = wdir_setup(inpath, outpath)
         return_code = subprocess.call(['dassh', path_to_tmp_infile,
                                        '--save_reactor'])
         assert return_code == 0
@@ -161,11 +150,11 @@ def test_conv_approx_byp(testdir):
     assert max_rel_diff < 0.0025
 
 
-def test_ebal_with_ur(testdir):
+def test_ebal_with_ur(testdir, wdir_setup):
     """Test that energy balance is achieved with unrodded assemblies"""
     inpath = os.path.join(testdir, 'test_inputs', 'input_ebal_w_unrodded.txt')
     outpath = os.path.join(testdir, 'test_results', 'ebal_w_unrodded')
-    path_to_tmp_infile = dassh_setup(inpath, outpath)
+    path_to_tmp_infile = wdir_setup(inpath, outpath)
     return_code = subprocess.call(['dassh',
                                    path_to_tmp_infile,
                                    '--save_reactor'])

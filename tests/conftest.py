@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-20
+date: 2021-11-02
 author: matz
 Pytest fixtures and related test utilities for the whole shebang
 """
@@ -43,6 +43,21 @@ def resdir(testdir):
 def pytest_addoption(parser):
     help = "Only run verification print tests if requested"
     parser.addoption("--printverify", action="store", default=0, help=help)
+
+
+@pytest.fixture(scope='session')
+def wdir_setup():
+    """Return the function that performs teardown of old execution
+    test results and setup for new execution tests"""
+    def tmp(infile_path, outpath):
+        # Remove the DASSH reactor object, if it exists
+        if os.path.exists(outpath):
+            shutil.rmtree(outpath)
+        os.makedirs(outpath, exist_ok=True)
+        infile_name = os.path.split(infile_path)[1]
+        shutil.copy(infile_path, os.path.join(outpath, infile_name))
+        return os.path.join(outpath, infile_name)
+    return tmp
 
 
 # def pytest_configure(config):
