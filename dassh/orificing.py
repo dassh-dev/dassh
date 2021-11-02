@@ -288,7 +288,7 @@ class Orificing(object):
                 exist_ok=True)
             # Re-use precomputed power distributions
             for f in self._VARPOW_FILES:
-                src = os.path.join(rx.path, f)
+                src = os.path.abspath(os.path.join(lookup_rx, f))
                 dassh.utils._symlink(src, os.path.join(wd, f))
 
             # Create some shortcuts for optimization and lookup keys

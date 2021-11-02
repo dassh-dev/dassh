@@ -27,7 +27,7 @@ import subprocess
 # import shutil
 
 
-def test_orificing_single_timestep(testdir, wdir_setup):
+def test_orificing_fuel_single_timestep(testdir, wdir_setup):
     """Test orificing optimization against hand calculated result"""
     datapath = os.path.join(testdir, 'test_data', 'orificing-1')
     inpath = os.path.join(datapath, 'input.txt')
@@ -138,3 +138,50 @@ def test_orificing_dp_limit_error(testdir, wdir_setup):
     with open(os.path.join(outpath, 'dassh.log'), 'r') as f:
         log = f.read()
     assert msg in log
+
+
+def test_orificing_peak_coolant(testdir, wdir_setup):
+    """Test orificing optimization for peak coolant temperature;
+    full DASSH execution"""
+    datapath = os.path.join(testdir, 'test_data', 'orificing-1')
+    inpath = os.path.join(testdir, 'test_inputs', 'input_orificing_peak_cool.txt')
+    outpath = os.path.join(testdir, 'test_results', 'orificing-4')
+    path_to_tmp_infile = wdir_setup(inpath, outpath)
+
+    # Link other directories to skip DASSH calculation
+    for dir in ('cccc', '_power'):
+        dassh.utils._symlink(os.path.join(datapath, dir),
+                             os.path.join(outpath, dir))
+
+    # Run DASSH
+    return_code = subprocess.call(['dassh', path_to_tmp_infile])
+    assert return_code == 0
+
+    # Import results
+    resfile = os.path.join(outpath, 'orificing_result_assembly.csv')
+    with open(resfile, 'r') as f:
+        res = f.read()
+    res = res.splitlines()
+    tmp = [[], [], [], [], []]
+    for l in res:
+        ll = l.split(',')
+        tmp[0].append(ll[0])   # assembly ID
+        tmp[1].append(ll[4])   # orifice group
+        tmp[2].append(ll[5])   # flow rate
+        tmp[3].append(ll[8])   # bulk coolant temp
+        tmp[4].append(ll[11])  # peak coolant temp
+    res = np.array(tmp, dtype=float).T
+
+    # Check bulk coolant temperature
+    res_t_bulk = np.sum(res[:, 2] * res[:, 3]) / np.sum(res[:, 2])
+    res_dt_bulk = res_t_bulk - 623.15
+    assert abs(res_dt_bulk - 150.0) / 150 < 1e-4
+
+    # Check peak coolant temperature
+    group_max = np.zeros(3)
+    for g in range(3):
+        group_max[g] = np.max(res[res[:, 1] == g, -1])
+    avg = np.average(group_max)
+    diff = group_max - avg
+    reldiff = np.abs(diff / (avg - 623.15))
+    assert np.all(reldiff < 0.005)
