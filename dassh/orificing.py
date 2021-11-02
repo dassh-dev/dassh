@@ -125,7 +125,7 @@ class Orificing(object):
             if np.any(self._dp_limit):
                 msg = ("Breaking optimization iteration due to "
                        "incurred pressure drop limit")
-                self._logger.log(20, msg)
+                self._logger.log(30, msg)
                 break
 
         # Write results to CSV files
@@ -562,7 +562,7 @@ class Orificing(object):
                     results.append(self._read_dassh_results(r, t))
                     del r
             elif f == 'dassh_reactor.pkl':
-                r = dassh.reactor.load(f)
+                r = dassh.reactor.load(os.path.join(wdpath, f))
                 results.append(self._read_dassh_results(r, 0))
                 del r
             else:
@@ -658,11 +658,9 @@ class Orificing(object):
         if self._base_input.timepoints > 1:
             need_subdir = True
         for i in range(self._base_input.timepoints):
-            wdir = None
+            wdir = os.path.join(self._base_input.path, '_power')
             if need_subdir:
-                wdir = os.path.join(self._base_input.path,
-                                    '_power',
-                                    f'timestep_{i + 1}')
+                wdir = os.path.join(wdir, f'timestep_{i + 1}')
             try:
                 dassh_rx = dassh.reactor.load(
                     os.path.join(wdir, 'dassh_reactor.pkl'))
@@ -938,8 +936,8 @@ class Orificing(object):
         # print(f'Convergence (want less than {tol}): ', convergence)
         # Check conservation of mass - this should never fail
         if not abs(np.sum(m) - m_total) < 1e-6:
-            self._logger.log(40, "Mass flow rate not conserved")
-            sys.exit()
+            self._logger.log(40, "Error: Mass flow rate not conserved")
+            sys.exit(1)
         # Report whether the pressure drop mass flow rate limit was met
         if np.any(self._dp_limit):  # if dp_warning:
             msg = ("Warning: Peak mass flow rate restricted to "
@@ -950,15 +948,15 @@ class Orificing(object):
         # cooling). Doubt this situation would ever occur, not sure what
         # to do about it if it does.
         if np.sum(self._dp_limit) > 1:
-            msg = "Multiple groups constrained by pressure drop limit"
+            msg = "Error: Multiple groups constrained by pressure drop limit"
             self._logger.log(40, msg)
-            sys.exit()
+            sys.exit(1)
         # Raise error if we did not achieve requested number of groups
         if np.unique(m).shape[0] != self.orifice_input['n_groups']:
-            msg = ("Flow allocation did not achieve "
+            msg = ("Error: Flow allocation did not achieve "
                    + "requested number of orifice groups")
             self._logger.log(40, msg)
-            sys.exit()
+            sys.exit(1)
         # Return results
         return m, max(group_max)
 
@@ -1081,7 +1079,11 @@ class Orificing(object):
                     '---',
                     max_opt_temp]
             to_write += ','.join([str(l) for l in line]) + '\n'
-        with open('orificing_result_assembly.csv', 'w') as f:
+        outpath = os.path.join(
+            self._base_input.path,
+            'orificing_result_assembly.csv'
+        )
+        with open(outpath, 'w') as f:
             f.write(to_write)
 
     def _write_results_group(self, results):
