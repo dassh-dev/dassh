@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-01
+date: 2021-11-02
 author: matz
 Main DASSH calculation procedure
 
@@ -69,13 +69,17 @@ class Orificing(object):
         # Setup lookup keys
         x = 'value_to_optimize'
         if self.orifice_input[x] == 'peak coolant temp':
-            self._opt_keys = ('cool', None)
+            self._opt_keys = ('cool', None)  # DASSH rx lookup keys
+            self._opt_col = 5
         elif self.orifice_input[x] == 'peak clad ID temp':
             self._opt_keys = ('pin', 'clad_id')
+            self._opt_col = 8
         elif self.orifice_input[x] == 'peak clad MW temp':
             self._opt_keys = ('pin', 'clad_mw')
+            self._opt_col = 7
         elif self.orifice_input[x] == 'peak fuel temp':
             self._opt_keys = ('pin', 'fuel_cl')
+            self._opt_col = 10
         else:  # Here for safety; shouldn't be raised b/c input limits
             msg = 'Do not understand optimiation variable; given '
             msg += f'"{self.orifice_input[x]}"'
@@ -178,10 +182,14 @@ class Orificing(object):
             res_t = res[res[:, 0] == timesteps[t]]
             for i in range(n_group + 1):
                 indices = (self.group_data[:, 2].astype(int) == i)
+                # Bulk coolant outlet temperature
                 _summary[t, i, 0] = np.average(res_t[indices, 4])
                 _summary[t, i, 1] = np.max(res_t[indices, 4])
-                _summary[t, i, 2] = np.average(res_t[indices, 5])
-                _summary[t, i, 3] = np.max(res_t[indices, 5])
+                # Optimization variable
+                _summary[t, i, 2] = \
+                    np.average(res_t[indices, self._opt_col])
+                _summary[t, i, 3] = \
+                    np.max(res_t[indices, self._opt_col])
         # Finish averaging/maximizing
         summary = np.zeros((n_group + 2, 4))
         for i in range(n_group + 1):
@@ -190,10 +198,14 @@ class Orificing(object):
             summary[i, 2] = np.average(_summary[:, i, 2])
             summary[i, 3] = np.max(_summary[:, i, 3])
         # Core-total average/maxima
-        summary[-1, 0] = np.sum(res[:, 4] * res[:, 3] / np.sum(res[:, 3]))
+        # Bulk coolant outlet temperature
+        summary[-1, 0] = (np.sum(res[:, 4] * res[:, 3])
+                          / np.sum(res[:, 3]))
         summary[-1, 1] = np.max(res[:, 4])
-        summary[-1, 2] = np.sum(res[:, 5] * res[:, 3] / np.sum(res[:, 3]))
-        summary[-1, 3] = np.max(res[:, 5])
+        # Optimization variable
+        summary[-1, 2] = (np.sum(res[:, self._opt_col] * res[:, 3])
+                          / np.sum(res[:, 3]))
+        summary[-1, 3] = np.max(res[:, self._opt_col])
         return summary
 
     def _check_flow_convergence(self, summary_data):
@@ -580,13 +592,14 @@ class Orificing(object):
                      a.id,
                      a.total_power,
                      a.flow_rate,
-                     a.avg_coolant_temp]
-                if self._opt_keys[1] is not None:
-                    d.append(
-                        a._peak[self._opt_keys[0]][
-                            self._opt_keys[1]][0])
-                else:
-                    d.append(a._peak[self._opt_keys[0]][0])
+                     a.avg_coolant_temp,
+                     a._peak['cool'][0]]
+                if 'pin' in a._peak.keys():
+                    d += [a._peak['pin']['clad_od'][0],
+                          a._peak['pin']['clad_mw'][0],
+                          a._peak['pin']['clad_id'][0],
+                          a._peak['pin']['fuel_od'][0],
+                          a._peak['pin']['fuel_cl'][0]]
                 data.append(d)
         data = np.array(data, dtype=float)
         return data
@@ -1051,20 +1064,19 @@ class Orificing(object):
             *** 8. Pressure drop
             9. Average bulk outlet temperature
             10. Peak bulk outlet temperature
-            *** 11. Peak clad temperature
-            12. Peak fuel CL temperature
+            11. Peak coolant outlet temperature
+            12. Peak clad OD temperature
+            13. Peak clad MW temperature
+            14. Peak clad ID temperature
+            15. Peak fuel OD temperature
+            16. Peak fuel CL temperature
 
         """
         asm_ids = np.unique(results[:, 1]).astype(int)
         # n_asm = asm_ids.shape[0]
         to_write = ''
         for i in range(asm_ids.shape[0]):
-            avg_bulk_coolant_temp = np.average(
-                results[results[:, 1] == asm_ids[i], 4])
-            max_bulk_coolant_temp = np.max(
-                results[results[:, 1] == asm_ids[i], 4])
-            max_opt_temp = np.max(
-                results[results[:, 1] == asm_ids[i], 5])
+            tmp = results[results[:, 1] == asm_ids[i]]
             line = [asm_ids[i],
                     self._parametric['asm_names'][
                         self._parametric['asm_ids'][i, 1]],
@@ -1074,10 +1086,15 @@ class Orificing(object):
                     results[i, 3],
                     '---',
                     '---',
-                    avg_bulk_coolant_temp,
-                    max_bulk_coolant_temp,
-                    '---',
-                    max_opt_temp]
+                    np.average(tmp[:, 4]),
+                    np.max(tmp[:, 4]),
+                    np.max(tmp[:, 5])]
+            if tmp.shape[1] > 6:
+                line += [np.max(tmp[:, 6]),
+                         np.max(tmp[:, 7]),
+                         np.max(tmp[:, 8]),
+                         np.max(tmp[:, 9]),
+                         np.max(tmp[:, 10])]
             to_write += ','.join([str(l) for l in line]) + '\n'
         outpath = os.path.join(
             self._base_input.path,

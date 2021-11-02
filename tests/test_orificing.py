@@ -35,6 +35,7 @@ def test_orificing_fuel_single_timestep(testdir, wdir_setup):
     path_to_tmp_infile = wdir_setup(inpath, outpath)
 
     # Link other directories to skip DASSH calculation
+    # for dir in ('cccc', '_power', '_parametric'):  # , '_iter1', '_iter2'):
     for dir in ('cccc', '_power', '_parametric', '_iter1', '_iter2'):
         dassh.utils._symlink(os.path.join(datapath, dir),
                              os.path.join(outpath, dir))
@@ -55,7 +56,7 @@ def test_orificing_fuel_single_timestep(testdir, wdir_setup):
         tmp[1].append(ll[4])   # orifice group
         tmp[2].append(ll[5])   # flow rate
         tmp[3].append(ll[8])   # bulk coolant temp
-        tmp[4].append(ll[11])  # peak fuel temp
+        tmp[4].append(ll[-1])  # peak fuel temp
     res = np.array(tmp, dtype=float).T
 
     # Check bulk coolant temperature
@@ -66,11 +67,12 @@ def test_orificing_fuel_single_timestep(testdir, wdir_setup):
     # Check peak fuel temperature
     group_max = np.zeros(3)
     for g in range(3):
-        group_max[g] = np.max(res[res[:, 1] == g, -1])
+        group_max[g] = np.max(res[res[:, 1] == g, 4])
     avg = np.average(group_max)
     diff = group_max - avg
     reldiff = np.abs(diff / (avg - 623.15))
     assert np.all(reldiff < 0.001)
+    assert abs(avg - 869.75) < 0.02
 
 
 def test_orificing_dp_limit_abort(testdir, wdir_setup):
@@ -144,7 +146,8 @@ def test_orificing_peak_coolant(testdir, wdir_setup):
     """Test orificing optimization for peak coolant temperature;
     full DASSH execution"""
     datapath = os.path.join(testdir, 'test_data', 'orificing-1')
-    inpath = os.path.join(testdir, 'test_inputs', 'input_orificing_peak_cool.txt')
+    infile = 'input_orificing_peak_cool.txt'
+    inpath = os.path.join(testdir, 'test_inputs', infile)
     outpath = os.path.join(testdir, 'test_results', 'orificing-4')
     path_to_tmp_infile = wdir_setup(inpath, outpath)
 
@@ -169,7 +172,7 @@ def test_orificing_peak_coolant(testdir, wdir_setup):
         tmp[1].append(ll[4])   # orifice group
         tmp[2].append(ll[5])   # flow rate
         tmp[3].append(ll[8])   # bulk coolant temp
-        tmp[4].append(ll[11])  # peak coolant temp
+        tmp[4].append(ll[10])  # peak coolant temp
     res = np.array(tmp, dtype=float).T
 
     # Check bulk coolant temperature
@@ -185,3 +188,4 @@ def test_orificing_peak_coolant(testdir, wdir_setup):
     diff = group_max - avg
     reldiff = np.abs(diff / (avg - 623.15))
     assert np.all(reldiff < 0.005)
+    assert abs(avg - 817.5) < 0.1
