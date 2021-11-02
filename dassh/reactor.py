@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-20
+date: 2021-11-02
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -1067,7 +1067,7 @@ class Reactor(LoggedClass):
             Indicate whether to print step summary
 
         """
-        # First, some administrative crap: figure out whether you're
+        # First, some administrative stuff: figure out whether you're
         # dumping temperatures at this axial step
         dump_step = self._determine_whether_to_dump_data(z, dz)
 
@@ -1157,7 +1157,7 @@ class Reactor(LoggedClass):
             Workers to perform parallel tasks
 
         """
-        # First, some administrative crap: figure out whether you're
+        # First, some administrative stuff: figure out whether you're
         # dumping temperatures at this axial step
         dump_step = self._determine_whether_to_dump_data(z, dz)
 

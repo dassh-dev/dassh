@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-07-14
+date: 2021-11-02
 author: matz
 Methods to describe the layout of assemblies in the reactor core and
 the coolant in the gap between them
@@ -1171,7 +1171,6 @@ class Core(LoggedClass):
         self._conv_util['mask1'] = self._conv_util['inds'][1][0] >= 0
         self._conv_util['mask2'] = self._conv_util['inds'][2][0] >= 0
 
-        # Poop
         if self.model == 'no_flow':
             self._conv_util['const'] = \
                 2 * self._conv_util['const'] / self.d_gap
@@ -1388,23 +1387,6 @@ class Core(LoggedClass):
 
         """
         # CONVECTION TO/FROM DUCT WALL
-        # conv_const = np.array([
-        #     self.coolant_gap_params['htc'][0] * self.L[0][0],
-        #     self.coolant_gap_params['htc'][1] * (2 * self.d['wcorner'])
-        # ])
-        # conv_const = conv_const[self.sc_types]
-
-        # Look up temperatures, take difference with gap mesh, mask
-        # as necessary, and add to total dT
-        # dT = (approx_duct_temps[tuple(self._conv_util['inds'][0])]
-        #       - self.coolant_gap_temp)
-        # dT += (self._conv_util['mask1']
-        #        * (approx_duct_temps[tuple(self._conv_util['inds'][1])]
-        #           - self.coolant_gap_temp))
-        # dT += (self._conv_util['mask2']
-        #        * (approx_duct_temps[tuple(self._conv_util['inds'][2])]
-        #           - self.coolant_gap_temp))
-        # dT *= self._conv_util['const']  # Scale by the HTC and HT area
         C = (self._conv_util['const']
              * self.coolant_gap_params['htc'][:, None])
         dT = C[:, 0] * (t_duct[tuple(self._conv_util['inds'][0])]
@@ -1414,21 +1396,12 @@ class Core(LoggedClass):
         dT += C[:, 2] * (t_duct[tuple(self._conv_util['inds'][2])]
                          - self.coolant_gap_temp)
 
-        # tmp = [t_duct[tuple(self._conv_util['inds'][0])][54],
-        #        t_duct[tuple(self._conv_util['inds'][1])][54],
-        #        t_duct[tuple(self._conv_util['inds'][2])][54]]
-        # print('new model C', C[54])
-        # print('new model Tw', tmp)
-        # print('new model dT', dT[54])
         # CONDUCTION TO/FROM OTHER COOLANT CHANNELS
         dT += (self.gap_coolant.thermal_conductivity
                * np.sum((self._Rcond *
                         (self.coolant_gap_temp[self._sc_adj - 1]
                          - self.coolant_gap_temp[..., None])), axis=1))
 
-        # Multiply by dz / m_i / Cp and return
-        # poop = dT * dz * self._inv_sc_mfr / self.gap_coolant.heat_capacity
-        # print('new model dT', poop[54])
         return (dT * dz * self._inv_sc_mfr
                 / self.gap_coolant.heat_capacity)
 

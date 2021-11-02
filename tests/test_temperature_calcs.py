@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-13
+date: 2021-11-02
 author: matz
 Test the DASSH Assembly object
 """
@@ -24,7 +24,6 @@ import numpy as np
 import copy
 import pytest
 import dassh
-# from dassh import asm_tables
 
 
 # Use "print_option" to print temperatures and parameters
@@ -35,7 +34,7 @@ print_option = False
 def test_int_coolant_verification(simple_asm):
     """Test that the method to calculate interior and bypass coolant
     temperatures performs as expected"""
-    # Set up some crap
+    # Set up some stuff
     inlet_temp = 623.15
     gap_t = np.ones(simple_asm.rodded.subchannel.n_sc['duct']['total'])
     gap_t *= inlet_temp
@@ -124,7 +123,7 @@ def test_pin_only_int_coolant_verification(testdir):
     dT_ans = T_ans - r.inlet_temp
     r.reset()
     simple_asm_pin_only = copy.deepcopy(r.assemblies[0])
-    # # Set up some crap
+    # # Set up some stuff
     inlet_temp = 623.15
     gap_t = np.ones(simple_asm_pin_only
                     .rodded.subchannel
@@ -205,7 +204,7 @@ def test_pin_only_int_coolant_verification(testdir):
 def test_duct_verification(simple_asm):
     """Test that the method to calculate interior and bypass coolant
     temperatures performs as expected"""
-    # Set up some crap
+    # Set up some stuff
     inlet_temp = 623.15
     gap_t = np.ones(simple_asm.rodded.subchannel.n_sc['duct']['total'])
     gap_t *= inlet_temp
@@ -267,7 +266,7 @@ def test_duct_verification(simple_asm):
 def test_bypass_gap_verification(simple_ctrl_asm):
     """Test that the method to calculate interior and bypass coolant
     temperatures performs as expected"""
-    # Set up some crap
+    # Set up some stuff
     inlet_temp = 623.15
     gap_t = np.ones(simple_ctrl_asm.rodded.subchannel.n_sc['duct']['total'])
     gap_t *= inlet_temp
@@ -325,7 +324,7 @@ def test_bypass_gap_verification(simple_ctrl_asm):
 def test_interasm_gap_flow_model_verification(three_asm_core):
     """Test that the method to calculate inter-assembly gap coolant
     temperatures (flowing gap model) performs as expected"""
-    # Set up some crap
+    # Set up some stuff
     asm_list, core_obj = three_asm_core
     inlet_temp = 623.15
     dz = 0.001  # should be sufficient
@@ -406,7 +405,7 @@ def test_interasm_gap_noflow_model_verification(three_asm_core):
     core_obj.model = 'no_flow'
     core_obj.gap_flow_rate = 0.0
 
-    # Set up some crap
+    # Set up some stuff
     inlet_temp = 623.15
     dz = 0.001  # should be sufficient
     n_zpts = 20
@@ -462,7 +461,7 @@ def test_interasm_gap_ductavg_model_verification(three_asm_core):
     core_obj.model = 'duct_average'
     core_obj.gap_flow_rate = 0.0
 
-    # Set up some crap
+    # Set up some stuff
     inlet_temp = 623.15
     dz = 0.001  # should be sufficient
     n_zpts = 20
@@ -523,7 +522,7 @@ def test_bypass_gap_energy_cons_verification(simple_ctrl_asm_pins_cmat):
     if not print_option:
         pytest.skip('Not actually a test; only run to print data')
 
-    # Set up some crap
+    # Set up some stuff
     asm = simple_ctrl_asm_pins_cmat
     inlet_temp = 623.15
     gap_t = np.ones(asm.rodded.subchannel.n_sc['duct']['total'])
@@ -587,7 +586,7 @@ def test_bypass_gap_energy_cons_verification(simple_ctrl_asm_pins_cmat):
 # def test_porous_media_method(simple_asm, conceptual_core):
 #     """Test that the method to calculate interior and bypass coolant
 #     temperatures performs as expected"""
-#     # Set up some crap
+#     # Set up some stuff
 #     inlet_temp = 623.15
 #     z = 0.0
 #     # z_end = 1.281

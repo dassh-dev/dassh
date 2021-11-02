@@ -14,13 +14,12 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-12
+date: 2021-11-02
 author: matz
 Test the correlations
 """
 ########################################################################
 import os
-import copy
 import pandas as pd
 import numpy as np
 import pytest
@@ -376,15 +375,15 @@ def test_ctd_turbulent_cfb(testdir):
 def test_thesis_asm_sc_friction_constants(thesis_asm_rr):
     """."""
     # Individual subchannel friction factor constants
-    poop = (friction_ctd
-            .calculate_subchannel_friction_factor_const(thesis_asm_rr))
+    tmp = (friction_ctd
+           .calculate_subchannel_friction_factor_const(thesis_asm_rr))
     ans = {'laminar': [79.78, 89.07, 114.97],  # 103.54
            'turbulent': [0.2273, 0.2416, 0.3526]}  # 0.2456
-    for key in poop.keys():
+    for key in tmp.keys():
         print('ans', key, ans[key])
-        print('result', key, poop[key])
-        for cfi in range(len(poop[key])):
-            err = (poop[key][cfi] - ans[key][cfi]) / ans[key][cfi]
+        print('result', key, tmp[key])
+        for cfi in range(len(tmp[key])):
+            err = (tmp[key][cfi] - ans[key][cfi]) / ans[key][cfi]
             assert abs(100 * err) < 1.0
 
 

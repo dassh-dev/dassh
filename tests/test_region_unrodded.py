@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-01
+date: 2021-11-02
 author: matz
 Test the behavior and attributes of unrodded DASSH Region instances
 """
@@ -24,7 +24,6 @@ import os
 import dassh
 import numpy as np
 import pytest
-from dassh.correlations import nusselt_db
 
 
 def test_simple_unrodded_reg_instantiation(c_lrefl_simple):
@@ -123,7 +122,7 @@ def test_simple_unrodded_reg_none_power(c_lrefl_simple):
 
 def test_simple_unrodded_reg_qmcdt(c_lrefl_simple):
     """Test that simple coolant calc returns proper result"""
-    # Set up some bullshit
+    # Set up some stuff
     c_lrefl_simple.temp['coolant_int'] *= 623.15
     c_lrefl_simple.temp['duct_mw'] *= 623.15
     c_lrefl_simple.temp['duct_surf'] *= 623.15
@@ -149,7 +148,7 @@ def test_simple_unrodded_reg_qmcdt(c_lrefl_simple):
 
 def test_simple_unrodded_reg_duct(c_lrefl_simple):
     """Test that simple homog duct calc returns proper result"""
-    # Set up some bullshit
+    # Set up some stuff
     c_lrefl_simple.temp['coolant_int'] *= 633.15
     # Calculate dT and estimate Q
     gap_temp = np.ones(6) * 623.15

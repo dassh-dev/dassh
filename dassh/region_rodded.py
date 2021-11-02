@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-09-21
+date: 2021-11-02
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -90,7 +90,7 @@ def make_rr_asm(asm_input, name, mat_dict, flow_rate, se2geo=False,
                                mat_dict['gap'])
         # Only the last 6 columns are for data:
         # (local avg coolant temp, clad OD/MW/ID, fuel OD/CL);
-        # The first 4 columns are for identifying crap:
+        # The first 4 columns are for identifying stuff:
         # (id, z (remains blank), pin number)
         rr.pin_temps = np.zeros((rr.n_pin, 9))
         # Fill with pin numbers
@@ -2322,7 +2322,7 @@ def _import_mixing_correlation(name, bundle):
 ########################################################################
 
 
-def calculate_min_dz(bundle, temp_lo, temp_hi, adiabatic=False, poop=False):
+def calculate_min_dz(bundle, temp_lo, temp_hi, adiabatic=False):
     """Evaluate dz for the bundle at the assembly inlet and outlet
     temperatures; minimum value is taken to be the constraint
 

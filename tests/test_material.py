@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-09-21
+date: 2021-11-02
 author: matz
 Test DASSH material class
 """
@@ -37,7 +37,7 @@ def test_material_from_coeff():
          'viscosity': [1.0, 1.0, 1.0],
          'beta': [0.002]
          }
-    m = Material('poop', coeff_dict=c)
+    m = Material('test_material', coeff_dict=c)
     for prop in ['thermal_conductivity', 'heat_capacity',
                  'density', 'viscosity']:
         assert hasattr(m, prop)
@@ -91,8 +91,8 @@ def test_material_coeff_from_file(testdir):
 def test_failed_material(caplog):
     """Make sure that the Material class fails with bad input"""
     with pytest.raises(SystemExit):
-        Material('poop')
-    assert 'material poop' in caplog.text
+        Material('candycorn')
+    assert 'material candycorn' in caplog.text
 
 
 def test_bad_temperature(caplog):
