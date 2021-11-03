@@ -1,0 +1,138 @@
+########################################################################
+# author: Milos Atz
+# date: 2021-11-01
+# comment: DASSH input, 37-assembly core, basic orificing demonstration
+########################################################################
+# SETUP: PROBLEM ENVIRONMENT, USER OPTIONS, ETC
+
+[Setup]
+    log_progress          = 50     # Print update every 50 steps
+    calc_energy_balance   = True   # Calculate energy balance
+    conv_approx           = True   # Apply convection approximation...
+    conv_approx_dz_cutoff = 0.001  # ...when step size < 0.1 cm.
+
+
+########################################################################
+
+[Orificing]
+    assemblies_to_group = fuel, fuel2
+    n_groups = 3
+    value_to_optimize = peak fuel temp
+    bulk_coolant_temp = 773.15
+    convergence_tol = 0.002
+
+
+########################################################################
+ # CUSTOM MATERIAL PROPERTIES
+
+[Materials]
+    [[ht9_x]]
+        thermal_conductivity = 26.0665655
+
+
+########################################################################
+# POWER DISTRIBUTIONS
+
+[Power]
+    total_power = 72.0e6
+    [[ARC]]
+        fuel_material   = metal
+        fuel_alloy      = zr
+        coolant_heating = sodium
+        # power_model     = pin_only
+        pmatrx = cccc/PMATRX
+        geodst = cccc/GEODST
+        ndxsrf = cccc/NDXSRF
+        znatdn = cccc/ZNATDN
+        labels = cccc/LABELS
+        nhflux = cccc/NHFLX0N
+        ghflux = cccc/NHFLX0G
+
+
+########################################################################
+# CORE DETAILS: Describe characteristics of the reactor core
+
+[Core]
+    coolant_inlet_temp = 628.15
+    coolant_material   = sodium
+    length             = 4.0000
+    gap_model          = flow
+    bypass_fraction    = 0.0100
+    assembly_pitch     = 0.1200
+
+
+########################################################################
+# ASSEMBLY DETAILS: Describe a group of assemblies
+# NAME identifies a group of assemblies (e.g. "INNER_DRIVER")
+# Can be repeated for as many assemblies as required by the user.
+
+[Assembly]
+
+    [[fuel]]
+        num_rings       = 10
+        pin_pitch       = 0.00650
+        pin_diameter    = 0.00540
+        clad_thickness  = 0.00035
+        wire_pitch      = 0.20320
+        wire_diameter   = 0.00100
+        duct_ftf        = 0.10960, 0.11560
+        duct_material   = ht9_x
+        htc_params_duct = 0.025, 0.8, 0.8, 7.0
+        wire_direction  = counterclockwise
+        shape_factor = 1.1
+        [[[FuelModel]]]
+            fcgap_thickness = 0.0
+            clad_material   = ht9_x
+            r_frac   =  0.0, 0.33333, 0.66667
+            pu_frac  = 0.20,    0.20,    0.20
+            zr_frac  = 0.10,    0.10,    0.10
+            porosity = 0.25,    0.25,    0.25
+
+    [[fuel2]]
+        num_rings       = 9
+        pin_pitch       = 0.00730
+        pin_diameter    = 0.00620
+        clad_thickness  = 0.00035
+        wire_pitch      = 0.20320
+        wire_diameter   = 0.00100
+        duct_ftf        = 0.10960, 0.11560
+        duct_material   = ht9_x
+        htc_params_duct = 0.025, 0.8, 0.8, 7.0
+        wire_direction  = counterclockwise
+        shape_factor = 1.1
+        [[[FuelModel]]]
+            fcgap_thickness = 0.0
+            clad_material   = ht9_x
+            r_frac   =  0.0, 0.33333, 0.66667
+            pu_frac  = 0.05,    0.05,    0.05
+            zr_frac  = 0.10,    0.10,    0.10
+            porosity = 0.12,    0.12,    0.12
+
+    [[reflector]]
+        num_rings       = 6
+        pin_pitch       = 0.011200
+        pin_diameter    = 0.010950
+        clad_thickness  = 0.001006
+        wire_pitch      = 0.0
+        wire_diameter   = 0.0
+        duct_ftf        = 0.109600, 0.115600
+        duct_material   = ht9_x
+        htc_params_duct = 0.025, 0.8, 0.8, 7.0
+        use_low_fidelity_model = True
+
+
+########################################################################
+# ASSIGN assemblies to positions in the core; assign fixed
+# flow rates or temperature limits to one or multiple assemblies.
+# Indicate which assemblies must be grouped together in an orificing
+# calculation.
+
+[Assignment]
+    [[ByPosition]]
+        fuel       = 1,  1,  1, FLOWRATE = 19.66
+        fuel       = 2,  1,  6, FLOWRATE = 19.66
+        fuel2      = 3,  1, 12, FLOWRATE = 19.66
+        reflector = 4,  1, 18, FLOWRATE = 0.50
+
+
+########################################################################

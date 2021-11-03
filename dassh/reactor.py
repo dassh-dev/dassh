@@ -87,13 +87,25 @@ class Reactor(LoggedClass):
     - oriface method to iteratively call sweep method
 
     """
-    def __init__(self, dassh_input, path=None, calc_power=True, **kwargs):
+    def __init__(self, dassh_input, path=None, calc_power=True,
+                 timestep=0, **kwargs):
         """Initialize Reactor object for DASSH simulation
 
         Parameters
         ----------
         dassh_input : DASSH_Input object
             DASSH input from read_input.DASSH_Input
+        path : str (optional)
+            Path to working directory where DASSH should be executed
+            (default = None; perform calculations next to input file)
+        calc_power : boolean (optional)
+            Indicate whether power distributions should be calculated
+            or read from existing VARPOW outputs (default = True)
+        timestep : int (optional)
+            Indicate timestep for which to generate power distributions
+            (default = 0)
+        kwargs : dict
+            Many; see "_setup_options" method for more
 
         """
         LoggedClass.__init__(self, 0, 'dassh.reactor.Reactor')
@@ -116,7 +128,7 @@ class Reactor(LoggedClass):
 
         # Set up power, obtain axial region boundaries
         self.log('info', 'Setting up power distribution')
-        self._setup_power(dassh_input, calc_power)
+        self._setup_power(dassh_input, calc_power, timestep)
         self._setup_axial_region_bnds(dassh_input)
 
         # Set up DASSH Assemblies by first creating templates, then
@@ -153,9 +165,10 @@ class Reactor(LoggedClass):
         self.log('info', f'{len(self.z) - 1} axial steps required')
         # Warn if axial steps too small (< 0.5 mm) or too many (> 4k)
         if self.req_dz < 0.0005 or len(self.z) - 1 > 2500:
-            msg = ('Your axial step size is very small so this '
-                   'problem might take a while to solve;\nConsider '
-                   'checking input for flow maldistribution.')
+            msg = ('Axial step size is very small so this problem '
+                   'might take a while to solve')
+            self.log('warning', msg)
+            msg = ('Consider checking input for flow maldistribution.')
             self.log('warning', msg)
 
         # Raise warning if est. coolant temp will exceed extreme limit
@@ -224,16 +237,20 @@ class Reactor(LoggedClass):
         if any(self._options['dump'].values()):
             self._options['dump']['any'] = True
 
-    def _setup_power(self, inp, calc_power_flag):
+    def _setup_power(self, inp, calc_power_flag, timestep=0):
         """Create the power distributions from ARC binary files or
         user specifications
 
         Parameters
         ----------
         inp : DASSH_Input object
+            Contains filepaths necessary for power distribution
         calc_power_flag : bool
             Flag indicating whether to run VARPOW to calculate power
             distribution from ARC binary files
+        timestep : int (optional)
+            Indicate for which timestep the power distribution should
+            be created
 
         """
         # NEED TO FIGURE OUT HOW TO TREAT MULTI-TIMEPOINT PROBLEMS
@@ -252,20 +269,21 @@ class Reactor(LoggedClass):
                        'binary files')
                 self.log('info', msg)
                 self.power['dif3d'] = \
-                    calc_power_VARIANT(inp.data, self.path)
+                    calc_power_VARIANT(inp.data, self.path, timestep)
             else:  # Go find it in the working directory
                 msg = ('Reading core power profile from VARPOW '
                        'output files')
                 self.log('info', msg)
                 self.power['dif3d'] = \
-                    import_power_VARIANT(inp.data, self.path)
+                    import_power_VARIANT(inp.data, self.path, timestep)
 
         # 2. Read user power, if given
-        if inp.data['Power']['user_power'][0] is not None:
+        if inp.data['Power']['user_power'][timestep] is not None:
             msg = ('Reading user-specified power profiles from '
-                   + inp.data['Power']['user_power'][0])
+                   + inp.data['Power']['user_power'][timestep])
             self.power['user'] = \
-                dassh.power._from_file(inp.data['Power']['user_power'][0])
+                dassh.power._from_file(
+                    inp.data['Power']['user_power'][timestep])
 
     def _setup_axial_region_bnds(self, inp):
         """Get axial mesh points from ARC binary files, user-specified
@@ -664,8 +682,10 @@ class Reactor(LoggedClass):
                 dz, sc = dassh.assembly.calculate_min_dz(
                     asm, self.inlet_temp, asm._estimated_T_out,
                     self._is_adiabatic)
-                self.log('info', msg1.format(asm.id, str(sc), dz_old))
-                self.log('info', msg2.format(dz))
+                self.log('info_file',
+                         msg1.format(asm.id, str(sc), dz_old))
+                self.log('info_file',
+                         msg2.format(dz))
             self.min_dz['dz'].append(dz)
             self.min_dz['sc'].append(sc)
 

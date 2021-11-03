@@ -14,13 +14,12 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-09-28
+date: 2021-10-25
 author: matz
 Main DASSH calculation procedure
 """
 ########################################################################
 import os
-# import numpy as np
 import sys
 import dassh
 import argparse
@@ -48,7 +47,6 @@ def main(args=None):
                         action='store_false',
                         help='Skip VARPOW calculation if done previously')
     args = parser.parse_args(args)
-    # dassh_path = os.path.dirname(os.path.abspath(__file__))
 
     # Enable the profiler, if desired
     if args.profile:
@@ -60,50 +58,148 @@ def main(args=None):
     in_path = os.path.split(args.inputfile)[0]
     dassh_logger = dassh.logged_class.init_root_logger(in_path, 'dassh')
 
-    # Pre-processing: read input file and set up DASSH objects
+    # Pre-processing
+    # Read input file and set up DASSH input object
     dassh_logger.log(_log_info, f'Reading input: {args.inputfile}')
     dassh_input = dassh.DASSH_Input(args.inputfile)
-    reactor = dassh.Reactor(dassh_input,
-                            calc_power=args.no_power_calc,
-                            write_output=True)
 
-    # Perform the sweep
-    dassh_logger.log(_log_info, 'Performing temperature sweep...')
-    reactor.temperature_sweep(verbose=args.verbose)
+    # DASSH calculation without orificing optimization
+    if dassh_input.data['Orificing'] is False:
+        arg_dict = {
+            'save_reactor': args.save_reactor,
+            'verbose': args.verbose,
+            'no_power_calc': args.no_power_calc
+        }
+        run_dassh(dassh_input, dassh_logger, arg_dict)
 
-    # Post-processing: write output, save reactor if desired
-    dassh_logger.log(_log_info, 'Temperature sweep complete')
-    if args.save_reactor and sys.version_info >= (3, 7):
-        reactor.save()
-    elif dassh_input.data['Plot']:
-        reactor.save()  # just in case figure generation fails
+    # Orificing optimization with DASSH
     else:
-        pass
-    dassh_logger.log(_log_info, 'Output written')
-
-    # Post-processing: generate figures, if desired
-    if ('Plot' in dassh_input.data.keys()
-            and len(dassh_input.data['Plot']) > 0):
-        dassh_logger.log(_log_info, 'Generating figures')
-        dassh.plot.plot_all(dassh_input, reactor)
-
-    # if dassh_input.orificing:
-    #   dassh_logger.log(_log_info, 'Entering orificing optimization')
-    #   while not converged:
-    #       predict groups and mass flow rates:
-    #           reactor.orificing() ??
-    #       dassh_logger.log(_log_info, 'Performing temperature sweep...')
-    #       reactor.temperature_sweep(verbose=args.verbose)
-    #       dassh_logger.log(_log_info, 'Temperature sweep complete')
-    #       check_convergence
+        # dassh.orificing.optimize(dassh_input, dassh_logger)
+        orifice_obj = dassh.orificing.Orificing(
+            dassh_input, dassh_logger)
+        orifice_obj.optimize()
 
     # Finish the calculation
     dassh_logger.log(_log_info, 'DASSH execution complete')
     # Print/dump profiler results
     if args.profile:
         pr.disable()
-        # pr.print_stats()
         pr.dump_stats('dassh_profile.out')
+
+
+def run_dassh(dassh_input, dassh_logger, rx_args):
+    """Run DASSH without orificing optimization"""
+    # For each timestep in the DASSH input, create the necessary DASSH
+    # DASSH objects, run DASSH, and process the results
+    need_subdir = False
+    if dassh_input.timepoints > 1:
+        need_subdir = True
+        if dassh_input.data['Setup']['parallel']:
+            import multiprocessing as mp
+            if dassh_input.data['Setup']['n_cpu'] is not None:
+                n_procs = dassh_input.data['Setup']['n_cpu']
+            else:
+                n_procs = min((mp.cpu_count(), dassh_input.timepoints))
+            pool = mp.Pool(processes=n_procs)
+            workers = []
+
+    for i in range(dassh_input.timepoints):
+        working_dir = None
+        if need_subdir:
+            # Only log info about timestep if you have multiple
+            dassh_logger.log(_log_info, f'Timestep {i + 1}')
+            working_dir = os.path.join(
+                dassh_input.path, f'timestep_{i + 1}')
+        # Set up working dirs, run DASSH, write output, make plots
+        if dassh_input.data['Setup']['parallel']:
+            workers.append(
+                pool.apply_async(
+                    _run_dassh,
+                    args=(dassh_input,
+                          dassh_logger,
+                          rx_args,
+                          i,
+                          working_dir, )
+                )
+            )
+        else:
+            _run_dassh(dassh_input, dassh_logger, rx_args, i, working_dir)
+
+    # Clean up from parallel execution, if applicable
+    if dassh_input.data['Setup']['parallel']:
+        for w in workers:
+            w.get()
+        pool.terminate()
+        pool.close()
+        pool.join()
+
+
+def _run_dassh(dassh_inp, dassh_log, args, timestep, wdir, link=None):
+    """Run DASSH for a single timestep
+
+    Parameters
+    ----------
+    dassh_inp : DASSH_Input object
+        Base DASSH input class
+    dassh_log : LoggedClass object
+        Keep logging while in this function
+    args : dict
+        Various args for instantiating DASSH objects
+    timestep : int
+        Timestep for which to run DASSH
+    wdir : str
+        Path to working directory for this timestep
+    link : str (optional)
+        Try to link VARPOW output files from another path
+        Avoids repetitive calcs in orificing optimization
+        (default = None; run VARPOW as usual)
+
+    """
+    # Try to link VARPOW output from another source. If it doesn't
+    # exist or work, just rerun VARPOW.
+    if link is not None:
+        files_linked = 0
+        for f in ['varpow_MatPower.out',
+                  'varpow_MonoExp.out',
+                  'VARPOW.out']:
+            src = os.path.join(link, f)
+            dest = os.path.join(wdir, f)
+            if os.path.exists(src):
+                os.symlink(src, dest)
+                files_linked += 1
+            else:
+                break
+        # If all VARPOW files were linked, can skip VARPOW calculation
+        if files_linked == 3:
+            args['no_power_calc'] = False  # if linked, skip VARPOW
+        else:
+            args['no_power_calc'] = True
+
+    # Initialize the Reactor object
+    reactor = dassh.Reactor(dassh_inp,
+                            calc_power=args['no_power_calc'],
+                            path=wdir,
+                            timestep=timestep,
+                            write_output=True)
+    # Perform the sweep
+    dassh_log.log(_log_info, 'Performing temperature sweep...')
+    reactor.temperature_sweep(verbose=args['verbose'])
+
+    # Post-processing: write output, save reactor if desired
+    dassh_log.log(_log_info, 'Temperature sweep complete')
+    if args['save_reactor'] and sys.version_info >= (3, 7):
+        reactor.save()
+    elif dassh_inp.data['Plot']:
+        reactor.save()  # just in case plotting fails
+    else:
+        pass
+    dassh_log.log(_log_info, 'Output written')
+
+    # Post-processing: generate figures, if desired
+    if ('Plot' in dassh_inp.data.keys()
+            and len(dassh_inp.data['Plot']) > 0):
+        dassh_log.log(_log_info, 'Generating figures')
+        dassh.plot.plot_all(dassh_inp, reactor)
 
 
 def plot():
