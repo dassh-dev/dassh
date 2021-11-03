@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-06-10
+date: 2021-11-02
 author: Milos Atz
 This module defines the Subchannel class to map coolant and structural
 subchannels in and between hexagonal fuel assemblies.
@@ -726,15 +726,15 @@ class Subchannel(object):
         for calculating the power assigned to each subchannel
 
         """
-        butt = [[] for i in range(self.n_sc['coolant']['total'])]
+        sc_nghbrs = [[] for i in range(self.n_sc['coolant']['total'])]
         for pin in range(len(self.pin_adj)):
             for sc in self.pin_adj[pin]:
                 if sc > 0:
-                    butt[sc - 1].append(pin)
-        for poop in butt:
-            while len(poop) < 3:
-                poop.append(-1)
-        return np.array(butt)
+                    sc_nghbrs[sc - 1].append(pin)
+        for sc in sc_nghbrs:
+            while len(sc) < 3:
+                sc.append(-1)
+        return np.array(sc_nghbrs)
 
     ####################################################################
     # SUBCHANNEL XY

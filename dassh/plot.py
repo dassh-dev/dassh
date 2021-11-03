@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-10-18
+date: 2021-11-02
 author: matz
 Methods to plot DASSH objects (such as hexagonal fuel assemblies and
 the pins and subchannels that comprise them).
@@ -582,7 +582,7 @@ class SubchannelPlot(AssemblyPlot):
         """
         # xy = self.sc['xy'][np.where(self.sc['type'] == 2)]
         # Can't actually use the corner xy positions because we're
-        # plotting with these stupid hexagons. Need to calculate the
+        # plotting with these dang hexagons. Need to calculate the
         # center relative to the duct corner with the known side length
         xy_duct_corner = self.sc['xy'][np.where(self.sc['type'] == 4)]
         xy_duct_corner = xy_duct_corner[:6]  # want only innermost duct
