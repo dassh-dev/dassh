@@ -14,19 +14,20 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-30
+date: 2021-09-24
 author: matz
 Generate power distributions in assembly components based on neutron
 flux; object to assign to individual assemblies
 """
 ########################################################################
 import numpy as np
+import os
 import sys
 import bisect
 import logging
-import dassh
 from dassh.logged_class import LoggedClass
 from dassh import py4c
+from dassh import core
 
 
 np.set_printoptions(threshold=sys.maxsize)
@@ -68,7 +69,14 @@ class Power(LoggedClass):
         # path = '/Users/matz/Documents/DASSH/src_DASSH/power/smaller/mono2'
         # Load input files - depending on power model, group or zero
         # out the power density columns.
-        mat_powerdens = np.loadtxt(path_mat_power_density)
+        # mat_powerdens = np.loadtxt(path_mat_power_density)
+        # monomial_exp = np.loadtxt(path_monomial_exp, dtype='int')
+        # varpow = py4c.nhflux.NHFLUX(path_varpow)
+        # geodst = py4c.geodst.GEODST(path_geodst)
+        mat_powerdens = _load(path_mat_power_density, np.loadtxt)
+        monomial_exp = _load(path_monomial_exp, np.loadtxt, {'dtype': 'int'})
+        varpow = _load(path_varpow, py4c.nhflux.NHFLUX)
+        geodst = _load(path_geodst, py4c.geodst.GEODST)
         # Put all struct/coolant power into pins
         if model == 'pin_only':
             mat_powerdens[:, 0] += mat_powerdens[:, 1]
@@ -83,9 +91,6 @@ class Power(LoggedClass):
             mat_powerdens[:, 4] += mat_powerdens[:, 4]
             mat_powerdens[:, 4] += mat_powerdens[:, 5]
             mat_powerdens[:, [1, 2, 3, 5]] *= 0.0
-        monomial_exp = np.loadtxt(path_monomial_exp, dtype='int')
-        varpow = py4c.nhflux.NHFLUX(path_varpow)
-        geodst = py4c.geodst.GEODST(path_geodst)
 
         # --------------------------------------------------------------
         # Set some attributes
@@ -138,7 +143,7 @@ class Power(LoggedClass):
         # Calculate assembly total power; rearrange material power dens
         n_asm = len(finemesh_to_activenode[finemesh_to_activenode != 0])
         n_pos = int(np.max(-finemesh_to_activenode))
-        n_ring = dassh.core.count_rings(n_pos)
+        n_ring = core.count_rings(n_pos)
         if n_ring == 1:
             n_avail = 1
         else:
@@ -478,6 +483,18 @@ class Power(LoggedClass):
                        + 'tolerance ' + str(tol) + ' (difference: '
                        + '{:0.2e}'.format(err) + ').')
                 assert err < tol, msg
+
+
+def _load(path, read_fxn, kwargs={}):
+    """x"""
+    try:
+        x = read_fxn(path, **kwargs)
+    except OSError:
+        try:
+            x = read_fxn(os.readlink(path), **kwargs)
+        except OSError:
+            raise
+    return x
 
 
 def get_areas(asm_obj):

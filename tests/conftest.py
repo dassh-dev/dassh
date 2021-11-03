@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-12
+date: 2021-08-20
 author: matz
 Pytest fixtures and related test utilities for the whole shebang
 """
@@ -27,7 +27,6 @@ import subprocess
 import numpy as np
 import pytest
 import dassh
-import dassh.py4c as py4c
 # import py4c
 
 
@@ -338,9 +337,12 @@ def structure():
 ########################################################################
 
 
-def activate_rodded_region(region_to_activate, avg_temp):
+def activate_rodded_region(region_to_activate, avg_temp, base=True):
     """Create generic DASSH Region object that is used to activate the
     Region object that will be tested"""
+    # Note: This isn't a "real" activation, like we do when shifting
+    # between regions! We're just reusing the base activation method
+    # to set up a rodded region and test its methods
     n_node_duct = region_to_activate.subchannel.n_sc['duct']['total']
     generic = dassh.DASSH_Region(1, np.ones(1), n_node_duct,
                                  np.ones((1, n_node_duct)))
@@ -349,8 +351,13 @@ def activate_rodded_region(region_to_activate, avg_temp):
         generic.temp[key] *= avg_temp
 
     tmp = region_to_activate.clone()
-    tmp.activate(generic)
-    return(tmp)
+    if base:
+        tmp._activate_base(generic)
+    else:
+        t_gap = np.ones(n_node_duct) * avg_temp
+        h_gap = np.random.random(n_node_duct) + 5e4
+        tmp.activate(generic, t_gap, h_gap, True)
+    return tmp
 
 
 def make_rodded_region_fixture(name, bundle_params, mat_params, fr):

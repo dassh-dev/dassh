@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-06-12
+date: 2021-09-21
 author: matz
 Upgraded Cheng-Todreas Detailed mixing correlations: eddy
 diffusivity and swirl velocity; these are the same as in the
@@ -69,40 +69,86 @@ def calculate_mixing_params(asm_obj):
     # Calculate parameters based on subchannel Reynolds number
     Re_bl, Re_bt = uctd_ff.calculate_Re_bounds(asm_obj)
     if asm_obj.coolant_int_params['Re'] <= Re_bl:
-        eddy = eddy['laminar']
-        swirl = swirl['laminar']
+        eddy_diffusivity = eddy['laminar']
+        swirl_velocity = swirl['laminar']
     elif asm_obj.coolant_int_params['Re'] >= Re_bt:
-        eddy = eddy['turbulent']
-        swirl = swirl['turbulent']
+        eddy_diffusivity = eddy['turbulent']
+        swirl_velocity = swirl['turbulent']
     else:  # Transition regime; use intermittency factor
         x = calc_sc_intermittency_factors(asm_obj, Re_bl, Re_bt)
-        eddy = (eddy['laminar'] + (eddy['turbulent']
-                                   - eddy['laminar']) * x**(2 / 3.0))
-        swirl = (swirl['laminar'] + (swirl['turbulent']
-                                     - swirl['laminar']) * x**(2 / 3.0))
-    return eddy * asm_obj.L[0][0], swirl
+        eddy_diffusivity = eddy['turbulent'] - eddy['laminar']
+        eddy_diffusivity *= x[0]**(2 / 3.0)
+        eddy_diffusivity += eddy['laminar']
+        swirl_velocity = swirl['turbulent'] - swirl['laminar']
+        swirl_velocity *= x[1]**(2 / 3.0)
+        swirl_velocity += swirl['laminar']
+    return eddy_diffusivity * asm_obj.L[0][0], swirl_velocity
 
 
 def calc_sc_intermittency_factors(asm_obj, Re_bL, Re_bT):
     """Calculate the intermittency factors for the interior and edge
     coolant subchannels; required to find the mixing parameters in
-    the transition region
+    the transition regime
+
+    Parameters
+    ----------
+    asm_obj : DASSH Assembly object
+        Contains the geometry and flow parameters
+    Re_bL : float
+        Reynolds number boundary between laminar-transition regimes
+    Re_bT : float
+        Reynolds number boundary between transition-turbulent regimes
 
     Notes
     -----
     See Equations 10, 11, and 30-32 in the Cheng-Todreas 1986 paper
 
     """
-    y = np.zeros(2)
-    fs_L = uctd_fs.calculate_flow_split(asm_obj, 'laminar')
-    fs_T = uctd_fs.calculate_flow_split(asm_obj, 'turbulent')
-    for i in range(len(y)):
-        Re_iL = (Re_bL * fs_L[i] * asm_obj.params['de'][i]
-                 / asm_obj.bundle_params['de'])
-        Re_iT = (Re_bT * fs_T[i] * asm_obj.params['de'][i]
-                 / asm_obj.bundle_params['de'])
-        y[i] = ((np.log10(asm_obj.params['Re'][i]) - np.log10(Re_iL))
-                / (np.log10(Re_iT) - np.log10(Re_iL)))
+    # Need CTD flowsplit: if already calculaing CTD flowsplit, just take it
+    # from the values you calculated previously within the RoddedRegion obj.
+    if asm_obj.corr_names['fs'] == 'uctd':
+        try:
+            fs = asm_obj.coolant_int_params['fs']
+        except(KeyError, AttributeError):
+            fs = uctd_fs.calculate_flow_split(asm_obj)
+    else:
+        fs = uctd_fs.calculate_flow_split(asm_obj)
+
+    # Pull bundle average axial velocity and subchannel Re from object if they
+    # exist and are not zero; otherwise, calculate here. The only time they'd
+    # be zero is at the very beginning of the problem if they've not yet been
+    # initialized for some reason
+    try:
+        v_bundle = asm_obj.coolant_int_params['vel']
+        Re = asm_obj.coolant_int_params['Re_sc']
+        if v_bundle == 0.0:
+            v_bundle = (asm_obj.int_flow_rate / asm_obj.coolant.density
+                        / asm_obj.bundle_params['area'])
+            Re = (asm_obj.coolant.density * v_bundle * fs
+                  * asm_obj.params['de'] / asm_obj.coolant.viscosity)
+    except(KeyError, AttributeError):
+        v_bundle = (asm_obj.int_flow_rate / asm_obj.coolant.density
+                    / asm_obj.bundle_params['area'])
+        Re = (asm_obj.coolant.density * v_bundle * fs
+              * asm_obj.params['de'] / asm_obj.coolant.viscosity)
+
+    # Get laminar/turbulent flow splits from correlation constants, or by
+    # recalculating if necessary.
+    try:
+        fs_L = asm_obj.corr_constants['fs']['fs']['laminar']
+        fs_T = asm_obj.corr_constants['fs']['fs']['turbulent']
+    except (KeyError, AttributeError):
+        fs_L = uctd_fs.calculate_flow_split(asm_obj, 'laminar')
+        fs_T = uctd_fs.calculate_flow_split(asm_obj, 'turbulent')
+
+    # Calculate subchannel laminar/turbulent factors and use these to get
+    # the subchannel intermittency factors.
+    Re_iL = (Re_bL * fs_L * asm_obj.params['de']
+             / asm_obj.bundle_params['de'])
+    Re_iT = (Re_bT * fs_T * asm_obj.params['de']
+             / asm_obj.bundle_params['de'])
+    y = np.log10(Re / Re_iL) / np.log10(Re_iT / Re_iL)
+    y[y < 0] = 0.0  # Clip any negative values to zero!
     return y
 
 

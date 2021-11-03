@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-27
+date: 2021-09-21
 author: matz
 Methods for unrodded axial regions; to be used within Assembly objects
 """
@@ -248,7 +248,7 @@ class SingleNodeHomogeneous(DASSH_Region):
         else:
             return self._mratio
 
-    def _update_coolant_params(self, temperature):
+    def _update_coolant_params(self, temp, use_mat_tracker=True):
         """Update correlated bundle coolant parameters based
         on current average coolant temperature
 
@@ -256,6 +256,9 @@ class SingleNodeHomogeneous(DASSH_Region):
         ----------
         temperature : float
             Average coolant temperature
+        use_mat_tracker : boolean
+            Use material property tol in DASSH coolant Material object
+            to limit pin bundle correlation updates in rr_equiv
 
         Notes
         -----
@@ -267,9 +270,10 @@ class SingleNodeHomogeneous(DASSH_Region):
             'swirl': swirl velocity
 
         """
-        self.coolant.update(temperature)
+        self.coolant.update(temp)
         if self._rr_equiv is not None:
-            self._rr_equiv._update_coolant_int_params(temperature)
+            self._rr_equiv._update_coolant_int_params(
+                temp, use_mat_tracker)
             # Bundle-average velocity
             self.coolant_params['vel'] = \
                 self._rr_equiv.coolant_int_params['vel']
@@ -372,7 +376,7 @@ class SingleNodeHomogeneous(DASSH_Region):
         # Update pressure drop (now that correlations are updated)
         self._pressure_drop += self.calculate_pressure_drop(dz)
 
-    def activate2(self, previous_reg, t_gap, h_gap, adiabatic):
+    def activate(self, previous_reg, t_gap, h_gap, adiabatic):
         """Activate region by averaging coolant temperatures from
         previous region and calculating new SS duct temperatures
 
@@ -401,6 +405,7 @@ class SingleNodeHomogeneous(DASSH_Region):
 
         # Make new duct temperature calculation based on new coolant
         # temperatures and input gap temperatures / HTC.
+        self._update_coolant_params(self.temp['coolant_int'][0])
         self._calc_duct_temp(t_gap, h_gap, adiabatic)
 
     def _calc_coolant_temp(self, dz, power, adiabatic=False, ebal=False):
@@ -902,7 +907,7 @@ def calculate_min_dz(reg, temp_lo, temp_hi, adiabatic_duct=False):
     _temp_in = reg.coolant.temperature
     for temp in [temp_lo, temp_hi]:
         # Interior coolant parameters and dz requirement
-        reg._update_coolant_params(temp)
+        reg._update_coolant_params(temp, use_mat_tracker=False)
         if reg.model == 'simple':
             if not adiabatic_duct:
                 if reg._conv_approx:
@@ -953,5 +958,5 @@ def calculate_min_dz(reg, temp_lo, temp_hi, adiabatic_duct=False):
         min_dz.append(dz)
 
     # Reset the coolant temperature
-    reg._update_coolant_params(_temp_in)
+    reg._update_coolant_params(_temp_in, use_mat_tracker=False)
     return min(min_dz), 0

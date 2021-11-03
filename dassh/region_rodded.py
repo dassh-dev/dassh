@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-09
+date: 2021-11-02
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -32,6 +32,7 @@ from dassh.logged_class import LoggedClass
 from dassh.correlations import check_correlation
 from dassh.region import DASSH_Region
 from dassh.fuel_pin import FuelPin
+from dassh.material import _MatTracker
 
 
 _sqrt3 = np.sqrt(3)
@@ -44,7 +45,8 @@ q_p2sc = np.array([0.166666666666667, 0.25, 0.166666666666667])
 module_logger = logging.getLogger('dassh.assembly')
 
 
-def make_rr_asm(asm_input, name, mat_dict, flow_rate, se2geo=False):
+def make_rr_asm(asm_input, name, mat_dict, flow_rate, se2geo=False,
+                param_update_tol=0.0):
     """Create RoddedRegion object within DASSH Assembly"""
     rr = RoddedRegion(name,
                       asm_input['num_rings'],
@@ -66,7 +68,8 @@ def make_rr_asm(asm_input, name, mat_dict, flow_rate, se2geo=False):
                       asm_input['bypass_gap_loss_coeff'],
                       asm_input['wire_direction'],
                       asm_input['shape_factor'],
-                      se2geo)
+                      se2geo,
+                      param_update_tol)
 
     # Add z lower/upper boundaries
     rr.z = [asm_input['AxialRegion']['rods']['z_lo'],
@@ -87,7 +90,7 @@ def make_rr_asm(asm_input, name, mat_dict, flow_rate, se2geo=False):
                                mat_dict['gap'])
         # Only the last 6 columns are for data:
         # (local avg coolant temp, clad OD/MW/ID, fuel OD/CL);
-        # The first 4 columns are for identifying crap:
+        # The first 4 columns are for identifying stuff:
         # (id, z (remains blank), pin number)
         rr.pin_temps = np.zeros((rr.n_pin, 9))
         # Fill with pin numbers
@@ -176,7 +179,8 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                  wire_diam, clad_thickness, duct_ftf, flow_rate,
                  coolant_mat, duct_mat, htc_params_duct, corr_friction,
                  corr_flowsplit, corr_mixing, corr_nusselt, byp_ff=None,
-                 byp_k=None, wwdir='clockwise', sf=1.0, se2=False):
+                 byp_k=None, wwdir='clockwise', sf=1.0, se2=False,
+                 param_update_tol=0.0):
         """Instantiate RoddedRegion object"""
         # Instantiate Logger
         LoggedClass.__init__(self, 4, 'dassh.RoddedRegion')
@@ -289,6 +293,11 @@ class RoddedRegion(LoggedClass, DASSH_Region):
             self._adj_sw = 3
         else:
             self._adj_sw = 4
+
+        # --------------------------------------------------------------
+        # Set up _MatTracker object
+        if param_update_tol > 0.0:
+            self._coolant_tracker = _MatTracker(self.coolant, param_update_tol)
 
         # --------------------------------------------------------------
         # Set up other parameters
@@ -514,13 +523,14 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         # self.ht_consts = const
         self.ht = {}
         self.ht['old'] = const
-        self.ht['q_denom'] = (self.int_flow_rate
-                              * self.params['area']
-                              / self.bundle_params['area'])
-        self.ht['q_denom'] = \
-            self.ht['q_denom'][
+        self.ht['inv_q_denom'] = (self.int_flow_rate
+                                  * self.params['area']
+                                  / self.bundle_params['area'])
+        self.ht['inv_q_denom'] = \
+            self.ht['inv_q_denom'][
                 self.subchannel.type[
                     :self.subchannel.n_sc['coolant']['total']]]
+        self.ht['inv_q_denom'] = 1 / self.ht['inv_q_denom']
         self.ht['swirl'] = (self.d['pin-wall']
                             * self.bundle_params['area']
                             / self.params['area']
@@ -585,6 +595,8 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         # for each clone; use temperature at "current" clone point
         clone.temp = copy.deepcopy(self.temp)
         clone.ebal = copy.deepcopy(self.ebal)
+        if hasattr(self, '_coolant_tracker'):
+            clone._coolant_tracker = copy.deepcopy(self._coolant_tracker)
         if hasattr(self, 'pin_temps'):
             clone.pin_temps = copy.deepcopy(self.pin_temps)
 
@@ -666,14 +678,17 @@ class RoddedRegion(LoggedClass, DASSH_Region):
     # UPDATE PROPERTIES
     ####################################################################
 
-    def _update_coolant_int_params(self, temperature):
+    def _update_coolant_int_params(self, temp, use_mat_tracker=True):
         """Update correlated bundle coolant parameters based
         on current average coolant temperature
 
         Parameters
         ----------
-        temperature : float
+        temp : float
             Average coolant temperature
+        use_mat_tracker : boolean
+            Use material property tol in DASSH coolant Material object
+            to limit pin bundle correlation updates
 
         Notes
         -----
@@ -685,16 +700,26 @@ class RoddedRegion(LoggedClass, DASSH_Region):
             'swirl': swirl velocity
 
         """
-        self.coolant.update(temperature)
+        self.coolant.update(temp)
 
-        self.coolant_int_params['vel'] = \
-            (self.int_flow_rate / self.coolant.density
-             / self.bundle_params['area'])
+        # Only reason you wouldn't update all correlated parameters is if
+        # the coolant tracker object says not to. If it says not to, skip
+        # the update. Otherwise, proceed.
+        if use_mat_tracker:
+            if hasattr(self, '_coolant_tracker'):
+                self._coolant_tracker.update(self.coolant)
+                # If coolant_tracker says no update, no parameter updates
+                if not self._coolant_tracker.recalculate_params:
+                    return
+                # Otherwise, need to do parameter updates and reset tracker
+                else:
+                    self._coolant_tracker.reset()
 
-        # Bundle Reynolds number
+        # Coolant axial velocity, bundle Reynolds number
+        mfr_over_area = self.int_flow_rate / self.bundle_params['area']
+        self.coolant_int_params['vel'] = mfr_over_area / self.coolant.density
         self.coolant_int_params['Re'] = \
-            (self.int_flow_rate * self.bundle_params['de']
-             / self.coolant.viscosity / self.bundle_params['area'])
+            mfr_over_area * self.bundle_params['de'] / self.coolant.viscosity
 
         # Flow split parameters
         if self.corr['fs'] is not None:
@@ -899,9 +924,9 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         # Update pressure drop (now that correlations are updated)
         self._pressure_drop += self.calculate_pressure_drop(dz)
 
-    def activate2(self, previous_reg, t_gap, h_gap, adiabatic):
+    def activate(self, previous_reg, t_gap, h_gap, adiabatic):
         """Activate region by averaging coolant temperatures from
-        previous region and calculating new SS duct temperatures
+        previous region and calculating new steady state duct temps
 
         Parameters
         ----------
@@ -931,13 +956,17 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         # power: previous region was not a pin bundle and therefore
         # did not have power generated in the duct.
         p_duct = np.zeros(self.temp['duct_mw'].size)
+        self._update_coolant_int_params(self.avg_coolant_int_temp,
+                                        use_mat_tracker=False)
+        if self.n_bypass > 0:
+            self._update_coolant_byp_params(self.avg_coolant_byp_temp)
         self._calc_duct_temp(p_duct, t_gap, h_gap, adiabatic)
 
     ####################################################################
     # COOLANT TEMPERATURE CALCULATION METHODS
     ####################################################################
 
-    def _calc_coolant_int_temp(self, dz, q_pins, q_cool, ebal=False):
+    def _calc_coolant_int_temp_old(self, dz, q_pins, q_cool, ebal=False):
         """Calculate assembly coolant temperatures at next axial mesh
 
         Parameters
@@ -1020,7 +1049,7 @@ class RoddedRegion(LoggedClass, DASSH_Region):
             self.ht['conv']['const'] * dT_conv_over_R
 
         # DIVIDE THROUGH BY MCP
-        mCp = self.coolant.heat_capacity * self.coolant_int_params['fs']
+        mCp = 1 * self.coolant.heat_capacity * self.coolant_int_params['fs']
         mCp = mCp[self.subchannel.type[
             :self.subchannel.n_sc['coolant']['total']]]
         dT /= mCp
@@ -1034,6 +1063,129 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         swirl_consts = swirl_consts[self.subchannel.type[
             :self.subchannel.n_sc['coolant']['total']]]
         swirl_consts = swirl_consts[self.ht['conv']['ind']]
+        # swirl_consts = swirl_consts[self.subchannel.type[
+        #     self.subchannel.n_sc['coolant']['interior']:
+        #     self.subchannel.n_sc['coolant']['total']]]
+        # Swirl flow from adjacent subchannel; =0 for interior sc
+        # The adjacent subchannel is the one the swirl flow is
+        # coming from i.e. it's in the opposite direction of the
+        # swirl flow itself. Recall that the edge/corner sub-
+        # channels are indexed in the clockwise direction.
+        # Example: Let sci == 26. The next subchannel in the clock-
+        # wise direction is 27; the preceding one is 25.
+        # - clockwise: use 25 as the swirl adjacent sc
+        # - counterclockwise: use 27 as the swirl adjacent sc
+        dT[self.ht['conv']['ind']] += \
+            (swirl_consts
+             * (self.temp['coolant_int'][self.subchannel.sc_adj[
+                self.ht['conv']['ind'], self._adj_sw]]
+                - self.temp['coolant_int'][self.ht['conv']['ind']]))
+
+        if ebal:
+            qduct = self.ht['conv']['ebal'] * dT_conv_over_R
+            self.update_ebal(dz * np.sum(q), dz * qduct)
+        return dT * dz
+
+    def _calc_coolant_int_temp(self, dz, q_pins, q_cool, ebal=False):
+        """Calculate assembly coolant temperatures at next axial mesh
+
+        Parameters
+        ----------
+        dz : float
+            Axial step size (m)
+        q_pins : numpy.ndarray
+            Linear power generation (W/m) for each pin in the assembly
+        q_cool : numpy.ndarray
+            Linear power generation (W/m) for each coolant subchannel
+        ebal : boolean
+            Indicate whether to perform/update energy balance
+
+        Returns
+        -------
+        numpy.ndarray
+            Vector (length = # coolant subchannels) of temperatures
+            (K) at the next axial level
+
+        """
+        # Calculate avg coolant temperature; update coolant properties
+        # self._update_coolant_int_params(self.avg_coolant_int_temp)
+
+        # Update coolant material properties; correlated parameters
+        # were updated after the previous step
+        # T_avg = self.avg_coolant_int_temp
+        # self.coolant.update(T_avg)
+
+        # HEAT FROM ADJACENT FUEL PINS
+        # denom puts q in the same units as the next dT steps
+        q = self._calc_int_sc_power(q_pins, q_cool)
+        dT = q * self.ht['inv_q_denom']
+
+        # CONDUCTION BETWEEN COOLANT SUBCHANNELS
+        # Effective thermal conductivity
+        keff = (self.coolant_int_params['eddy']
+                * self.coolant.density
+                * self.coolant.heat_capacity
+                + self._sf * self.coolant.thermal_conductivity)
+        # keff = 0.0
+        tmp = (self.ht['cond']['const']
+               * (self.temp['coolant_int'][self.ht['cond']['adj']]
+                  - self.temp['coolant_int'][:, np.newaxis]))
+        # dT += keff * np.sum(tmp, axis=1)
+        dT += keff * (tmp[:, 0] + tmp[:, 1] + tmp[:, 2])
+
+        # CONVECTION BETWEEN EDGE/CORNER SUBCHANNELS AND DUCT WALL
+        # Heat transfer coefficient
+        tmp = self.coolant_int_params['htc'][self.ht['conv']['type']]
+        # Low flow case: use SE2ANL model
+        if self._conv_approx:
+            # Resistance between coolant and duct MW
+            self.duct.update(self.avg_duct_mw_temp[0])
+            # R1 = 1 / h; R2 = dw / 2 / k (half wall thickness over k)
+            # R units: m2K / W; heat transfer area included in const
+            R1 = 1 / tmp  # R1 = 1 / h
+            R2 = 0.5 * self.d['wall'][0] / self.duct.thermal_conductivity
+            # tmp += 0.5 * self.d['wall'][0] / self.duct.thermal_conductivity
+            # dT[self._conv['ind']] += \
+            #     (self._conv['const'] / tmp
+            #      * (self.temp['duct_mw'][0, self._conv['adj']]
+            #         - self.temp['coolant_int'][self._conv['ind']]))
+            # dT[self._conv['ind']] += \
+            #     (self._conv['const'] / (R1 + R2)
+            #      * (self.temp['duct_mw'][0, self._conv['adj']]
+            #         - self.temp['coolant_int'][self._conv['ind']]))
+            dT_conv_over_R = \
+                ((self.temp['duct_mw'][0, self.ht['conv']['adj']]
+                  - self.temp['coolant_int'][self.ht['conv']['ind']])
+                 / (R1 + R2))
+        else:
+            # dT[self._conv['ind']] += \
+            #     tmp * self._conv['const'] * (
+            #         self.temp['duct_surf'][0, 0, self._conv['adj']]
+            #         - self.temp['coolant_int'][self._conv['ind']])
+            dT_conv_over_R = \
+                tmp * (self.temp['duct_surf'][0, 0, self.ht['conv']['adj']]
+                       - self.temp['coolant_int'][self.ht['conv']['ind']])
+        dT[self.ht['conv']['ind']] += \
+            self.ht['conv']['const'] * dT_conv_over_R
+
+        # DIVIDE THROUGH BY MCP
+        mCp = 1 / (self.coolant.heat_capacity * self.coolant_int_params['fs'])
+        mCp = mCp[self.subchannel.type[
+            :self.subchannel.n_sc['coolant']['total']]]
+        dT *= mCp
+
+        # SWIRL FLOW AROUND EDGES (no div by mCp so it comes after)
+        # Can just use the convection indices again bc they're the same
+        swirl_consts = (self.ht['swirl']
+                        * self.coolant.density
+                        * self.coolant_int_params['swirl']
+                        / self.coolant_int_params['fs'])
+        # swirl_consts = swirl_consts[self.subchannel.type[
+        #     :self.subchannel.n_sc['coolant']['total']]]
+        # swirl_consts = swirl_consts[self.ht['conv']['ind']]
+        swirl_consts = swirl_consts[self.subchannel.type[
+            self.subchannel.n_sc['coolant']['interior']:
+            self.subchannel.n_sc['coolant']['total']]]
         # Swirl flow from adjacent subchannel; =0 for interior sc
         # The adjacent subchannel is the one the swirl flow is
         # coming from i.e. it's in the opposite direction of the
@@ -1085,7 +1237,8 @@ class RoddedRegion(LoggedClass, DASSH_Region):
             # adjacent subchannels as defined by the pin_adjacency array.
             q = pin_power[self.subchannel.rev_pin_adj]
             q[self.subchannel.rev_pin_adj < 0] = 0
-            q = np.sum(q, axis=1)
+            # q = np.sum(q, axis=1)
+            q = q[:, 0] + q[:, 1] + q[:, 2]
             q *= self._q_p2sc
             if cool_power is not None:
                 q += cool_power
@@ -2207,7 +2360,7 @@ def calculate_min_dz(bundle, temp_lo, temp_hi, adiabatic=False):
 
     for temp in [temp_lo, temp_hi]:
         # Interior coolant parameters and dz requirement
-        bundle._update_coolant_int_params(temp)
+        bundle._update_coolant_int_params(temp, use_mat_tracker=False)
         tmp_dz, tmp_sc = _calculate_int_dz(bundle, which_adiabatic)
         min_dz.append(tmp_dz)
         sc_code.append(tmp_sc)
@@ -2220,7 +2373,7 @@ def calculate_min_dz(bundle, temp_lo, temp_hi, adiabatic=False):
             sc_code.append(tmp_sc)
 
     # Reset the coolant temperature
-    bundle._update_coolant_int_params(_temp_in)
+    bundle._update_coolant_int_params(_temp_in, use_mat_tracker=False)
     if bundle.n_bypass > 0:
         bundle._update_coolant_byp_params([_temp_in] * bundle.n_bypass)
 

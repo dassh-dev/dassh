@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-20
+date: 2021-08-20
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -63,7 +63,8 @@ class Assembly(LoggedClass):
     """
 
     def __init__(self, name, loc, asm_input, mat_dict, inlet_temp,
-                 flow_rate, origin=(0.0, 0.0), se2geo=False):
+                 flow_rate, origin=(0.0, 0.0), se2geo=False,
+                 param_update_tol=0.0):
         """Instantiate Assembly object."""
         # Instantiate Logger
         LoggedClass.__init__(self, 4, 'dassh.Assembly')
@@ -87,8 +88,14 @@ class Assembly(LoggedClass):
             self.region = [region_unrodded.make_ur_asm(
                 asm_input, mat_dict, flow_rate, se2geo)]
         else:
-            self.region = [region_rodded.make_rr_asm(
-                asm_input, self.name, mat_dict, flow_rate, se2geo)]
+            self.region = [
+                region_rodded.make_rr_asm(asm_input,
+                                          self.name,
+                                          mat_dict,
+                                          flow_rate,
+                                          se2geo,
+                                          param_update_tol)
+            ]
 
         # Create other requested unrodded regions
         for reg in asm_input['AxialRegion']:
@@ -413,6 +420,7 @@ class Assembly(LoggedClass):
     ####################################################################
     # CALCULATION
     ####################################################################
+
     def step0(self, temp_gap, htc_gap, adiabatic=False):
         """Update duct temperatures prior to the sweep based on inlet
         coolant temperatures
@@ -503,24 +511,24 @@ class Assembly(LoggedClass):
                 dz, power_j['pins'])
             self._update_peak_pin_temps()
 
-    def check_region_update(self, z):
-        """Take an axial step and update the active axial region,
-        if necessary; accumulate that region's pressure drop"""
-        active_region_id = self._identify_active_region(z)
-        old_region_id = self.active_region_idx
-        self._z = z
-        # If necessary, activate new region
-        if old_region_id != active_region_id:
-            # Update to new region index
-            self._active_region_idx = active_region_id
-            # Update total pressure drop from old region
-            self._pressure_drop += \
-                self.region[old_region_id].pressure_drop
-            # Activate new region: now that index is updated,
-            # "active_region" property returns new region
-            self.active_region.activate(self.region[old_region_id])
+    # def check_region_update_OLD(self, z):
+    #     """Take an axial step and update the active axial region,
+    #     if necessary; accumulate that region's pressure drop"""
+    #     active_region_id = self._identify_active_region(z)
+    #     old_region_id = self.active_region_idx
+    #     self._z = z
+    #     # If necessary, activate new region
+    #     if old_region_id != active_region_id:
+    #         # Update to new region index
+    #         self._active_region_idx = active_region_id
+    #         # Update total pressure drop from old region
+    #         self._pressure_drop += \
+    #             self.region[old_region_id].pressure_drop
+    #         # Activate new region: now that index is updated,
+    #         # "active_region" property returns new region
+    #         self.active_region.activate(self.region[old_region_id])
 
-    def check_region_update2(self, z):
+    def check_region_update(self, z):
         """Check whether an axial step takes place in a new region
 
         Parameters
@@ -594,10 +602,10 @@ class Assembly(LoggedClass):
                 new_gap_temp = mesh_functions.map_across_gap(
                     t_gap * h_gap, self.active_region._map['gap2duct'])
                 new_gap_temp = new_gap_temp / new_gap_htc
-            self.active_region.activate2(self.region[old_region_id],
-                                         new_gap_temp,
-                                         new_gap_htc,
-                                         adiabatic)
+            self.active_region.activate(self.region[old_region_id],
+                                        new_gap_temp,
+                                        new_gap_htc,
+                                        adiabatic)
 
     def _identify_active_region(self, z):
         """Identify the index of the current axial region"""

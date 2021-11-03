@@ -179,13 +179,12 @@ def test_identify_axial_region(c_fuel_asm, small_core_asm_power):
 def test_axial_region_sweep(c_fuel_asm):
     """Sweep through axial space and ensure that you properly ID
     the proper axial region at each point"""
-    # for r in range(len(c_fuel_asm.region)):
-    #     if hasattr(c_fuel_asm.region[r], 'coolant'):
-    #         print(r)
-    # assert 0
+    gap_temp = np.random.random(54) + 623.15
+    gap_htc = np.random.random(54) + 5e4
     for z in np.arange(0.001, 3.86, 0.001):
         try:
-            c_fuel_asm.check_region_update(z)
+            if c_fuel_asm.check_region_update(z):
+                c_fuel_asm.update_region(z, gap_temp, gap_htc, True)
         except:
             print(z, c_fuel_asm.active_region_idx)
             raise

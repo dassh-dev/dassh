@@ -1,0 +1,113 @@
+########################################################################
+# author: Milos Atz
+# date: 2021-08-21
+# comment: DASSH input example (single FASTER assembly)
+########################################################################
+# SETUP: Problem setup, user options, etc
+
+[Setup]
+    axial_plane = -10.0, 15.748, 29.528, 400.0
+    calc_energy_balance = True
+    [[Dump]]
+        all      = True
+        interval = 4.0
+    [[Units]]
+        temperature    = Fahrenheit
+        length         = in
+        mass_flow_rate = lb/hr
+
+
+########################################################################
+
+[Materials]
+    [[sodium_se2anl_csv]]
+        from_file = sodium_se2anl.csv
+
+
+########################################################################
+# POWER DISTRIBUTIONS
+[Power]
+    total_power        = 6.001e6
+    [[ARC]]
+        fuel_material      = metal
+        fuel_alloy         = zr
+        coolant_heating    = sodium
+        power_model        = pin_only
+        pmatrx = ../test_data/seven_asm_vac/PMATRX
+        geodst = ../test_data/seven_asm_vac/GEODST
+        ndxsrf = ../test_data/seven_asm_vac/NDXSRF
+        znatdn = ../test_data/seven_asm_vac/ZNATDN
+        labels = ../test_data/seven_asm_vac/LABELS
+        nhflux = ../test_data/seven_asm_vac/NHFLUX
+        ghflux = ../test_data/seven_asm_vac/GHFLUX
+
+
+########################################################################
+# CORE DETAILS: Describe characteristics of the reactor core
+
+[Core]
+    coolant_inlet_temp = 662.0
+    coolant_material   = sodium_se2anl_csv
+    length             = 147.63780
+    gap_model          = flow
+    bypass_fraction    = 0.005
+    assembly_pitch     = 4.72440
+
+
+########################################################################
+# ASSEMBLY DETAILS: Describe a group of assemblies
+# NAME identifies a group of assemblies (e.g. "INNER_DRIVER")
+# Can be repeated for as many assemblies as required by the user.
+
+[Assembly]
+    [[fuel]]
+        num_rings      = 10
+        pin_pitch      = 0.2575
+        pin_diameter   = 0.2128
+        clad_thickness = 0.0138
+        wire_pitch     = 8.0000
+        wire_diameter  = 0.0433
+        duct_ftf       = 4.3165, 4.5543
+        duct_material  = HT9_se2anl_425
+        corr_mixing    = MIT
+	corr_friction  = NOV
+	corr_flowsplit = MIT
+	corr_nusselt   = DB
+        [[[AxialRegion]]]
+            [[[[lower_refl]]]]
+                z_lo       = 0.0
+                z_hi       = 50.0
+                vf_coolant = 0.25
+            [[[[upper_refl]]]]
+                z_lo       = 115.0
+                z_hi       = 147.63780
+                vf_coolant = 0.25
+
+    [[fuel2]]
+        num_rings      = 9       # this is a terrible assembly design lol
+        pin_pitch      = 0.2575
+        pin_diameter   = 0.2128
+        clad_thickness = 0.0138
+        wire_pitch     = 8.0000
+        wire_diameter  = 0.0433
+        duct_ftf       = 4.3165, 4.5543
+        duct_material  = HT9_se2anl_425
+        corr_mixing    = MIT
+	corr_friction  = NOV
+	corr_flowsplit = MIT
+	corr_nusselt   = DB
+
+
+########################################################################
+# ASSIGN assemblies to positions in the core; assign fixed
+# flow rates or temperature limits to one or multiple assemblies.
+# Indicate which assemblies must be grouped together in an orificing
+# calculation.
+
+[Assignment]
+    [[ByPosition]]
+        fuel  = 1, 1, 1, outlet_temp=932.0
+        fuel2 = 2, 1, 1, outlet_temp=932.0
+
+
+########################################################################

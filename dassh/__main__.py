@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-02-18
+date: 2021-09-28
 author: matz
 Main DASSH calculation procedure
 """
@@ -28,7 +28,7 @@ import cProfile
 _log_info = 20  # logging levels must be int
 
 
-def main():
+def main(args=None):
     """Perform temperature sweep in DASSH"""
     # Parse command line arguments to DASSH
     parser = argparse.ArgumentParser(description='Process DASSH cmd')
@@ -47,7 +47,7 @@ def main():
     parser.add_argument('--no_power_calc',
                         action='store_false',
                         help='Skip VARPOW calculation if done previously')
-    args = parser.parse_args()
+    args = parser.parse_args(args)
     # dassh_path = os.path.dirname(os.path.abspath(__file__))
 
     # Enable the profiler, if desired
@@ -135,7 +135,7 @@ def plot():
     else:
         dassh_logger.log(_log_info, f'Reading input: {args.inputfile}')
         inp = dassh.DASSH_Input(args.inputfile)
-        dassh_logger.log(_log_info, f'Building DASSH Reactor from input')
+        dassh_logger.log(_log_info, 'Building DASSH Reactor from input')
         r = dassh.Reactor(inp, calc_power=False)
 
     # Generate figures

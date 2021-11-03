@@ -14,15 +14,13 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-04-29
+date: 2021-08-20
 author: matz
 Test mesh functions for inter-assembly gap disagreement
 """
 ########################################################################
 import numpy as np
 import pytest
-import os
-import sys
 import dassh
 
 
