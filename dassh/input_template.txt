@@ -120,3 +120,4 @@
     iteration_limit = integer(min=1, default=10)
     convergence_tol = float(min=1e-6, default=1e-3)
     pressure_drop_limit = float(min=0.0, default=None)
+    recycle_results = boolean(default=False)

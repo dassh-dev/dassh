@@ -20,6 +20,7 @@
     value_to_optimize = peak fuel temp
     bulk_coolant_temp = 773.15
     convergence_tol = 0.002
+    recycle_results = True
 
 
 ########################################################################

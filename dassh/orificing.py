@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-02
+date: 2021-11-03
 author: matz
 Main DASSH calculation procedure
 
@@ -65,6 +65,7 @@ class Orificing(object):
         self.coolant = dassh_input.materials[coolant_name]
         self.t_in = dassh_input.data['Core']['coolant_inlet_temp']
         self._dp_limit = np.zeros(self.orifice_input['n_groups'])
+        self._recycle = dassh_input.data['Orificing']['recycle_results']
 
         # Setup lookup keys
         x = 'value_to_optimize'
@@ -283,7 +284,7 @@ class Orificing(object):
         found = False
         lookup_data = [f'data_{asm_name}.csv' for asm_name in
                        self.orifice_input['assemblies_to_group']]
-        if os.path.exists(wd):
+        if self._recycle and os.path.exists(wd):
             wd_files = os.listdir(wd)
             if all([f in wd_files for f in lookup_data]):
                 found = True
@@ -420,8 +421,8 @@ class Orificing(object):
             except (OSError, FileNotFoundError):
                 found = False
                 pass
-        # If you didn't find results, run DASSH
-        if not found:
+        # If you didn't find results or don't want them, run DASSH
+        if not found or self._recycle is False:
             os.makedirs(wd_path, exist_ok=True)
             # Try to skip the power calculation by using ones you've
             # precalculated from previous iterations
@@ -674,10 +675,10 @@ class Orificing(object):
             wdir = os.path.join(self._base_input.path, '_power')
             if need_subdir:
                 wdir = os.path.join(wdir, f'timestep_{i + 1}')
-            try:
-                dassh_rx = dassh.reactor.load(
-                    os.path.join(wdir, 'dassh_reactor.pkl'))
-            except (OSError, FileNotFoundError):
+            rx_path = os.path.join(wdir, 'dassh_reactor.pkl')
+            if self._recycle and os.path.exists(rx_path):
+                dassh_rx = dassh.reactor.load(rx_path)
+            else:
                 dassh_rx = dassh.Reactor(self._base_input,
                                          calc_power=True,
                                          path=wdir,
