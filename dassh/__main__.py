@@ -48,11 +48,6 @@ def main(args=None):
                         help='Skip VARPOW calculation if done previously')
     args = parser.parse_args(args)
 
-    # Store the Python version to raise errors
-    version = '.'.join([str(sys.version_info.major),
-                        str(sys.version_info.minor),
-                        str(sys.version_info.micro)])
-
     # Enable the profiler, if desired
     if args.profile:
         pr = cProfile.Profile()
@@ -68,21 +63,31 @@ def main(args=None):
     dassh_logger.log(_log_info, f'Reading input: {args.inputfile}')
     dassh_input = dassh.DASSH_Input(args.inputfile)
 
+    # CHECK FOR PYTHON VERSION WARNINGS/ERRORS
+    version = '.'.join([str(sys.version_info.major),
+                        str(sys.version_info.minor),
+                        str(sys.version_info.micro)])
+    if dassh_input.data['Plot'] and sys.version_info < (3, 7):
+        dassh_logger.log(
+            30,
+            'WARNING: DASSH plotting capability requires '
+            f'Python 3.7+; detected {version}')
+    if args.save_reactor and sys.version_info < (3, 7):
+        dassh_logger.log(
+            30,
+            'WARNING: --save_reactor capability requires '
+            f'Python 3.7+; detected {version}')
+    if dassh_input.data['Orificing'] and sys.version_info < (3, 7):
+        dassh_logger.log(
+            40,
+            'ERROR: DASSH orificing optimization requires '
+            f'Python 3.7+; detected {version}')
+        sys.exit(1)
+    else:
+        pass
+
     # DASSH calculation without orificing optimization
     if dassh_input.data['Orificing'] is False:
-        if sys.version_info >= (3, 7):
-            if dassh_input.data['Plot']:
-                dassh_logger.log(
-                    30,
-                    'WARNING: DASSH plotting capability requires'
-                    f'Python 3.7+. Detected version {version}')
-            elif args.save_reactor:
-                dassh_logger.log(
-                    30,
-                    'WARNING: --save_reactor capability requires'
-                    f'Python 3.7+. Detected version {version}')
-            else:
-                pass
         arg_dict = {
             'save_reactor': args.save_reactor,
             'verbose': args.verbose,
@@ -92,11 +97,6 @@ def main(args=None):
 
     # Orificing optimization with DASSH
     else:
-        if sys.version_info >= (3, 7):
-            dassh_logger.log(
-                40,
-                'ERROR: DASSH orificing optimization requires '
-                f'Python 3.7+. Detected version {version}')
         orifice_obj = dassh.orificing.Orificing(
             dassh_input, dassh_logger)
         orifice_obj.optimize()
