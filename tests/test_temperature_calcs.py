@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-02
+date: 2021-11-12
 author: matz
 Test the DASSH Assembly object
 """
@@ -404,6 +404,7 @@ def test_interasm_gap_noflow_model_verification(three_asm_core):
     asm_list, core_obj = three_asm_core
     core_obj.model = 'no_flow'
     core_obj.gap_flow_rate = 0.0
+    core_obj.load(asm_list)
 
     # Set up some stuff
     inlet_temp = 623.15

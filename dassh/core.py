@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-02
+date: 2021-11-12
 author: matz
 Methods to describe the layout of assemblies in the reactor core and
 the coolant in the gap between them
@@ -1172,8 +1172,7 @@ class Core(LoggedClass):
         self._conv_util['mask2'] = self._conv_util['inds'][2][0] >= 0
 
         if self.model == 'no_flow':
-            self._conv_util['const'] = \
-                2 * self._conv_util['const'] / self.d_gap
+            self._conv_util['const'] *= (2 / self.d_gap)
 
     def _make_cond_mask(self):
         """Just like for the convection lookup, make a mask that can
@@ -1310,8 +1309,10 @@ class Core(LoggedClass):
             # self.coolant_gap_params['htc'] = \
             #     (self.gap_coolant.thermal_conductivity
             #      / self.gap_params['de'])
-            self.coolant_gap_params['htc'] = np.ones(self.n_sc)
-            self.coolant_gap_params['htc'] *= 0.5 * self.d_gap
+            h = 2 * self.gap_coolant.thermal_conductivity / self.d_gap
+            self.coolant_gap_params['htc'] = np.full((self.n_sc,), h)
+            # self.coolant_gap_params['htc'] = np.ones(self.n_sc)
+            # self.coolant_gap_params['htc'] *= 0.5 * self.d_gap
         # self.coolant_gap_params['htc'] = np.array([4e4, 4e4])
         # self._Rcond[:, 1:] *= 0.0
 
@@ -1433,24 +1434,7 @@ class Core(LoggedClass):
 
         """
         # CONVECTION TO/FROM DUCT WALL
-        # R_conv = np.array(
-        #     [1 / (1 / self.L[0][0] / self.coolant_gap_params['htc'][0]
-        #           + (self.d['gap'] / 2 / self.L[0][0]
-        #              / self.gap_coolant.thermal_conductivity)),
-        #      1 / (1 / (2 * self.d['wcorner'])
-        #           / self.coolant_gap_params['htc'][1]
-        #           + (self.d['gap'] / 2 / (2 * self.d['wcorner'])
-        #              / self.gap_coolant.thermal_conductivity))])
-        R_conv = (self._conv_util['const']
-                  * self.gap_coolant.thermal_conductivity
-                  / (0.5 * self.d_gap))
-        # R_conv = np.array(
-        #     [1 / (1 / self.L[0][0] / self.coolant_gap_params['htc'][0]),
-        #      1 / (1 / (2 * self.d['wcorner'])
-        #           / self.coolant_gap_params['htc'][1])])
-
-        # if not hasattr(self, '_conv_util'):
-        #     self._make_conv_mask()  # creates lookup indices and masks
+        R_conv = self._conv_util['const']
 
         # Lookup temperatures and mask as necessary
         T = R_conv[:, 0] * t_duct[tuple(self._conv_util['inds'][0])]
@@ -1459,21 +1443,62 @@ class Core(LoggedClass):
         # Get the total convection resistance, which will go in the
         # denominator at the end
         C_conv = R_conv[:, 0] + R_conv[:, 1] + R_conv[:, 2]
-        # C_conv = copy.deepcopy(R_conv)
-        # C_conv += R_conv * self._conv_util['mask1']
-        # C_conv += R_conv * self._conv_util['mask2']
 
         # CONDUCTION TO/FROM OTHER COOLANT CHANNELS
-        # Set up masks, if necessary
-        # if not hasattr(self, '_Rcond'):
-        #     self._make_cond_mask()
+        R_cond = self._Rcond  # * self.gap_coolant.thermal_conductivity
+        adj_ctemp = self.coolant_gap_temp[self._sc_adj - 1] * R_cond
+        C_cond = R_cond[:, 0] + R_cond[:, 1] + R_cond[:, 2]
 
-        # Now do some thangs c'mon
+        # COMBINE AND APPLY TOTAL RESISTANCE DENOM
+        T += adj_ctemp[:, 0] + adj_ctemp[:, 1] + adj_ctemp[:, 2]
+        return T / (C_cond + C_conv)
+
+    def _noflow_model2(self, t_duct):
+        """Inter-assembly gap conduction model
+
+        Parameters
+        ----------
+        t_duct : numpy.ndarray
+            Array of outer duct surface temperatures (K) for each
+            assembly in the core (can be any length) on the inter-
+            assembly gap subchannel mesh
+
+        Returns
+        -------
+        numpy.ndarray
+            Temperature in the inter-assembly gap coolant
+
+        Notes
+        -----
+        Recommended for use when inter-assembly gap flow rate is so
+        low that the the axial mesh requirement is intractably small.
+        Assumes no thermal contact resistance between the duct wall
+        and the coolant.
+
+        The contact resistance between the bulk liquid and the duct
+        wall is calculated using a heat transfer coefficient based on
+        the actual velocity of the interassembly gap flow
+
+        """
+        # CONVECTION TO/FROM DUCT WALL
+        R_conv = (self._conv_util['const']
+                  * self.gap_coolant.thermal_conductivity)
+        #          / (0.5 * self.d_gap))
+
+        # Lookup temperatures and mask as necessary
+        T = R_conv[:, 0] * t_duct[tuple(self._conv_util['inds'][0])]
+        T += R_conv[:, 1] * t_duct[tuple(self._conv_util['inds'][1])]
+        T += R_conv[:, 2] * t_duct[tuple(self._conv_util['inds'][2])]
+        # Get the total convection resistance, which will go in the
+        # denominator at the end
+        C_conv = R_conv[:, 0] + R_conv[:, 1] + R_conv[:, 2]
+
+        # CONDUCTION TO/FROM OTHER COOLANT CHANNELS
         R_cond = self._Rcond * self.gap_coolant.thermal_conductivity
         adj_ctemp = self.coolant_gap_temp[self._sc_adj - 1] * R_cond
-        # C_cond = np.sum(R_cond, axis=1)  # will add to denom at the end
         C_cond = R_cond[:, 0] + R_cond[:, 1] + R_cond[:, 2]
-        # Round it out bb
+
+        # COMBINE AND APPLY TOTAL RESISTANCE DENOM
         T += adj_ctemp[:, 0] + adj_ctemp[:, 1] + adj_ctemp[:, 2]
         return T / (C_cond + C_conv)
 

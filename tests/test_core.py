@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-04-27
+date: 2021-11-12
 author: matz
 Test the mapping of assemblies and inter-assembly gap coolant
 """
@@ -735,6 +735,10 @@ def test_accelerated_noflow_model(small_core_no_power_all_fuel):
     # Set up random values for coolant and gap temperatures to ensure
     # that you're not using the "flat" initial temperature profile
     c = copy.deepcopy(small_core_no_power_all_fuel)
+    c.model = 'no_flow'
+    c.gap_flow_rate = 0.0
+    c._make_conv_mask()  # Remake HT constants/masks for noflow model
+    c._make_cond_mask()  # Remake HT constants/masks for noflow model
     c.coolant_gap_temp = np.random.random(len(c.coolant_gap_temp))
     c.coolant_gap_temp += 623.15
     t_duct = np.random.random(c._asm_sc_adj.shape) * 10 + 624.15
