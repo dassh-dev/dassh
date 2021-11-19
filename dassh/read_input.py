@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-01
+date: 2021-11-18
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -383,7 +383,7 @@ class DASSHPlot_Input(LoggedClass):
             if mpnt is not None and mpnt <= lbnd:
                 self.log('error', msg.format('midpoint', title))
             if ubnd is not None and ubnd <= lbnd:
-                return False, msg.format('upper bound', title)
+                self.log('error', msg.format('upper bound', title))
 
         if mpnt is not None and ubnd is not None and ubnd <= mpnt:
             msg = ('Colorbar upper bound in "Plot" sub-block "{:s}" '

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-02
+date: 2021-11-18
 author: matz
 Methods to plot DASSH objects (such as hexagonal fuel assemblies and
 the pins and subchannels that comprise them).
@@ -109,8 +109,13 @@ def make_SubchannelPlot(dassh_reactor, plot_data):
         return
     for i in range(len(_data['assembly_id'])):
         asm_id = _data['assembly_id'][i]
-        ascp = SubchannelPlot(dassh_reactor.assemblies[asm_id])
+        asm = dassh_reactor.assemblies[asm_id]
+        ascp = SubchannelPlot(asm)
+        if ascp._skip_plotting_simple_model(asm):
+            continue
         for zi in _data['z_data'].keys():
+            if ascp._skip_plotting_simple_model(asm, zi):
+                continue
             asm_zdata = _data['z_data'][zi][
                 _data['z_data'][zi][:, 0] == asm_id]
             ascp.plot(asm_zdata[0, 3:],
@@ -136,13 +141,28 @@ def make_PinPlot(dassh_reactor, plot_data):
     f = os.path.join(dassh_reactor.path, 'temp_pin.csv')
     try:
         _data = _prepare_input(dassh_reactor, plot_data, f)
-    except FileNotFoundError:
-        msg = 8 * '.' + f'File "{f}" not found, skipping...'
-        module_logger.log(30, msg)
-        return
+    except (FileNotFoundError, ValueError) as e:
+        if e.__class__.__name__ == 'ValueError':
+            msg = 8 * '.'
+            msg += (f'No data located in file "{f}" '
+                    'for requested assemblies; skipping...')
+            module_logger.log(30, msg)
+            return
+        else:
+            msg = 8 * '.' + f'File "{f}" not found, skipping...'
+            module_logger.log(30, msg)
+            return
     for i in range(len(_data['assembly_id'])):
         asm_id = _data['assembly_id'][i]
-        pp = PinPlot(dassh_reactor.assemblies[asm_id])
+        asm = dassh_reactor.assemblies[asm_id]
+        pp = PinPlot(asm)
+        if pp._skip_plotting_simple_model(asm):
+            continue
+        if pp._check_for_fuel_model(asm):
+            continue
+        for zi in _data['z_data'].keys():
+            if pp._skip_plotting_simple_model(asm, zi):
+                continue
         for zi in _data['z_data'].keys():
             asm_zdata = _data['z_data'][zi][
                 _data['z_data'][zi][:, 0] == asm_id]
@@ -240,6 +260,9 @@ class AssemblyPlot(object):
     def __init__(self, dassh_asm, simple_model=False):
         """Save the assembly to get all the geometry chars you want,
         but pull out a bunch of stuff to get it easily"""
+        self.name = 'AssemblyPlot'
+        self.id = dassh_asm.id
+        self.loc = dassh_asm.loc
         if simple_model:
             # Duct characteristics
             self.duct = {}
@@ -316,8 +339,14 @@ class AssemblyPlot(object):
             kwargs['cmap'] = mpl.cm.jet
 
         if not kwargs.get('norm'):
-            kwargs['norm'] = colors.TwoSlopeNorm(
-                vmin=lbnd, vcenter=middle, vmax=ubnd)
+            try:
+                kwargs['norm'] = colors.TwoSlopeNorm(
+                    vmin=lbnd, vcenter=middle, vmax=ubnd)
+            except:
+                print('lower bound = ', lbnd)
+                print('midpoint = ', middle)
+                print('uppder bound = ', ubnd)
+                raise
 
         return kwargs
 
@@ -374,6 +403,40 @@ class AssemblyPlot(object):
         ax.set_ylim([-axlim, axlim])
         return ax
 
+    def _skip_plotting_simple_model(self, asm, z=None):
+        """Do not generate single-assembly plots for simple-model regions
+
+        Parameters
+        ----------
+        asm : DASSH Assembly object
+            Contains all assembly information
+        id : int
+            Assembly ID
+        plot_type : str
+            Type of plot being checked
+        z (optional): float
+            Axial height (m)
+            default=None checks whether assembly has any pin bundle region
+
+        """
+        if z is None:
+            if not asm.has_rodded:
+                msg = 8 * '.'
+                msg += (f'Assembly {self.id + 1} has no pin bundle '
+                        f'region; skipping {self.name}...')
+                return True
+            else:
+                return False
+        else:
+            if not asm.region[asm._identify_active_region(z)].is_rodded:
+                msg = 8 * '.'
+                msg += (f'Assembly {self.id + 1} utilizes simple model '
+                        f'at axial position {z}; skipping ...')
+                module_logger.log(30, msg)
+                return True
+            else:
+                return False
+
 
 class SubchannelPlot(AssemblyPlot):
     """Plot subchannel temperature data"""
@@ -381,6 +444,7 @@ class SubchannelPlot(AssemblyPlot):
     def __init__(self, dassh_asm):
         """Initialize the SubchannelPlot instance"""
         AssemblyPlot.__init__(self, dassh_asm)
+        self.name = 'SubchannelPlot'
 
     def plot(self, data, lbnd=None, ubnd=None, middle=None,
              xy_shift=None, **kwargs):
@@ -1272,6 +1336,7 @@ class PinPlot(AssemblyPlot):
     def __init__(self, dassh_asm):
         """Initialize the PinPlot instance"""
         AssemblyPlot.__init__(self, dassh_asm)
+        self.name = 'PinPlot'
 
     def plot(self, data, lbnd=None, ubnd=None, middle=None,
              xy_shift=None, **kwargs):
@@ -1363,6 +1428,19 @@ class PinPlot(AssemblyPlot):
         ax.add_collection(c)
         return ax
 
+    def _check_for_fuel_model(self, dassh_asm):
+        """Check asm for fuel model; if none, no pin temps to plot"""
+        if self._skip_plotting_simple_model(self, dassh_asm):
+            return True
+        if dassh_asm.has_rodded:
+            if not hasattr(dassh_asm.rodded, 'pin_model'):
+                msg = 8 * '.'
+                msg += (f'Assembly {self.id + 1} has no pin temperature '
+                        f'model; skipping {self.name}...')
+                module_logger.log(30, msg)
+                return True
+            else:
+                return False
 
 ########################################################################
 # PLOT FULL CORE MAPS
@@ -1918,11 +1996,11 @@ class CoreSubchannelPlot(CorePlot):
 
             # If only a single value is given, use the proper plotting
             # object for that; just create on the fly b/c it's small
-            # elif np.sum(asm_data['int'] > 0) == 1:
-            #    snp = SingleNodePlot(asm)
-            #    ax = snp.plot(ax, asm_data['int'][0], patch_kwargs['cmap'],
-            #                  patch_kwargs['norm'], ignore_ur, 0.0,
-            #                  self.asm_xy[i])
+            elif np.sum(asm_data['int'] > 0) == 1:
+                snp = SingleNodePlot(asm)
+                ax = snp.plot(ax, asm_data['int'][0], patch_kwargs['cmap'],
+                              patch_kwargs['norm'], ignore_ur, 0.0,
+                              self.asm_xy[i])
 
             # Otherwise plot every subchannel in the assembly.
             else:
@@ -2352,8 +2430,8 @@ def _identify_user_units(user_temp_unit):
     elif user_unit in utils._degK:
         return 'K'
     else:
-        raise ValueError(f'do not understand user '
-                         'temperature unit {user_temp_unit}')
+        raise ValueError('Do not understand requested temperature '
+                         f'unit {user_temp_unit}')
 
 
 def _load_data(file, z_user, asmlist=None):
@@ -2388,6 +2466,9 @@ def _load_data(file, z_user, asmlist=None):
             _filter_lines(f, z_to_load, asmlist),
             delimiter=',')
 
+    if data.size == 0:
+        raise ValueError('No data loaded')
+
     # Connect z-data in numpy array with user request
     z_dict = {}
     for z in z_user:
@@ -2397,7 +2478,6 @@ def _load_data(file, z_user, asmlist=None):
             z1, x1, z2, x2 = interp_dict[z]
             z_dict[z] = (data[data[:, 1] == z1] * x1
                          + data[data[:, 1] == z2] * x2)
-
     return z_dict
 
 
