@@ -230,10 +230,16 @@ def test_double_duct_single_pin_rr():
 def test_rr_duct_areas(textbook_rr):
     """."""
     tol = 1e-9
+    print(textbook_rr.pin_pitch)
+    print(textbook_rr.duct_params['thickness'])
+    print(textbook_rr.subchannel.n_sc['duct']['edge'])
+    print(textbook_rr.d['wcorner'][0])
+    print(textbook_rr.duct_ftf[0])
+    print(textbook_rr.duct_params['area'][0])
     assert textbook_rr.duct_params['total area'][0] == \
         pytest.approx(textbook_rr.subchannel.n_sc['duct']['edge']
-                      * textbook_rr.duct_params['area'][0][0]
-                      + 6 * textbook_rr.duct_params['area'][0][1], tol)
+                      * textbook_rr.duct_params['area'][0, 0]
+                      + 6 * textbook_rr.duct_params['area'][0, 1], tol)
 
 
 def test_thesis_rr_hydraulic_diam(thesis_asm_rr):
@@ -730,7 +736,7 @@ def test_duct_temp_w_power_indiv(c_fuel_rr):
     # convection to the adjacent coolant
     surface_area = np.array([[c_fuel_rr.L[1][1] * dz,
                               c_fuel_rr.L[1][1] * dz],
-                             [2 * c_fuel_rr.d['wcorner'][0, 0] * dz,
+                             [2 * c_fuel_rr.d['wcorner'][0, 1] * dz,
                               2 * c_fuel_rr.d['wcorner'][0, 1] * dz]])
 
     Q = 0.0

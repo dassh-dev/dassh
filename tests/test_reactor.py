@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-21
+date: 2021-11-23
 author: matz
 Test the temperature sweep across the core
 """
@@ -557,6 +557,51 @@ def test_silly_core_sweep(testdir):
     r.save()
     r.write_output_summary()
     r.save()
+
+
+# def duct_heating_ebal_adiabatic(testdir):
+#     """x"""
+#     inpath = os.path.join(
+#         testdir,
+#         'test_inputs',
+#         'input_duct_heating_adiabatic.txt'
+#     )
+#     outpath = os.path.join(
+#         testdir,
+#         'test_results',
+#         'duct_heating_adiabatic'
+#     )
+#     inp = dassh.DASSH_Input(os.path.join(inpath))
+#     r = dassh.Reactor(inp, path=outpath, write_output=True)
+#     r.save()
+#     r.write_summary()
+#     r.temperature_sweep()
+#     r.save()
+#
+#     # Check that energy was conserved
+#     dt = r.assemblies[0].avg_coolant_temp - r.inlet_temp
+#     q_cool = (r.assemblies[0].flow_rate
+#                 * r.materials['sodium_fixed'].heat_capacity
+#     q_in = np.zeros(3)
+#     q_duct = np.zeros(3)
+#     mfr = np.zeros(3)
+#     for i in range(len(r.assemblies)):
+#         dt[i] = r.assemblies[i].avg_coolant_int_temp - r.inlet_temp
+#         q_in[i] = sum(r.assemblies[i]._power_delivered.values())
+#         mfr[i] = r.assemblies[i].flow_rate
+#         q_duct[i] = np.sum(r.assemblies[i].active_region.ebal['duct'])
+#
+#     dt[0] = r.assemblies[0].avg_coolant_int_temp - (700 + 273.15)
+#     dt[-1] = r.core.avg_coolant_gap_temp - r.inlet_temp
+#     mfr[-1] = r.core.gap_flow_rate
+#     q_duct[-1] = np.sum(r.core.ebal['asm'])
+#     cp = r.assemblies[0].active_region.coolant.heat_capacity  # constant
+#     q_dt = mfr * cp * dt
+#     assert np.abs(np.sum(q_dt)) < 5e-9
+#
+#
+# def duct_heat_gen_ebal(testdir):
+#     """x"""
 
 
 # Also: this is a stupid test, it doesn't test anything, and should be replaced
