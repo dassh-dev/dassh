@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-20
+date: 2021-11-24
 author: matz
 Test the DASSH Assembly object
 """
@@ -1129,24 +1129,24 @@ def test_accelerated_bypass_method_against_old(c_ctrl_rr):
     assert np.allclose(dT, dT_old)
 
 
-@pytest.mark.skip(reason='milos is playing with this')
-def test_bypass_iterate(c_ctrl_rr):
-    """."""
-    # i = 0
-    # print(c_ctrl_rr.bundle_params['area'])
-    # print(c_ctrl_rr.bypass_params['total area'])
-    # c_ctrl_rr._update_coolant_int_params(623.15)
-    # print(c_ctrl_rr.coolant_int_params['ff'])
-    # c_ctrl_rr._update_coolant_byp_params([623.15])
-    # print(c_ctrl_rr.coolant_byp_params['ff'])
-
-    k = 650.0
-    c_ctrl_rr.__iterate_bypass_flowrate(1.281, 2.9095, [k])
-    # c_ctrl_rr.iterate_bypass_flowrate(1.281, 2.9095, [k])
-    # c_ctrl_rr.iterate_bypass_flowrate(1.281, 2.9095, [k])
-    # c_ctrl_rr.iterate_bypass_flowrate(1.281, 2.9095, [k])
-    # c_ctrl_rr.iterate_bypass_flowrate(1.281, 2.9095, [k])
-    assert 0
+# @pytest.mark.skip(reason='milos is playing with this')
+# def test_bypass_iterate(c_ctrl_rr):
+#     """."""
+#     # i = 0
+#     # print(c_ctrl_rr.bundle_params['area'])
+#     # print(c_ctrl_rr.bypass_params['total area'])
+#     # c_ctrl_rr._update_coolant_int_params(623.15)
+#     # print(c_ctrl_rr.coolant_int_params['ff'])
+#     # c_ctrl_rr._update_coolant_byp_params([623.15])
+#     # print(c_ctrl_rr.coolant_byp_params['ff'])
+#
+#     k = 650.0
+#     c_ctrl_rr.__iterate_bypass_flowrate(1.281, 2.9095, [k])
+#     # c_ctrl_rr.iterate_bypass_flowrate(1.281, 2.9095, [k])
+#     # c_ctrl_rr.iterate_bypass_flowrate(1.281, 2.9095, [k])
+#     # c_ctrl_rr.iterate_bypass_flowrate(1.281, 2.9095, [k])
+#     # c_ctrl_rr.iterate_bypass_flowrate(1.281, 2.9095, [k])
+#     assert 0
 
 #
 # @pytest.mark.skip(reason='because')
