@@ -1,0 +1,81 @@
+########################################################################
+# author: Milos Atz
+# date: 2021-11-24
+# comment: DASSH input example
+########################################################################
+# POWER DISTRIBUTIONS
+
+[Power]
+    [[ARC]]
+        coolant_heating  = sodium
+        fuel_material    = oxide
+        pmatrx = ../test_data/single_asm_refl/PMATRX
+        geodst = ../test_data/single_asm_refl/GEODST
+        ndxsrf = ../test_data/single_asm_refl/NDXSRF
+        znatdn = ../test_data/single_asm_refl/ZNATDN
+        labels = ../test_data/single_asm_refl/LABELS
+        nhflux = ../test_data/single_asm_refl/NHFLUX
+        ghflux = ../test_data/single_asm_refl/GHFLUX
+
+
+########################################################################
+
+[Materials]
+    [[pin1]]
+        thermal_conductivity = 20.0, -0.03, 0.00002
+    [[pin2]]
+        thermal_conductivity = 12.0, 0.04, 0.00005
+    [[pin3]]
+        thermal_conductivity = 20.0
+    [[clad_fixed]]
+        thermal_conductivity = 25.0
+    [[sodium_fixed]]
+        density              = 850.0
+        viscosity            = 0.00025
+        thermal_conductivity = 70.0
+        heat_capacity        = 1275.0
+
+
+########################################################################
+# CORE DETAILS: Describe characteristics of the reactor core
+
+[Core]
+    coolant_inlet_temp = 623.15
+    coolant_material   = sodium_fixed
+    length             = 3.75
+    assembly_pitch     = 0.12
+
+
+########################################################################
+# ASSEMBLY DETAILS: Describe a group of assemblies
+# NAME identifies a group of assemblies (e.g. "INNER_DRIVER")
+# Can be repeated for as many assemblies as required by the user.
+
+[Assembly]
+    [[driver]]
+        num_rings      = 9
+        pin_pitch      = 0.750
+        pin_diameter   = 0.635
+        clad_thickness = 0.0500
+        wire_pitch     = 20.000
+        wire_diameter  = 0.110
+        duct_ftf       = 11.25, 11.75
+        duct_material  = HT9
+        [[[PinModel]]]
+            clad_material = clad_fixed
+            r_frac        =  0.0, 0.33333, 0.66667
+            pin_material  = pin1,    pin2,    pin3
+
+
+########################################################################
+# ASSIGN assemblies to positions in the core; assign fixed
+# flow rates or temperature limits to one or multiple assemblies.
+# Indicate which assemblies must be grouped together in an orificing
+# calculation.
+
+[Assignment]
+    [[ByPosition]]
+        driver =    1, 1, 1, FLOWRATE=5.0
+
+
+########################################################################

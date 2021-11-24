@@ -598,3 +598,39 @@ def test_passing_orificing_input(testdir):
     assert inp.data['Orificing'] is not None
     assert inp.data['Orificing']['bulk_coolant_temp'] == \
         pytest.approx(773.15)
+
+
+def test_fail_pin_and_fuel_model(testdir, caplog):
+    """Read fails if both PinModel and FuelModel inputs are specified"""
+    with pytest.raises(SystemExit):
+        dassh.DASSH_Input(
+            os.path.join(
+                testdir,
+                'test_inputs',
+                'x_both_fuel_and_pin_models.txt'))
+    msg = 'Only one "PinModel" or "FuelModel" section allowed'
+    assert msg in caplog.text
+
+
+def test_fail_pinmodel_no_pinmat(testdir, caplog):
+    """Read fails if both PinModel and FuelModel inputs are specified"""
+    with pytest.raises(SystemExit):
+        dassh.DASSH_Input(
+            os.path.join(
+                testdir,
+                'test_inputs',
+                'x_pinmodel_no_pinmat.txt'))
+    msg = 'Must specify "pin_material"'
+    assert msg in caplog.text
+
+
+def test_fail_unspecified_pinmat(testdir, caplog):
+    """Read fails if both pin_material input not specified"""
+    with pytest.raises(SystemExit):
+        dassh.DASSH_Input(
+            os.path.join(
+                testdir,
+                'test_inputs',
+                'x_undefined_pin_mat.txt'))
+    msg = 'Cannot find properties for material oxide1'
+    assert msg in caplog.text

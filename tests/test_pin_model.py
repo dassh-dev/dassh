@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-18
+date: 2021-11-24
 author: matz
 Test the clad/fuel pin temperature model
 """
@@ -22,10 +22,9 @@ Test the clad/fuel pin temperature model
 import os
 import numpy as np
 import pytest
-# import copy
-
+import dassh
 from dassh import Material
-from dassh import FuelPin
+from dassh import PinModel
 from dassh.correlations import nusselt_db
 
 
@@ -78,10 +77,10 @@ def test_metal_fuel_conductivity():
     zr = [0.062, 0.097, 0.115, 0.10]
     pu = [0.162, 0.147, 0.184, 0.190]
     for i in range(len(ans)):
-        fp = FuelPin(*args, {'r_frac': [0.0], 'zr_frac': [zr[i]],
-                             'pu_frac': [pu[i]], 'porosity': [0.0],
-                             'fcgap_thickness': 0.0,
-                             'htc_params_clad': [0.0, 0.0, 0.0, 0.0]})
+        fp = PinModel(*args, {'r_frac': [0.0], 'zr_frac': [zr[i]],
+                              'pu_frac': [pu[i]], 'porosity': [0.0],
+                              'gap_thickness': 0.0,
+                              'htc_params_clad': [0.0, 0.0, 0.0, 0.0]})
 
         for j in range(len(T)):
             # res = np.round(fp._fuel_cond(0, T[j] + 273.15), 1)
@@ -427,3 +426,80 @@ def OLD_distribute_power(self, q_lin, dz):
     q_node *= self.fuel['drmsq']
     # Calculate the power sum at each radial node (Eq. 3.4-9)
     return np.cumsum(q_node, axis=1)
+
+
+########################################################################
+# TEST GENERAL PIN MODEL
+########################################################################
+
+
+def test_general_pin_conductivity(testdir):
+    """x"""
+    inp = dassh.DASSH_Input(
+        os.path.join(
+            testdir,
+            'test_inputs',
+            'input_general_pinmodel_conductivity_check.txt'))
+    asm_input = inp.data['Assembly']['driver']
+    p2d = (asm_input['pin_pitch'] / asm_input['pin_diameter'])
+    asm_input['PinModel']['htc_params_clad'] = \
+        [p2d**3.8 * 0.01**0.86 / 3.0, 0.86, 0.86, 4.0 + 0.16 * p2d**5]
+    asm_input['PinModel']['pin_material'] = \
+        [inp.materials[m].clone()
+         for m in asm_input['PinModel']['pin_material']]
+    pm = PinModel(asm_input['pin_diameter'],
+                  asm_input['clad_thickness'],
+                  inp.materials[asm_input['PinModel']['clad_material']],
+                  pin_params=asm_input['PinModel'],
+                  gap_mat=None)
+    res = pm._fuel_cond(0, 800)
+    ans = 20.0 - 0.03 * 800 + 0.00002 * 800**2
+    assert pytest.approx(res, ans)
+    res = pm._fuel_cond(1, 1000)
+    ans = 12.0 + 0.04 * 800 - 0.00005 * 800**2
+    assert pytest.approx(res, ans)
+    res = pm._fuel_cond(2, 23525)
+    ans = 20.0
+    assert pytest.approx(res, ans)
+
+
+def test_verify_general_pin_model(testdir):
+    """Check pin model against hand calculation"""
+    inp = dassh.DASSH_Input(
+        os.path.join(
+            testdir,
+            'test_inputs',
+            'input_general_pinmodel.txt'))
+    asm_input = inp.data['Assembly']['driver']
+    p2d = (asm_input['pin_pitch'] / asm_input['pin_diameter'])
+    asm_input['PinModel']['htc_params_clad'] = \
+        [p2d**3.8 * 0.01**0.86 / 3.0, 0.86, 0.86, 4.0 + 0.16 * p2d**5]
+    asm_input['PinModel']['pin_material'] = \
+        [inp.materials[m].clone()
+         for m in asm_input['PinModel']['pin_material']]
+    pm = PinModel(asm_input['pin_diameter'],
+                  asm_input['clad_thickness'],
+                  inp.materials[asm_input['PinModel']['clad_material']],
+                  pin_params=asm_input['PinModel'],
+                  gap_mat=None)
+    # Calculate pin temperatures - fills in rr.pin_temps
+    dz = 0.01
+    pp = np.array([1e4])
+    htc = 1e4
+    Tc = 623.15
+    res = pm.calculate_temperatures(pp, Tc, htc, dz)
+    # Calculate answer - clad_out, clad_mw, clad_in, fuel_surf, fuel_cl
+    ans = np.zeros(5)
+    k_clad = 25.0
+    k_fuel = 20.0
+    t_clad = 0.05
+    ro_clad = 0.3175
+    ri_clad = ro_clad - t_clad
+    rm_clad = ro_clad - t_clad * 0.5
+    a_pin = np.pi * ri_clad**2
+    ans[0] = Tc + pp / htc / 2 / np.pi / ro_clad
+    ans[1] = ans[0] + pp * np.log(ro_clad / rm_clad) / 2 / np.pi / k_clad
+    ans[2] = ans[0] + pp * np.log(ro_clad / ri_clad) / 2 / np.pi / k_clad
+    ans[3] = ans[2]
+    ans[4] = ans[3] + pp * ri_clad**2 / a_pin / 4 / k_fuel
+    assert np.allclose(ans, res[0, 1:])

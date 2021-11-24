@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-02
+date: 2021-11-24
 author: matz
 Pytest fixtures and related test utilities for the whole shebang
 """
@@ -1124,12 +1124,12 @@ def pin(c_fuel_rr):
                    'zr_frac': [0.1, 0.1, 0.1],
                    'pu_frac': [0.2, 0.2, 0.2],
                    'porosity': [0.25, 0.25, 0.25],
-                   'fcgap_thickness': 0.0,
+                   'gap_thickness': 0.0,
                    'htc_params_clad': htcp}
-    return dassh.FuelPin(0.00628142,
-                         0.00050292,
-                         dassh.Material('ht9_se2anl'),
-                         fuel_params)
+    return dassh.PinModel(0.00628142,
+                          0.00050292,
+                          dassh.Material('ht9_se2anl'),
+                          fuel_params)
 
 
 @pytest.fixture
@@ -1146,13 +1146,13 @@ def pin_boc():
                    'zr_frac': [0.1, 0.1, 0.1],
                    'pu_frac': [0.2, 0.2, 0.2],
                    'porosity': [0.0, 0.0, 0.0],
-                   'fcgap_thickness': fc_gap,
+                   'gap_thickness': fc_gap,
                    'htc_params_clad': htcp}
-    return dassh.FuelPin(d_pin,
-                         clad_thiccness,
-                         dassh.Material('ht9_se2anl'),
-                         fuel_params,
-                         gap_mat=dassh.Material('sodium'))
+    return dassh.PinModel(d_pin,
+                          clad_thiccness,
+                          dassh.Material('ht9_se2anl'),
+                          fuel_params,
+                          gap_mat=dassh.Material('sodium'))
 
 
 @pytest.fixture
@@ -1179,7 +1179,7 @@ def se2anl_peaktemp_params(c_fuel_rr):
             'pin_diameter': c_fuel_rr.pin_diameter,
             'pin_pitch': c_fuel_rr.pin_pitch,
             'clad_thickness': c_fuel_rr.clad_thickness,
-            'fcgap_thickness': 0.0,
+            'gap_thickness': 0.0,
             'r_fuel': (c_fuel_rr.pin_diameter / 2
                        - c_fuel_rr.clad_thickness),
             'dr_clad': c_fuel_rr.clad_thickness / 2,
