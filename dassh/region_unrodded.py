@@ -362,6 +362,9 @@ class SingleNodeHomogeneous(DASSH_Region):
         None
 
         """
+        # Duct temperatures: calculate with new coolant properties
+        self._calc_duct_temp(t_gap, htc_gap, adiabatic_duct)
+
         # Interior coolant temperatures: calculate using coolant
         # properties from previous axial step
         self.temp['coolant_int'] += self._calc_coolant_temp(
@@ -370,8 +373,8 @@ class SingleNodeHomogeneous(DASSH_Region):
         # Update coolant properties for the duct wall calculation
         self._update_coolant_params(self.temp['coolant_int'][0])
 
-        # Duct temperatures: calculate with new coolant properties
-        self._calc_duct_temp(t_gap, htc_gap, adiabatic_duct)
+        # # Duct temperatures: calculate with new coolant properties
+        # self._calc_duct_temp(t_gap, htc_gap, adiabatic_duct)
 
         # Update pressure drop (now that correlations are updated)
         self._pressure_drop += self.calculate_pressure_drop(dz)

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-12
+date: 2021-11-24
 author: matz
 Test the DASSH Assembly object
 """
@@ -122,19 +122,17 @@ def test_pin_only_int_coolant_verification(testdir):
     T_ans = copy.deepcopy(r.assemblies[0].rodded.temp['coolant_int'])
     dT_ans = T_ans - r.inlet_temp
     r.reset()
-    simple_asm_pin_only = copy.deepcopy(r.assemblies[0])
+    asm = copy.deepcopy(r.assemblies[0])
     # # Set up some stuff
     inlet_temp = 623.15
-    gap_t = np.ones(simple_asm_pin_only
-                    .rodded.subchannel
-                    .n_sc['duct']['total'])
+    gap_t = np.ones(asm.rodded.subchannel.n_sc['duct']['total'])
     gap_t *= inlet_temp
-    simple_asm_pin_only.rodded._update_coolant_int_params(inlet_temp)
-    gap_htc = simple_asm_pin_only.rodded.coolant_int_params['htc'][1:]
+    asm.rodded._update_coolant_int_params(inlet_temp)
+    gap_htc = asm.rodded.coolant_int_params['htc'][1:]
     gap_htc = gap_htc[
-        simple_asm_pin_only.rodded.subchannel.type[
-            simple_asm_pin_only.rodded.subchannel.n_sc['coolant']['interior']:
-            simple_asm_pin_only.rodded.subchannel.n_sc['coolant']['total']] - 1]
+        asm.rodded.subchannel.type[
+            asm.rodded.subchannel.n_sc['coolant']['interior']:
+            asm.rodded.subchannel.n_sc['coolant']['total']] - 1]
 
     # print(simple_asm_pin_only.rodded.pin_pitch)
     # print(simple_asm_pin_only.rodded.pin_diameter)
@@ -178,27 +176,25 @@ def test_pin_only_int_coolant_verification(testdir):
         z = r.z[i + 1]
         dz = r.dz[i]
         # Calculate coolant and duct temperatures at the current level
-        simple_asm_pin_only.calculate(z, dz, gap_t, gap_htc,
-                                      adiabatic=True)
+        asm.calculate(z, dz, gap_t, gap_htc, adiabatic=True)
 
         # Collect data to print for verification if test is not passed
-        z_power = simple_asm_pin_only.power.get_power(z - 0.5 * dz)
+        z_power = asm.power.get_power(z - 0.5 * dz)
         print_list = [z]
-        print_list += list(simple_asm_pin_only.temp_coolant)
+        print_list += list(asm.temp_coolant)
         print_list += [z_power['pins'][0]]
-        print_list += list(simple_asm_pin_only.temp_duct_surf[0, 0])
+        print_list += list(asm.temp_duct_surf[0, 0])
         if print_option:
             print(' '.join(['{:.12e}'.format(v) for v in print_list]))
 
     # assert 0
     dT_ss = ans - r.inlet_temp
-    dT_res = simple_asm_pin_only.rodded.temp['coolant_int'] - r.inlet_temp
-    print(simple_asm_pin_only.rodded._adj_sw)
+    dT_res = asm.rodded.temp['coolant_int'] - r.inlet_temp
+    print(asm.rodded._adj_sw)
     print(dT_res - dT_ss)
     assert np.allclose(dT_res, dT_ans)
     assert np.allclose(dT_res, dT_ss)
-    assert np.allclose(simple_asm_pin_only.rodded.temp['coolant_int'],
-                       ans)
+    assert np.allclose(asm.rodded.temp['coolant_int'], ans)
 
 
 def test_duct_verification(simple_asm):
@@ -210,49 +206,43 @@ def test_duct_verification(simple_asm):
     gap_t *= inlet_temp
     simple_asm.rodded._update_coolant_int_params(inlet_temp)
     gap_htc = simple_asm.rodded.coolant_int_params['htc'][1:]
-    # gap_htc = gap_htc[
-    #     simple_asm.rodded.subchannel.type[
-    #         simple_asm.rodded.subchannel.n_sc['coolant']['interior']:
-    #         simple_asm.rodded.subchannel.n_sc['coolant']['total']] - 1]
-
-    # print('{:.15e}'.format(g) for g in gap_htc)
-    # print('{:.15e}'.format(a) for a in simple_asm.duct_params['area'][0])
-    ans = {'s_in': np.array([6.2331543186E+02, 6.2367583840E+02,
-                             6.2329011764E+02, 6.2366491697E+02,
-                             6.2330907636E+02, 6.2382382216E+02,
-                             6.2335850838E+02, 6.2402731963E+02,
-                             6.2338903497E+02, 6.2404042449E+02,
-                             6.2336607341E+02, 6.2384803820E+02]),
-           'mw': np.array([6.2327195459E+02, 6.2346909446E+02,
-                           6.2325751616E+02, 6.2346353402E+02,
-                           6.2326873846E+02, 6.2357143148E+02,
-                           6.2331689483E+02, 6.2372050700E+02,
-                           6.2333875952E+02, 6.2372717909E+02,
-                           6.2332072303E+02, 6.2358376062E+02]),
-           's_out': np.array([6.2315380204E+02, 6.2316322373E+02,
-                              6.2315341947E+02, 6.2316302427E+02,
-                              6.2315372528E+02, 6.2316782870E+02,
-                              6.2315541402E+02, 6.2317474951E+02,
-                              6.2315608545E+02, 6.2317498883E+02,
-                              6.2315550539E+02, 6.2316827094E+02])}
+    ans = {
+        's_in': np.array([
+            6.2331273999E+02, 6.2366950290E+02, 6.2328786212E+02,
+            6.2365882272E+02, 6.2330652850E+02, 6.2381576163E+02,
+            6.2335518811E+02, 6.2401663962E+02, 6.2338521129E+02,
+            6.2402946267E+02, 6.2336258389E+02, 6.2383945365E+02]),
+        'mw': np.array([
+            6.2327050326E+02, 6.2346223552E+02, 6.2325629088E+02,
+            6.2345679790E+02, 6.2326736000E+02, 6.2356179829E+02,
+            6.2331509061E+02, 6.2370635253E+02, 6.2333667513E+02,
+            6.2371288115E+02, 6.2331883317E+02, 6.2357386063E+02]),
+        's_out': np.array([
+            6.2315376531E+02, 6.2316285191E+02, 6.2315338826E+02,
+            6.2316265687E+02, 6.2315369029E+02, 6.2316729174E+02,
+            6.2315536805E+02, 6.2317394004E+02, 6.2315603219E+02,
+            6.2317417422E+02, 6.2315545737E+02, 6.2316772442E+02])
+    }
     simple_asm._z = 1.29
     z = 1.29
     dz = 0.001
     for i in range(100):
+        htc1 = simple_asm.active_region.coolant_int_params['htc'][1]
+        htc2 = simple_asm.active_region.coolant_int_params['htc'][2]
+        start = simple_asm.active_region.subchannel.n_sc['coolant']['interior']
+        coolant_temps = list(simple_asm.temp_coolant[start:])
         simple_asm.calculate(z, dz, gap_t, gap_htc)
 
         # Collect data to print for verification if test is not passed
-        z_power = simple_asm.power.get_power(z)
+        z_power = simple_asm.power.get_power(z - dz * 0.5)
         print_list = [z]
         print_list += list(simple_asm.temp_duct_surf[0, 0])
         print_list += list(simple_asm.temp_duct_mw[0])
         print_list += list(simple_asm.temp_duct_surf[0, 1])
-        print_list += [simple_asm.active_region.coolant_int_params['htc'][1],
-                       simple_asm.active_region.coolant_int_params['htc'][2],
-                       simple_asm.active_region.duct.thermal_conductivity]
+        print_list += [htc1, htc2]
+        print_list.append(simple_asm.active_region.duct.thermal_conductivity)
         print_list += list(z_power['duct'])
-        start = simple_asm.active_region.subchannel.n_sc['coolant']['interior']
-        print_list += list(simple_asm.temp_coolant[start:])
+        print_list += coolant_temps
         if print_option:
             print(' '.join(['{:.10e}'.format(v) for v in print_list]))
 
@@ -289,13 +279,12 @@ def test_bypass_gap_verification(simple_ctrl_asm):
         for i in range(len(keys)):
             print(keys[i] + ': ' + '{:.15e}'.format(vals[i]))
 
-    ans = np.array([6.234363702699E+02, 6.236462160477E+02,
-                    6.234363683471E+02, 6.236462161081E+02,
-                    6.234363702699E+02, 6.236462160477E+02,
-                    6.234363683470E+02, 6.236462161081E+02,
-                    6.234363702699E+02, 6.236462160477E+02,
-                    6.234363683470E+02, 6.236462161081E+02])
-
+    ans = np.array([6.234377846069E+02, 6.236242077736E+02,
+                    6.234377827967E+02, 6.236242078352E+02,
+                    6.234377846069E+02, 6.236242077736E+02,
+                    6.234377827967E+02, 6.236242078352E+02,
+                    6.234377846069E+02, 6.236242077736E+02,
+                    6.234377827967E+02, 6.236242078352E+02])
     simple_ctrl_asm._z = 1.29
     z = 1.29
     dz = 0.001
@@ -510,8 +499,9 @@ def test_interasm_gap_ductavg_model_verification(three_asm_core):
     assert np.allclose(ans, core_obj.coolant_gap_temp)
 
 
-def test_bypass_gap_energy_cons_verification(simple_ctrl_asm_pins_cmat):
-    """Test that method to calculate bypass coolant conserves energy"""
+def print_bypass_gap_energy_cons_verification(simple_ctrl_asm_pins_cmat):
+    """Test that method to calculate bypass coolant conserves energy;
+    not actually a test, only run to print data"""
     # Notes:
     # - Power to pins only (no duct wall heating)
     # - Interior coolant temperature taken as given: will use to get
@@ -519,9 +509,6 @@ def test_bypass_gap_energy_cons_verification(simple_ctrl_asm_pins_cmat):
     # - Will be calculating heat lost from interior coolant to duct
     #   and transferred from inner duct to bypass coolant
     # - Assuming adiabatic outer duct: no heat transfer there.
-
-    if not print_option:
-        pytest.skip('Not actually a test; only run to print data')
 
     # Set up some stuff
     asm = simple_ctrl_asm_pins_cmat

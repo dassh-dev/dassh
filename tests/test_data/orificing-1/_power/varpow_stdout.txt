@@ -1,5 +1,5 @@
 [VARPOW]........................................................................
-[VARPOW]...VARPOW utility program 11.3161  01/14/21
+[VARPOW]...VARPOW utility program 11.3184  08/10/21
 [VARPOW]...varpow.x <iTypeFuel> <iTypeCool> <PMATRX> <GEODST> <NDXSRF> <ZNATDN> <NHFLUX> <GHFLUX> [P]
 [VARPOW]...  iTypeFuel:  The type of fuel form: 1,2,3,4   = Zr-alloyed,Oxide,Nitride,Alum Alloyed
 [VARPOW]...  iTypeCool:  The type of coolant:   1,2,3,4,5 = Na, NaCl, Pb, Pb-Bi, Sn 

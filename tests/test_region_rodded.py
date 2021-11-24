@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-20
+date: 2021-11-24
 author: matz
 Test the DASSH Assembly object
 """
@@ -230,10 +230,16 @@ def test_double_duct_single_pin_rr():
 def test_rr_duct_areas(textbook_rr):
     """."""
     tol = 1e-9
+    print(textbook_rr.pin_pitch)
+    print(textbook_rr.duct_params['thickness'])
+    print(textbook_rr.subchannel.n_sc['duct']['edge'])
+    print(textbook_rr.d['wcorner'][0])
+    print(textbook_rr.duct_ftf[0])
+    print(textbook_rr.duct_params['area'][0])
     assert textbook_rr.duct_params['total area'][0] == \
         pytest.approx(textbook_rr.subchannel.n_sc['duct']['edge']
-                      * textbook_rr.duct_params['area'][0][0]
-                      + 6 * textbook_rr.duct_params['area'][0][1], tol)
+                      * textbook_rr.duct_params['area'][0, 0]
+                      + 6 * textbook_rr.duct_params['area'][0, 1], tol)
 
 
 def test_thesis_rr_hydraulic_diam(thesis_asm_rr):
@@ -730,7 +736,7 @@ def test_duct_temp_w_power_indiv(c_fuel_rr):
     # convection to the adjacent coolant
     surface_area = np.array([[c_fuel_rr.L[1][1] * dz,
                               c_fuel_rr.L[1][1] * dz],
-                             [2 * c_fuel_rr.d['wcorner'][0, 0] * dz,
+                             [2 * c_fuel_rr.d['wcorner'][0, 1] * dz,
                               2 * c_fuel_rr.d['wcorner'][0, 1] * dz]])
 
     Q = 0.0
@@ -1123,24 +1129,24 @@ def test_accelerated_bypass_method_against_old(c_ctrl_rr):
     assert np.allclose(dT, dT_old)
 
 
-@pytest.mark.skip(reason='milos is playing with this')
-def test_bypass_iterate(c_ctrl_rr):
-    """."""
-    # i = 0
-    # print(c_ctrl_rr.bundle_params['area'])
-    # print(c_ctrl_rr.bypass_params['total area'])
-    # c_ctrl_rr._update_coolant_int_params(623.15)
-    # print(c_ctrl_rr.coolant_int_params['ff'])
-    # c_ctrl_rr._update_coolant_byp_params([623.15])
-    # print(c_ctrl_rr.coolant_byp_params['ff'])
-
-    k = 650.0
-    c_ctrl_rr.__iterate_bypass_flowrate(1.281, 2.9095, [k])
-    # c_ctrl_rr.iterate_bypass_flowrate(1.281, 2.9095, [k])
-    # c_ctrl_rr.iterate_bypass_flowrate(1.281, 2.9095, [k])
-    # c_ctrl_rr.iterate_bypass_flowrate(1.281, 2.9095, [k])
-    # c_ctrl_rr.iterate_bypass_flowrate(1.281, 2.9095, [k])
-    assert 0
+# @pytest.mark.skip(reason='milos is playing with this')
+# def test_bypass_iterate(c_ctrl_rr):
+#     """."""
+#     # i = 0
+#     # print(c_ctrl_rr.bundle_params['area'])
+#     # print(c_ctrl_rr.bypass_params['total area'])
+#     # c_ctrl_rr._update_coolant_int_params(623.15)
+#     # print(c_ctrl_rr.coolant_int_params['ff'])
+#     # c_ctrl_rr._update_coolant_byp_params([623.15])
+#     # print(c_ctrl_rr.coolant_byp_params['ff'])
+#
+#     k = 650.0
+#     c_ctrl_rr.__iterate_bypass_flowrate(1.281, 2.9095, [k])
+#     # c_ctrl_rr.iterate_bypass_flowrate(1.281, 2.9095, [k])
+#     # c_ctrl_rr.iterate_bypass_flowrate(1.281, 2.9095, [k])
+#     # c_ctrl_rr.iterate_bypass_flowrate(1.281, 2.9095, [k])
+#     # c_ctrl_rr.iterate_bypass_flowrate(1.281, 2.9095, [k])
+#     assert 0
 
 #
 # @pytest.mark.skip(reason='because')

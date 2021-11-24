@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-21
+date: 2021-11-24
 author: matz
 Test the temperature sweep across the core
 """
@@ -362,15 +362,15 @@ def test_write_tables(small_reactor):
 
 def test_save_load(small_reactor):
     """Test that I can save and load DASSH Reactor objects"""
-    if 'linux' not in sys.platform:
-        pytest.skip('skipping Reactor r/w test; run only on Linux')
-
     if sys.version_info <= (3, 7):  # Requires Python 3.7 or greater
         pytest.skip('skipping Reactor r/w test; need >= Python 3.7')
 
+    # Confirm that you can save without error
     small_reactor.save()
-    dassh.reactor.load(os.path.join(small_reactor.path,
-                                    'dassh_reactor.pkl'))
+    # Confirm that you can load without error - this indirectly checks
+    # that the path exists
+    rpath = os.path.join(small_reactor.path, 'dassh_reactor.pkl')
+    dassh.reactor.load(rpath)
 
 
 ########################################################################
@@ -559,26 +559,58 @@ def test_silly_core_sweep(testdir):
     r.save()
 
 
-# Also: this is a stupid test, it doesn't test anything, and should be replaced
-@pytest.mark.skip(reason='too long, needs to be revised')
+def test_duct_heating_ebal_adiabatic(testdir):
+    """Test energy balance for pin bundle with only duct heating and
+    adiabatic duct wall"""
+    name = 'duct_heating_adiabatic'
+    inpath = os.path.join(testdir, 'test_inputs', f'input_{name}.txt')
+    outpath = os.path.join(testdir, 'test_results', name)
+    inp = dassh.DASSH_Input(os.path.join(inpath))
+    r = dassh.Reactor(inp, path=outpath, write_output=True)
+    r.save()
+    r.write_summary()
+    r.temperature_sweep()
+    r.save()
+    # Check that energy was conserved
+    asm = r.assemblies[0]
+    dt = asm.avg_coolant_temp - r.inlet_temp
+    q_cool = asm.flow_rate * r.materials['sodium_fixed'].heat_capacity * dt
+    assert np.abs(q_cool - asm._power_delivered['duct']) < 2e-9
+
+
+def test_duct_heating_ebal(testdir):
+    """Test energy balance for pin bundle with only duct heating and
+    HT to gap coolant"""
+    name = 'duct_heating'
+    inpath = os.path.join(testdir, 'test_inputs', f'input_{name}.txt')
+    outpath = os.path.join(testdir, 'test_results', name)
+    inp = dassh.DASSH_Input(os.path.join(inpath))
+    r = dassh.Reactor(inp, path=outpath, write_output=True)
+    r.save()
+    r.write_summary()
+    r.temperature_sweep()
+    r.save()
+    # Check that energy was conserved
+    cp = r.materials['sodium_fixed'].heat_capacity
+    asm = r.assemblies[0]
+    dt_asm = asm.avg_coolant_temp - r.inlet_temp
+    q_asm = asm.flow_rate * cp * dt_asm
+    dt_gap = r.core.avg_coolant_gap_temp - r.inlet_temp
+    q_gap = r.core.gap_flow_rate * cp * dt_gap
+    q_tot = q_gap + q_asm
+    assert np.abs(q_tot - asm._power_delivered['duct']) < 2e-9
+
+
 def test_sweep_with_all_but_one_unrodded_asm(testdir):
-    """Test that the Reactor object and power setup are achieved; this
-    test just makes sure nothing fails"""
-    # if 'linux' not in sys.platform:
-    #     pytest.skip('skipping sweep test, too slow locally')
-
+    """Check that average coolant temperatures in unrodded assemblies
+    are about equal to what we asked them to be"""
+    name = 'all_but_one_unrodded'
     inpath = os.path.join(testdir, 'test_inputs')
-    outpath = os.path.join(testdir,
-                           'test_results',
-                           'test_sweep_with_all_but_one_unrodded_asm')
+    outpath = os.path.join(testdir, 'test_results', f'test_{name}')
     cleanup(outpath)
-
-    fname = 'input_all_but_one_unrodded.txt'
-    inp = dassh.DASSH_Input(os.path.join(inpath, fname))
+    inp = dassh.DASSH_Input(os.path.join(inpath, f'input_{name}.txt'))
     r = dassh.Reactor(inp, path=outpath, write_output=True,
                       calc_energy_balance=True)
-    print(r.req_dz)
-    # assert 0
     r.temperature_sweep()
     r.save()
     assert 'dassh.out' in os.listdir(outpath)
@@ -590,11 +622,6 @@ def test_sweep_with_all_but_one_unrodded_asm(testdir):
     avg_cool_temps = np.zeros(len(r.assemblies))
     for i in range(len(r.assemblies)):
         avg_cool_temps[i] = r.assemblies[i].avg_coolant_temp
-        print(i,
-              r.assemblies[i].total_power,
-              r.assemblies[i].flow_rate,
-              r.assemblies[i].avg_coolant_temp)
-
     dt = avg_cool_temps - r.inlet_temp
     diff = np.abs(dt - 10.0)  # expected dT is 25 K
     print(diff)
@@ -652,17 +679,9 @@ def test_adiabatic_unrodded_reactor_sweep(testdir):
 
 def test_double_duct_ebal(testdir):
     """Test energy balance tracking on double ducted assembly"""
-    # if 'linux' not in sys.platform:
-    #     pytest.skip('skipping sweep test, too slow locally')
-
     inpath = os.path.join(testdir, 'test_inputs')
     outpath = os.path.join(testdir, 'test_results', 'test_dd_ebal')
-    # Remove old datafiles
-    if os.path.exists(outpath):
-        for f in os.listdir(outpath):
-            if f[:4] == 'temp' and f[-4:] == '.csv':
-                os.remove(os.path.join(outpath, f))
-
+    cleanup(outpath)
     inp = dassh.DASSH_Input(os.path.join(inpath, 'input_dd_ebal.txt'))
     r = dassh.Reactor(inp, path=outpath, write_output=True)
     r.temperature_sweep()
@@ -717,52 +736,32 @@ def test_stagnant_double_duct_ebal(testdir):
     assert np.abs(bal) / rr.ebal['power'] < 1e-12
 
 
-@pytest.mark.skip(reason='the interasm key no longer exists, need new test')
 def test_interasm_ebal(testdir):
     """Test that the interassembly energy balance works"""
-    # if 'linux' not in sys.platform:
-    #     pytest.skip('skipping sweep test, too slow locally')
-
     inpath = os.path.join(testdir, 'test_inputs')
-    outpath = os.path.join(testdir, 'test_results',
-                           'test_interasm_ebal')
-    # Remove old datafiles
-    if os.path.exists(outpath):
-        for f in os.listdir(outpath):
-            if f[:4] == 'temp' and f[-4:] == '.csv':
-                os.remove(os.path.join(outpath, f))
-
-    fname = 'input_interasm_ebal.txt'
-    inp = dassh.DASSH_Input(os.path.join(inpath, fname))
+    outpath = os.path.join(testdir, 'test_results', 'test_interasm_ebal')
+    cleanup(outpath)
+    inp = dassh.DASSH_Input(os.path.join(inpath, 'input_interasm_ebal.txt'))
     r = dassh.Reactor(inp, path=outpath, write_output=True)
-    # print(r.assemblies[1].region[0]._params)
-    # print(dassh.region_unrodded._get_rr_kwargs(
-    #     inp.data['Assembly']['fuel'],
-    #     {'coolant': dassh.Material('sodium'),
-    #      'duct': dassh.Material('ht9')},
-    #     r.assemblies[1].flow_rate,
-    #     623.15))
-    # assert 0
     r._options['ebal'] = True
     r.temperature_sweep()
     r.save()
     assert 'dassh.out' in os.listdir(outpath)
 
-    # Check that the interassembly energy balance sums to 0.0
-    e_sum = np.sum(r.core._ebal['interasm'])
-    assert np.abs(e_sum) < 1e-9
+    # Check that the interassembly energy balance sums to gap
+    # coolant temperature rise
+    q_sum = np.sum(r.core.ebal['asm'])
+    dt_gap = r.core.avg_coolant_gap_temp - r.inlet_temp
+    q_gap = r.core.gap_flow_rate * 1275.0 * dt_gap
+    assert np.abs(q_sum - q_gap) < 1e-9
 
-    # Check the agreement of sides for the surrounding assemblies by
-    # checking which side should have maximum power transfer (inward-
-    # facing) and which should have none (outward-facing)
-    max_idx = [4, 5, 0, 1, 2, 3]
-    zero_idx = [1, 2, 3, 4, 5, 0]
-    for i in range(1, 7):
-        tmp = r.core._ebal['interasm'][i].reshape(6, -1).copy()
-        eps = np.zeros((6, r.core._sc_per_side + 2))
-        eps[:, 1:] = tmp
-        eps[:, 0] = np.roll(tmp[:, -1], 1)
-        eps[:, (0, -1)] *= 0.5
-        eps = np.sum(eps, axis=1)
-        assert np.argmax(eps) == max_idx[i - 1]
-        assert eps[zero_idx[i - 1]] == 0.0
+    # Check the agreement between inter-assembly gap energy balance
+    # and the pin bundle coolant energy balance
+    for i in range(len(r.assemblies)):
+        if 'duct_byp_out' in r.assemblies[i].active_region.ebal.keys():
+            ebal_in = r.assemblies[i].active_region.ebal['duct_byp_out']
+        else:
+            ebal_in = r.assemblies[i].active_region.ebal['duct']
+        e_in = np.sum(ebal_in)
+        e_out = np.sum(r.core.ebal['asm'][i])
+        assert np.abs(e_in + e_out) < 1e-8
