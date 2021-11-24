@@ -1,0 +1,76 @@
+########################################################################
+# author: Milos Atz
+# date: 2021-11-23
+# comment: example problem
+########################################################################
+# SETUP: Problem setup, user options, etc
+
+[Setup]
+    log_progress        = 100
+    calc_energy_balance = True
+
+
+########################################################################
+
+[Materials]
+    [[sodium_fixed]]
+        thermal_conductivity = 75.0
+        heat_capacity = 1275.0
+        density = 850.0
+        viscosity = 0.00025
+
+
+########################################################################
+
+[Power]
+    user_power  = ../test_data/duct_heating_power_profiles.csv
+    total_power = 500.0e3    # Normalize power to this value
+
+
+########################################################################
+# CORE DETAILS: Describe characteristics of the reactor core
+
+[Core]
+    coolant_inlet_temp = 623.15
+    coolant_material   = sodium_fixed
+    length             = 1.0
+    assembly_pitch     = 0.058929   # (m)
+    gap_model          = flow
+    bypass_fraction    = 0.05
+
+
+########################################################################
+# ASSEMBLY DETAILS: Describe a group of assemblies
+# NAME identifies a group of assemblies (e.g. "INNER_DRIVER")
+# Can be repeated for as many assemblies as required by the user.
+
+[Assembly]
+    [[a1]]
+        num_rings       = 2
+        pin_pitch       = 0.003542
+        pin_diameter    = 0.003220
+        clad_thickness  = 0.000305
+        wire_pitch      = 0.152000
+        wire_diameter   = 0.000321
+        wire_direction  = counterclockwise
+        duct_ftf        = 0.010, 0.012
+        duct_material   = ss316
+        corr_mixing     = CTD
+	corr_friction   = CTD
+	corr_flowsplit  = CTD
+	corr_nusselt    = DB
+        shape_factor    = 1.25
+        htc_params_duct = 0.025, 0.8, 0.8, 7.0
+
+
+########################################################################
+# ASSIGN assemblies to positions in the core; assign fixed
+# flow rates or temperature limits to one or multiple assemblies.
+# Indicate which assemblies must be grouped together in an orificing
+# calculation.
+
+[Assignment]
+    [[ByPosition]]
+        a1 = 1, 1, 1, FLOWRATE=2.6923
+
+########################################################################
