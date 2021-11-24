@@ -1101,7 +1101,21 @@ class Reactor(LoggedClass):
         # dumping temperatures at this axial step
         dump_step = self._determine_whether_to_dump_data(z, dz)
 
-        # 1. Calculate gap coolant temperatures at the j+1 level
+        # 1. Calculate assembly duct and coolant temperatures.
+        #    Different treatment depending on whether in the
+        #    heterogeneous or homogeneous region; varies assembly to
+        #    assembly, handled in the same method.
+        #        - Calculate assembly duct wall temperatures at the j
+        #          level based on assembly and gap coolant temperatures
+        #          at the j-1 level
+        #        - Calculate assembly coolant temperatures at the j
+        #          level based on coolant temepratures at the j-1 level
+        #          and duct temperatures at the j level.
+        for ai in range(len(self.assemblies)):
+            self._calculate_asm_temperatures(self.assemblies[ai], ai,
+                                             z, dz, dump_step)
+
+        # 2. Calculate gap coolant temperatures at the j level
         #    based on duct wall temperatures at the j level.
         if self.core.model is not None:
             t_duct = np.array(
@@ -1120,24 +1134,6 @@ class Reactor(LoggedClass):
                     self._options['dump']['files']['coolant_gap_fine'],
                     to_write,
                     delimiter=',')
-
-        # 2. Calculate assembly coolant and duct temperatures.
-        #    Different treatment depending on whether in the
-        #    heterogeneous or homogeneous region; varies assembly to
-        #    assembly, handled in the same method.
-        #    (a) Heterogeneous region:
-        #        - Calculate assembly coolant temperatures at the j+1
-        #          level based on coolant and duct wall temepratures
-        #          at the j level
-        #        - Calculate assembly duct wall temperatures at the j+1
-        #          level based on assembly and gap coolant temperatures
-        #          at the j+1 level
-        #    (b) Homogeneous region (porous media)
-        #        - Calculate assembly coolant and duct temepratures at
-        #          the j+1 level based on temperatures at the j level
-        for ai in range(len(self.assemblies)):
-            self._calculate_asm_temperatures(self.assemblies[ai], ai,
-                                             z, dz, dump_step)
 
         if verbose:
             print(self._print_step_summary(z, dz))
