@@ -354,15 +354,25 @@ class Reactor(LoggedClass):
             mat_data['duct'] = self.materials[
                 asm_data['duct_material'].lower()].clone()
             if 'FuelModel' in asm_data:
-                mat_data['clad'] = self.materials[
-                    asm_data['FuelModel']['clad_material'].lower()
-                ].clone()
+                m = asm_data['FuelModel']['clad_material'].lower()
+                mat_data['clad'] = self.materials[m].clone()
                 if asm_data['FuelModel']['gap_material'] is not None:
-                    mat_data['gap'] = self.materials[
-                        asm_data['FuelModel']['gap_material'].lower()
-                    ].clone()
+                    m = asm_data['FuelModel']['gap_material'].lower()
+                    mat_data['gap'] = self.materials[m].clone()
                 else:
                     mat_data['gap'] = None
+            if 'PinModel' in asm_data:
+                m = asm_data['PinModel']['clad_material'].lower()
+                mat_data['clad'] = self.materials[m].clone()
+                if asm_data['PinModel']['gap_material'] is not None:
+                    m = asm_data['PinModel']['gap_material'].lower()
+                    mat_data['gap'] = self.materials[m].clone()
+                else:
+                    mat_data['gap'] = None
+                mat_data['pin'] = []
+                for m in asm_data['PinModel']['pin_material']:
+                    mm = m.lower()
+                    mat_data['pin'].append(self.materials[mm].clone())
             # make the list of "template" Assembly objects
             asm_templates[a] = dassh.assembly.Assembly(
                 a,

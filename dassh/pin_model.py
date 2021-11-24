@@ -14,13 +14,16 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-18
+date: 2021-11-24
 author: matz
-Cladding and fuel pin heat transfer model
+Cladding and pin heat transfer model
 """
 ########################################################################
 import numpy as np
 from dassh.logged_class import LoggedClass
+from dassh.material import Material
+
+
 _SBCONST = 5.670374419e-8
 _ERROR_MSG = """{0} temperature calculation did not converge;
 iterations = {1}
@@ -28,7 +31,7 @@ max error = {2} K
 """
 
 
-class FuelPin(LoggedClass):
+class PinModel(LoggedClass):
     """Contains pin and clad geometry and methods to calculate clad
     midwall and pin centerline temperatures
 
@@ -43,7 +46,7 @@ class FuelPin(LoggedClass):
     fuel_params : dict
         Keys:
             'htc_params' : {list} Coefficients to Dittus Boelter
-            'fcgap_thickness' : {float}
+            'gap_thickness' : {float}
             'r_frac' : {list} Fractional radius (increasing)
             'pu_frac' : {list} Zr wt fraction per pellet radial node
             'zr_frac' : {list} Pu wt fraction per pellet radial node
@@ -53,14 +56,28 @@ class FuelPin(LoggedClass):
 
     """
 
-    def __init__(self, d_pin, clad_thickness, clad_mat, fuel_params,
-                 gap_mat=None, beta=2.0):
-        """Instantiate FuelPin instance, set up geometric parameters"""
-        LoggedClass.__init__(self, 0, 'dassh.FuelPin')
+    def __init__(self, d_pin, clad_thickness, clad_mat, fuel_params={},
+                 pin_params={}, gap_mat=None, beta=2.0):
+        """Instantiate PinModel instance, set up geometric parameters"""
+        LoggedClass.__init__(self, 0, 'dassh.PinModel')
+
+        # CHECK: NEED ONE OF "fuel_params" OR "pin_params"
+        if not fuel_params and not pin_params:
+            self.log('error', ('Must specify one of "fuel_params" or '
+                               ' "pin_params" dictionaries'))
+        if fuel_params and pin_params:
+            self.log('error', ('Only one "fuel_params" or "pin_params" '
+                               'dictionary allowed'))
+
+        # Choose the active one
+        if fuel_params:
+            params = fuel_params
+        else:
+            params = pin_params
 
         # COOLANT-CLAD HTC PARAMETERS
-        self.htc_params = fuel_params['htc_params_clad']
-        fc_gap = fuel_params['fcgap_thickness']
+        self.htc_params = params['htc_params_clad']
+        fc_gap = params['gap_thickness']
 
         # LOAD CLADDING PARAMETERS
         self.clad = {}
@@ -91,14 +108,31 @@ class FuelPin(LoggedClass):
 
         # LOAD FUEL PARAMETERS
         self.fuel = {}
-        self.fuel['n_pts'] = len(fuel_params['r_frac'])
+        self.fuel['n_pts'] = len(params['r_frac'])
+        self.fuel['mat'] = []
         # Consistency checks
-        keys_to_check = ['r_frac', 'pu_frac', 'zr_frac', 'porosity']
-        if not all([len(fuel_params[k]) == self.fuel['n_pts']
-                    for k in keys_to_check]):
-            self.log('error', ('Zr/Pu weight fraction, fractional '
-                               'radius, and porosity arrays must '
-                               'have equal length'))
+        if fuel_params:
+            keys_to_check = ('r_frac', 'pu_frac', 'zr_frac', 'porosity')
+            if not all([len(params[k]) == self.fuel['n_pts']
+                        for k in keys_to_check]):
+                self.log('error', ('Zr/Pu weight fraction, fractional '
+                                   'radius, and porosity arrays must '
+                                   'have equal length'))
+            # If passes: set up fuel material list
+            for i in range(self.fuel['n_pts']):
+                self.fuel['mat'].append(
+                    MetallicFuel(params['pu_frac'][i],
+                                 params['zr_frac'][i],
+                                 params['porosity'][i],
+                                 beta))
+        else:
+            if not len(params['r_frac']) == len(params['pin_material']):
+                self.log('error', ('Must specify equal number of radial '
+                                   'zones and fuel materials'))
+            # If passes: set up fuel material list
+            for i in range(self.fuel['n_pts']):
+                self.fuel['mat'].append(params['pin_material'][i])
+
         # Radial Node Geometry
         # Parameters are specified at the center of radial nodes
         # Secondary boundaries are created between radial nodes where
@@ -122,10 +156,10 @@ class FuelPin(LoggedClass):
         radius_out_fuel = self.clad['r'][0] - fc_gap
         self.fuel['r'] = np.zeros((self.fuel['n_pts'], 2))
         for reg in range(self.fuel['n_pts'] - 1):
-            self.fuel['r'][reg][0] = fuel_params['r_frac'][reg]
-            self.fuel['r'][reg][1] = fuel_params['r_frac'][reg + 1]
-        if not fuel_params['r_frac'][-1] == 1.0:
-            self.fuel['r'][-1] = [fuel_params['r_frac'][-1], 1.0]
+            self.fuel['r'][reg][0] = params['r_frac'][reg]
+            self.fuel['r'][reg][1] = params['r_frac'][reg + 1]
+        if not params['r_frac'][-1] == 1.0:
+            self.fuel['r'][-1] = [params['r_frac'][-1], 1.0]
 
         self.fuel['r'] *= radius_out_fuel
         # 2021-05-06 NEW SHIT
@@ -153,33 +187,10 @@ class FuelPin(LoggedClass):
                               - self.fuel['rmsq'][:-1])
         self.fuel['drmsq'] = self.fuel['drmsq'].transpose()
 
-        if 'emissivity' in fuel_params.keys():
-            self.fuel['e'] = fuel_params['emissivity']
+        if 'emissivity' in params.keys():
+            self.fuel['e'] = params['emissivity']
         else:
             self.fuel['e'] = 0.9  # this is the SE2ANL default
-
-        # Thermal conductivity coefficients
-        # k = (a + bT + cT**2) * C_IR
-        # C_IR = Irradiation coefficient; a decrease in thermal cond.
-        #        due to increased porosity in the fuel)
-        # For references, see:
-        # - "Metallic Fuels Handbook" Section C.1.2 (1986).
-        # - R. Vilim "Simple Fuel Pin Model for SE2ANL" (1987).
-        self.fuel['kc'] = np.zeros((self.fuel['n_pts'], 3))
-        for i in range(self.fuel['n_pts']):
-            self.fuel['kc'][i, 0] = \
-                17.5 * ((1 - 2.23 * fuel_params['zr_frac'][i])
-                        / (1 + 1.61 * fuel_params['zr_frac'][i])
-                        - 2.62 * fuel_params['pu_frac'][i])
-            self.fuel['kc'][i, 1] = \
-                0.0154 * ((1 + 0.061 * fuel_params['zr_frac'][i])
-                          / (1 + 1.61 * fuel_params['zr_frac'][i])
-                          + 0.90 * fuel_params['pu_frac'][i])
-            self.fuel['kc'][i, 2] = \
-                9.38e-6 * (1 - 2.7 * fuel_params['pu_frac'][i])
-            self.fuel['kc'][i] *= \
-                ((1 - fuel_params['porosity'][i])
-                 / (1 + beta * fuel_params['porosity'][i]))
 
     def calculate_temperatures(self, q_lin, T_cool, htc, dz, atol=1e-3):
         """Calculate cladding and fuel pellet temperatures
@@ -423,8 +434,25 @@ class FuelPin(LoggedClass):
             Fuel thermal conductivity (W/m-K)
 
         """
-        k = (self.fuel['kc'][i, 0] + self.fuel['kc'][i, 1] * T
-             + self.fuel['kc'][i, 2] * T**2)
-        if np.any(k < 0):
-            self.log('error', 'Negative fuel thermal conductivity')
-        return k
+        self.fuel['mat'][i].update(T)
+        return self.fuel['mat'][i].thermal_conductivity
+
+
+class MetallicFuel(Material):
+    """Material-like class for metallic fuel thermal conductivity"""
+    def __init__(self, x_pu, x_zr, porosity, beta):
+        # Thermal conductivity coefficients
+        # k = (a + bT + cT**2) * C_IR
+        # C_IR = Irradiation coefficient; a decrease in thermal cond.
+        #        due to increased porosity in the fuel)
+        # For references, see:
+        # - "Metallic Fuels Handbook" Section C.1.2 (1986).
+        # - R. Vilim "Simple Fuel Pin Model for SE2ANL" (1987).
+        c0 = 17.5 * ((1 - 2.23 * x_zr) / (1 + 1.61 * x_zr) - 2.62 * x_pu)
+        c1 = 0.0154 * ((1 + 0.061 * x_zr) / (1 + 1.61 * x_zr) + 0.9 * x_pu)
+        c2 = 9.38e-6 * (1 - 2.7 * x_pu)
+        coeffs = np.array([c0, c1, c2])
+        porosity_factor = (1 - porosity) / (1 + beta * porosity)
+        coeffs *= porosity_factor
+        coeffs = {'thermal_conductivity': coeffs}
+        Material.__init__(self, 'metallic_fuel', coeff_dict=coeffs)

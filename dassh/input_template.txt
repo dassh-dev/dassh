@@ -100,7 +100,7 @@
                 htc_params = float_list(default=None)
                 convection_factor = float(min=0.000001, max=1.0, default=1.0)
         [[[FuelModel]]]
-            fcgap_thickness = float(min=0.0, default=0.0)
+            gap_thickness = float(min=0.0, default=0.0)
             clad_material = string(default=None)
             gap_material = string(default=None)
             htc_params_clad = float_list(default=None)
@@ -108,6 +108,13 @@
             pu_frac = force_list(default=list(0.0))
             zr_frac = force_list(default=list(0.0))
             porosity = force_list(default=list(0.0))
+        [[[PinModel]]]
+            gap_material = string(default=None)
+            gap_thickness = float(min=0.0, default=0.0)
+            clad_material = string(default=None)
+            htc_params_clad = float_list(default=None)
+            pin_material = force_list(default=None)
+            r_frac = force_list(default=list(0.0))
 
 
 [Orificing]

@@ -153,7 +153,7 @@ class Assembly(LoggedClass):
 
         # Pin peak temperatures: want radial profile so need to store
         # a bit more stuff in order to seek out the right value
-        if 'FuelModel' in asm_input.keys():
+        if any(k in asm_input.keys() for k in ('FuelModel', 'PinModel')):
             self._peak['pin'] = {}
             keys = ['clad_od', 'clad_mw', 'clad_id',
                     'fuel_od', 'fuel_cl']

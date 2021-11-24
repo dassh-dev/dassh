@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-19
+date: 2021-11-24
 author: matz
 Containers to hold and update material properties
 """
@@ -24,7 +24,13 @@ import copy
 import numpy as np
 from dassh.logged_class import LoggedClass
 
+
 _ROOT = os.path.dirname(os.path.abspath(__file__))
+
+
+_BUILTINS = ['ht9', 'ss316', 'ss304', 'd9', 'bismuth', 'lbe', 'lead',
+             'nak', 'potassium', 'sodium', 'water' 'ht9_se2anl',
+             'ht9_se2anl_425', 'sodium_se2anl', 'sodium_se2anl_425']
 
 
 class Material(LoggedClass):
@@ -154,8 +160,6 @@ class Material(LoggedClass):
             coeff_dict = globals()[self.name.lower()]
         self._data = {}
         for property in coeff_dict.keys():
-            # self._data[property.lower()] = \
-            #     np.poly1d(coeff_dict[property.lower()][::-1])
             self._data[property.lower()] = \
                 _MatPoly(coeff_dict[property.lower()][::-1])
 
@@ -204,7 +208,7 @@ class Material(LoggedClass):
 
     @temperature.setter
     def temperature(self, temperature):
-        if not temperature > 0:
+        if any_nonpositive(temperature):
             msg = (f'Material "{self.name}" temperature must '
                    f'be > 0; given {temperature} K')
             self.log('error', msg)
@@ -212,7 +216,7 @@ class Material(LoggedClass):
 
     @heat_capacity.setter
     def heat_capacity(self, heat_capacity):
-        if not heat_capacity > 0:
+        if any_nonpositive(heat_capacity):
             msg = (f'Material "{self.name}" heat capacity '
                    f'must be > 0; given {heat_capacity}')
             self.log('error', msg)
@@ -220,7 +224,7 @@ class Material(LoggedClass):
 
     @density.setter
     def density(self, density):
-        if not density > 0:
+        if any_nonpositive(density):
             msg = (f'Material "{self.name}" density '
                    f'must be > 0; given {density}')
             self.log('error', msg)
@@ -228,7 +232,7 @@ class Material(LoggedClass):
 
     @thermal_conductivity.setter
     def thermal_conductivity(self, thermal_conductivity):
-        if not thermal_conductivity >= 0:
+        if any_negative(thermal_conductivity):
             msg = (f'Material "{self.name}" thermal conductivity must '
                    f'be >= 0; given {thermal_conductivity}')
             self.log('error', msg)
@@ -236,7 +240,7 @@ class Material(LoggedClass):
 
     @viscosity.setter
     def viscosity(self, viscosity):
-        if not viscosity > 0:
+        if any_nonpositive(viscosity):
             msg = (f'Material "{self.name}" dynamic viscosity '
                    f'must be > 0; given {viscosity}')
             self.log('error', msg)
@@ -361,6 +365,22 @@ class _MatTracker(object):
         self._dat0 = self._dat
         self._dat = []
         self.recalculate_params = False
+
+
+def any_negative(value):
+    """Confirm that value(s) are nonnegative (zero allowed)"""
+    try:
+        return any(value < 0)
+    except TypeError:
+        return value < 0
+
+
+def any_nonpositive(value):
+    """Confirm that value(s) are positive (zero not allowed)"""
+    try:
+        return any(value <= 0)
+    except TypeError:
+        return value <= 0
 
 
 ########################################################################
