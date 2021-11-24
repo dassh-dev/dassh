@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-02
+date: 2021-11-24
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -31,7 +31,7 @@ from dassh.subchannel import Subchannel
 from dassh.logged_class import LoggedClass
 from dassh.correlations import check_correlation
 from dassh.region import DASSH_Region
-from dassh.fuel_pin import FuelPin
+from dassh.pin_model import PinModel
 from dassh.material import _MatTracker
 
 
@@ -83,11 +83,30 @@ def make_rr_asm(asm_input, name, mat_dict, flow_rate, se2geo=False,
             asm_input['FuelModel']['htc_params_clad'] = \
                 [p2d**3.8 * 0.01**0.86 / 3.0,
                  0.86, 0.86, 4.0 + 0.16 * p2d**5]
-        rr.pin_model = FuelPin(asm_input['pin_diameter'],
-                               asm_input['clad_thickness'],
-                               mat_dict['clad'],
-                               asm_input['FuelModel'],
-                               mat_dict['gap'])
+        rr.pin_model = PinModel(asm_input['pin_diameter'],
+                                asm_input['clad_thickness'],
+                                mat_dict['clad'],
+                                fuel_params=asm_input['FuelModel'],
+                                gap_mat=mat_dict['gap'])
+    elif 'PinModel' in asm_input.keys():
+        if asm_input['PinModel']['htc_params_clad'] is None:
+            p2d = (asm_input['pin_pitch']
+                   / asm_input['pin_diameter'])
+            asm_input['PinModel']['htc_params_clad'] = \
+                [p2d**3.8 * 0.01**0.86 / 3.0,
+                 0.86, 0.86, 4.0 + 0.16 * p2d**5]
+        asm_input['PinModel']['pin_material'] = \
+            [x.clone() for x in mat_dict['pin']]
+        print(asm_input['PinModel'])
+        rr.pin_model = PinModel(asm_input['pin_diameter'],
+                                asm_input['clad_thickness'],
+                                mat_dict['clad'],
+                                pin_params=asm_input['PinModel'],
+                                gap_mat=mat_dict['gap'])
+    else:
+        pass
+
+    if hasattr(rr, 'pin_model'):
         # Only the last 6 columns are for data:
         # (local avg coolant temp, clad OD/MW/ID, fuel OD/CL);
         # The first 4 columns are for identifying stuff:

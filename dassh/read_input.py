@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-18
+date: 2021-11-24
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -522,6 +522,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         self.check_duct()
         self.check_dummy_pin()
         self.check_fuel_model()
+        self.check_pin_model()
         self.check_correlations()
         # Assignment
         self.check_assignment_assembly_agreement()
@@ -991,13 +992,13 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                     'pu_frac': ['0.0'],
                     'zr_frac': ['0.0'],
                     'porosity': ['0.0'],
-                    'fcgap_thickness': 0.0,
+                    'gap_thickness': 0.0,
                     'clad_material': None,
                     'gap_material': None,
                     'htc_params_clad': None}
 
         for asm in self.data['Assembly']:
-            pre = f'Asm: \"{asm}\"; '  # indicate asm for error msg
+            pre = f'Asm: "{asm}"; '  # indicate asm for error msg
             # For asm with default FuelModel entry: delete and continue
             if self.data['Assembly'][asm]['FuelModel'] == _DEFAULT:
                 del self.data['Assembly'][asm]['FuelModel']
@@ -1007,7 +1008,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
             # difference between the pin radius and clad thickness
             msg = ('Fuel-clad gap thickness must be less than the '
                    'clad inner radius')
-            if (self.data['Assembly'][asm]['FuelModel']['fcgap_thickness']
+            if (self.data['Assembly'][asm]['FuelModel']['gap_thickness']
                 > (self.data['Assembly'][asm]['pin_diameter'] / 2.0
                    - self.data['Assembly'][asm]['clad_thickness'])):
                 # raise ValueError(pre + msg)
@@ -1035,11 +1036,11 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                     self.log('error', pre + msg)
 
             # Check that all inputs have entries
-            msg = ('FuelModel input fields \"r_frac\", \"r_frac\", '
-                   '\"r_frac\", and \"r_frac\" are required')
+            msg = ('FuelModel input fields "r_frac", "pu_frac", '
+                   '"zr_frac", and "porosity" are required')
             for k in fm_rad_keys:
                 if len(fm[k]) == 0:
-                    self.log('error', f'{pre}{msg}; missing \"{k}\"')
+                    self.log('error', f'{pre}{msg}; missing "{k}"')
 
             # Check all inputs have same number of entries
             msg = 'FuelModel inputs must have equal number of nodes'
@@ -1048,16 +1049,14 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                     self.log('error', f'{pre}{msg}; error in key={k}')
 
             # If FuelModel is specified, cladding material is required
-            msg = ('\"clad_material\" input required to '
-                   'calculate pin temps')
+            msg = '"clad_material" input required'
             if fm['clad_material'] is None:
                 self.log('error', pre + msg)
 
             # If fuel-clad gap thickness is greater than 0, gap
             # material input is required
-            msg = ('\"gap_material\" iinput required if '
-                   'fcgap_thickness > 0.0')
-            if (fm['fcgap_thickness'] > 0.0 and
+            msg = '"gap_material" required if gap_thickness > 0.0'
+            if (fm['gap_thickness'] > 0.0 and
                     fm['gap_material'] is None):
                 self.log('error', pre + msg)
 
@@ -1068,6 +1067,85 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
             if any([x > 0.37037 for x in
                     self.data['Assembly'][asm]['FuelModel']['pu_frac']]):
                 self.log('error', msg)
+
+    def check_pin_model(self):
+        """Make sure pin and fuel layer specs are physically meaningful
+        and agree with other components of the Assembly input."""
+        # All assemblies will have at least default PinModel entry;
+        _DEFAULT = {'r_frac': ['0.0'],
+                    'gap_thickness': 0.0,
+                    'clad_material': None,
+                    'gap_material': None,
+                    'pin_material': None,
+                    'htc_params_clad': None}
+
+        for asm in self.data['Assembly']:
+            pre = f'Asm: "{asm}"; '  # indicate asm for error msg
+            # For asm with default PinModel entry: delete and continue
+            if self.data['Assembly'][asm]['PinModel'] == _DEFAULT:
+                del self.data['Assembly'][asm]['PinModel']
+                continue
+            else:
+                if 'FuelModel' in self.data['Assembly'][asm].keys():
+                    msg = 'Only one "PinModel" or "FuelModel" section allowed'
+                    self.log('error', pre + msg)
+
+            # Convert all values to float: if not possible, raise error
+            # These come in as who-knows-what from "force_list", so this
+            # conversion is also a setup step
+            msg = 'Radial fuel pin parameters must be of type float'
+            try:
+                self.data['Assembly'][asm]['PinModel']['r_frac'] = \
+                    [float(x) for x in
+                     self.data['Assembly'][asm]['PinModel']['r_frac']]
+            except ValueError:
+                self.log('error', f'{pre}{msg}; key=r_frac')
+
+            pin_model = self.data['Assembly'][asm]['PinModel']
+
+            # Must have entries in 'pin_material'; these are checked for
+            # validity in a different method
+            if pin_model['pin_material'] is None:
+                self.log('error', pre + 'Must specify "pin_material"')
+
+            # If specified, fuel-clad gap must be less than the
+            # difference between the pin radius and clad thickness
+            msg = ('Fuel-clad gap thickness must be less than the '
+                   'clad inner radius')
+            r_out = 0.5 * self.data['Assembly'][asm]['pin_diameter']
+            r_in = r_out - self.data['Assembly'][asm]['clad_thickness']
+            if pin_model['gap_thickness'] > r_in:
+                self.log('error', pre + msg)
+
+            # Check that fractional radii are all increasing
+            msg = ('Radius frations must arranged in increasing order; '
+                   'if not annular fuel, the first value should be 0.0')
+            for i in range(1, len(pin_model['r_frac'])):
+                if pin_model['r_frac'][i] <= pin_model['r_frac'][i - 1]:
+                    self.log('error', pre + msg)
+
+            # Check that all inputs have entries
+            msg = 'Inputs "r_frac" and "pin_material" are required'
+            for k in ('r_frac', 'pin_material'):
+                if len(pin_model[k]) == 0:
+                    self.log('error', f'{pre}{msg}; missing \"{k}\"')
+
+            # Check all inputs have same number of entries
+            msg = 'PinModel inputs must have equal number of nodes'
+            for k in ('r_frac', 'pin_material'):
+                if len(pin_model[k]) != len(pin_model['r_frac']):
+                    self.log('error', f'{pre}{msg}; error in key={k}')
+
+            # If PinModel is specified, cladding material is required
+            if pin_model['clad_material'] is None:
+                self.log('error', pre + '"clad_material" input required')
+
+            # If fuel-clad gap thickness is greater than 0, gap
+            # material input is required
+            msg = '"gap_material" required if gap_thickness > 0.0'
+            if (pin_model['gap_thickness'] > 0.0 and
+                    pin_model['gap_material'] is None):
+                self.log('error', pre + msg)
 
     def check_correlations(self):
         """Add some hard cutoffs on assembly characteristics to avoid
@@ -1563,6 +1641,14 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                 for k in ['gap_material', 'clad_material']:
                     if fm[k] is not None and fm[k] not in matlist:
                         matlist.append(fm[k])
+            if 'PinModel' in self.data['Assembly'][a].keys():
+                pm = self.data['Assembly'][a]['PinModel']
+                for k in ['gap_material', 'clad_material']:
+                    if pm[k] is not None and pm[k] not in matlist:
+                        matlist.append(pm[k])
+                for m in pm['pin_material']:
+                    if m not in matlist and m is not None:
+                        matlist.append(m)
 
         # Set up a DASSH Material for each material specified in the
         # list, importing correlations as necessary
@@ -1596,8 +1682,8 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         # Coolant: density, viscosity, thermal cond., heat capacity
         for m in matdict.keys():
             if m == self.data['Core']['coolant_material']:
-                for prop in ['density', 'thermal_conductivity',
-                             'viscosity', 'heat_capacity']:
+                for prop in ('density', 'thermal_conductivity',
+                             'viscosity', 'heat_capacity'):
                     self._check_mat(matdict[m], prop)
             else:
                 self._check_mat(matdict[m], 'thermal_conductivity')
@@ -1840,8 +1926,8 @@ def convert_length(data):
                         conv(data['Assembly'][a]['AxialRegion'][k][p])
 
         if 'FuelModel' in data['Assembly'][a].keys():
-            data['Assembly'][a]['FuelModel']['fcgap_thickness'] = \
-                conv(data['Assembly'][a]['FuelModel']['fcgap_thickness'])
+            data['Assembly'][a]['FuelModel']['gap_thickness'] = \
+                conv(data['Assembly'][a]['FuelModel']['gap_thickness'])
 
     # Convert requested axial plane solves
     if data['Setup']['axial_plane'] is not None:
