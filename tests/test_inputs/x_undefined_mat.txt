@@ -44,7 +44,7 @@
         duct_material  = HT9
         [[[FuelModel]]]
             clad_material   = HT9
-            fcgap_thickness = 0.005
+            gap_thickness = 0.005
             gap_material    = argonne
             r_frac   =  0.0, 0.33333, 0.66667
             pu_frac  = 0.20,    0.20,    0.20
