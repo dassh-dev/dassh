@@ -1,6 +1,6 @@
 ########################################################################
 # author: Milos Atz
-# date: 2021-06-10
+# date: 2021-11-24
 # comment: DASSH input example (all assemblies except one are unrodded)
 ########################################################################
 # SETUP: Problem setup, user options, etc
@@ -16,6 +16,16 @@
         temperature    = Celsius
         length         = cm
         mass_flow_rate = kg/s
+
+
+########################################################################
+
+[Materials]
+    [[sodium_fixed]]
+        thermal_conductivity = 75.0
+        heat_capacity = 1275.0
+        density = 850.0
+        viscosity = 0.00025
 
 
 ########################################################################
@@ -42,12 +52,11 @@
 
 [Core]
     coolant_inlet_temp   = 350.0
-    coolant_material     = sodium_se2anl_425
+    coolant_material     = sodium_fixed
     length               = 375.0
     assembly_pitch       = 12.0
-    bypass_fraction      = 0.005
-    # gap_model          = no_flow
-    gap_model            = duct_average
+    bypass_fraction      = 0.05
+    gap_model            = flow
 
 
 ########################################################################
@@ -84,8 +93,9 @@
         clad_thickness = 0.132
         wire_pitch     = 20.320
         wire_diameter  = 0.0274
-        duct_ftf       = 9.0, 9.554, 11.154, 11.757
+        duct_ftf       = 9.00, 9.60, 11.15, 11.75
         duct_material  = HT9_se2anl_425
+        bypass_gap_flow_fraction = 0.15
 
 
 ########################################################################
@@ -96,7 +106,7 @@
 
 [Assignment]
     [[ByPosition]]
-        control   = 1, 1, 1, DELTA_TEMP, 25.0
+        control   = 1, 1, 1, DELTA_TEMP, 10.0
         fuel      = 2, 1, 6, DELTA_TEMP, 25.0
 
 
