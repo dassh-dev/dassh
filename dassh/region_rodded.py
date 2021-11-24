@@ -899,6 +899,9 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         None
 
         """
+        # Duct temperatures: calculate with new coolant properties
+        self._calc_duct_temp(q['duct'], t_gap, htc_gap, adiabatic)
+
         # Interior coolant temperatures: calculate using coolant
         # properties from previous axial step
         self.temp['coolant_int'] += \
@@ -918,8 +921,8 @@ class RoddedRegion(LoggedClass, DASSH_Region):
             # Update bypass coolant properties for the duct wall calc
             self._update_coolant_byp_params(self.avg_coolant_byp_temp)
 
-        # Duct temperatures: calculate with new coolant properties
-        self._calc_duct_temp(q['duct'], t_gap, htc_gap, adiabatic)
+        # # Duct temperatures: calculate with new coolant properties
+        # self._calc_duct_temp(q['duct'], t_gap, htc_gap, adiabatic)
 
         # Update pressure drop (now that correlations are updated)
         self._pressure_drop += self.calculate_pressure_drop(dz)
@@ -1516,7 +1519,7 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                 c1_L_over_2 = c1 * self.duct_params['L/2'][i]
                 c2 = (t_in
                       + qLsq_over_8k
-                      + self.duct_params['L/2'][i] / htc_in
+                      + qtp * self.duct_params['L/2'][i] / htc_in
                       + c1_L_over_2
                       + c1 * self.duct.thermal_conductivity / htc_in)
 
@@ -1544,7 +1547,7 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                 -qLsq_over_8k + c1_L_over_2 + c2
 
     def _calc_duct_power(self, p_duct, duct_id):
-        """Transform linear power to power density for duct wall calculation"""
+        """Transform duct wall linear power to power density"""
         if p_duct is None:
             return np.zeros(self.subchannel.n_sc['duct']['total'])
         else:
@@ -1553,7 +1556,8 @@ class RoddedRegion(LoggedClass, DASSH_Region):
             # Convert linear power (W/m) to volumetric power (W/m^3)
             # (qtp == q triple prime); value is very large
             pdens = (p_duct[start:end]
-                     / self.duct_params['area'][duct_id, self._duct_idx])
+                     / self.duct_params['q_area'][duct_id,
+                                                  self._duct_idx])
             return pdens
 
     ####################################################################
@@ -1815,6 +1819,12 @@ def calculate_geometry(n_ring, P, D, Pw, Dw, dftf, n_sc, se2=False):
         duct['L/2'][i] = duct['thickness'][i] * 0.5
         duct['L^2/4'][i] = duct['L/2'][i]**2
         duct['L^2/8'][i] = duct['L^2/4'][i] * 0.5
+
+    # Power generation
+    duct['q_area'] = duct['area'].copy()
+    for i in range(n_duct):
+        duct['q_area'][i][1] = (2 * duct['thickness'][i]
+                                * d['wcorner'][i][1])
 
     # --------------------------------------------------------------
     # Collect and return

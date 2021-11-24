@@ -136,7 +136,7 @@ def test_conv_approx_byp(testdir, wdir_setup):
     overall_diff = 150.0
     max_rel_diff = np.max(np.abs(diff_int)) / overall_diff
     print('Max (abs) int diff / dT:', max_rel_diff)
-    assert max_rel_diff < 0.0025
+    assert max_rel_diff < 0.003
 
     # Bypass subchannel differences
     diff_byp = (r_obj['on'].assemblies[0].rodded.temp['coolant_byp']
@@ -147,7 +147,7 @@ def test_conv_approx_byp(testdir, wdir_setup):
     overall_diff = 150.0
     max_rel_diff = np.max(np.abs(diff_byp)) / overall_diff
     print('Max (abs) byp diff / dT:', max_rel_diff)
-    assert max_rel_diff < 0.0025
+    assert max_rel_diff < 0.003
 
 
 def test_ebal_with_ur(testdir, wdir_setup):
