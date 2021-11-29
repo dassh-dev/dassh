@@ -90,7 +90,7 @@ if __name__ == "__main__":
           url=URL,
           version=VERSION,
           download_url=DOWNLOAD_URL,
-          python_requires='>=3.5',  # FULL FUNCTIONALITY REQUIRES 3.7+!!
+          python_requires='>=3.6',
           install_requires=install_requires,
           packages=['dassh'],
           package_dir={'dassh': 'dassh'},
