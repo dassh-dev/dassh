@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-12
+date: 2021-11-29
 author: Milos Atz
 """
 ########################################################################
@@ -67,7 +67,10 @@ def check_dependencies():
         import pytest
     except ImportError:
         install_requires.append('pytest')
-
+    try:
+        import dill
+    except ImportError:
+        install_requires.append('dill')
     return install_requires
 
 
@@ -101,10 +104,10 @@ if __name__ == "__main__":
                                   'tests/*.py']},
           include_package_data=True,
           classifiers=['Intended Audience :: Science/Research',
-                       # 'Programming Language :: Python :: 3.5',
-                       # 'Programming Language :: Python :: 3.6',
+                       'Programming Language :: Python :: 3.5',
+                       'Programming Language :: Python :: 3.6',
                        'Programming Language :: Python :: 3.7+',
-                       # 'License :: OSI Approved :: MIT License',
+                       'License :: OSI Approved :: BSD 3-Clause License',
                        'Topic :: Scientific/Engineering :: Nuclear Energy',
                        'Operating System :: Unix',
                        'Operating System :: MacOS'],
