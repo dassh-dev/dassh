@@ -14,17 +14,15 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-02
+date: 2021-11-29
 author: matz
 Unit tests for orificing optimization execution
 """
 ########################################################################
 import os
 import numpy as np
-import dassh
 import subprocess
-# import pytest
-# import shutil
+import dassh
 
 
 def test_orificing_fuel_single_timestep(testdir, wdir_setup):
@@ -152,9 +150,8 @@ def test_orificing_peak_coolant(testdir, wdir_setup):
     path_to_tmp_infile = wdir_setup(inpath, outpath)
 
     # Link other directories to skip DASSH calculation
-    for dir in ('cccc', '_power'):
-        dassh.utils._symlink(os.path.join(datapath, dir),
-                             os.path.join(outpath, dir))
+    dassh.utils._symlink(os.path.join(datapath, 'cccc'),
+                         os.path.join(outpath, 'cccc'))
 
     # Run DASSH
     return_code = subprocess.call(['dassh', path_to_tmp_infile])

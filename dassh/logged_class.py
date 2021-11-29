@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-10-29
+date: 2021-11-24
 author: matz (inherited from Dr. A. Nelson)
 Log messages, warnings, and errors produced by each class in DASSH
 """
@@ -53,7 +53,7 @@ LOG_LEVEL = logging.INFO
 FILE_LOG_LEVEL = LOG_LEVEL - 5
 
 
-def init_root_logger(path, name):
+def init_root_logger(path, name, logfile_openmode="w+"):
     # Register a new log level
     logging.addLevelName(FILE_LOG_LEVEL, "INFO_FILE")
 
@@ -71,7 +71,7 @@ def init_root_logger(path, name):
     # Create the Handler for logging data to a file
     logger_file_handler = logging.FileHandler(
         f'{os.path.join(path, name.lower())}.log',
-        'w+')
+        logfile_openmode)
     logger_file_handler.setLevel(FILE_LOG_LEVEL)
 
     # Add the Formatter to the Handler
@@ -87,9 +87,6 @@ def init_root_logger(path, name):
         logging.Formatter(f'{name.upper()}....%(message)s')
     logger_stream_handler.setFormatter(logger_stream_formatter)
     logger.addHandler(logger_stream_handler)
-
-    # Write to the streams so that the root logger is fully configured
-    logger.info(f"{name.upper()} logger initialized")
     return logger
 
 

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-02
+date: 2021-11-24
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -27,8 +27,6 @@ import sys
 import pickle
 import datetime
 import time
-import multiprocessing as mp
-
 import dassh
 from dassh.logged_class import LoggedClass
 
@@ -889,7 +887,6 @@ class Reactor(LoggedClass):
             pass
 
         with open(os.path.join(path, 'dassh_reactor.pkl'), 'wb') as f:
-            # cPickle.dump(self, f, cPickle.HIGHEST_PROTOCOL)
             pickle.dump(self, f, protocol=pickle.DEFAULT_PROTOCOL)
 
     def reset(self):
@@ -1001,8 +998,11 @@ class Reactor(LoggedClass):
     def _data_close(self):
         """Close the data files"""
         for k in self._options['dump']['files'].keys():
-            self._options['dump']['files'][k].close()
-            self._options['dump']['files'][k] = None
+            try:
+                self._options['dump']['files'][k].close()
+                self._options['dump']['files'][k] = None
+            except KeyError:
+                continue
 
     ####################################################################
     # TEMPERATURE SWEEP
@@ -1031,19 +1031,12 @@ class Reactor(LoggedClass):
         # Initialize duct temperatures in all assemblies
         self.axial_step0()
 
-        # Open workers, if parallel (NOT FUNCTIONAL)
-        if self._options['parallel']:
-            pool = mp.Pool()
-
         # Track the time elapsed
         self._starttime = time.time()
 
         for i in range(1, len(self.z)):
             # Calculate temperatures
-            if self._options['parallel']:
-                self.axial_step_parallel(self.z[i], self.dz[i - 1], pool)
-            else:
-                self.axial_step(self.z[i], self.dz[i - 1], i, verbose)
+            self.axial_step(self.z[i], self.dz[i - 1], i, verbose)
 
             # Log progress, if requested
             if self._options['log_progress']:
@@ -1052,9 +1045,6 @@ class Reactor(LoggedClass):
                     self._print_log_msg(i)
 
         # Once the sweep is done close the CSV data files, if open
-        if self._options['parallel']:
-            pool.close()
-            pool.join()
         try:
             self._data_close()
         except (AttributeError, KeyError):

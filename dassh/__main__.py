@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-12
+date: 2021-11-24
 author: matz
 Main DASSH calculation procedure
 """
@@ -57,6 +57,7 @@ def main(args=None):
     print(dassh._ascii._ascii_title)
     in_path = os.path.split(args.inputfile)[0]
     dassh_logger = dassh.logged_class.init_root_logger(in_path, 'dassh')
+    dassh_logger.info("DASSH logger initialized")
 
     # Pre-processing
     # Read input file and set up DASSH input object
@@ -64,27 +65,7 @@ def main(args=None):
     dassh_input = dassh.DASSH_Input(args.inputfile)
 
     # CHECK FOR PYTHON VERSION WARNINGS/ERRORS
-    version = '.'.join([str(sys.version_info.major),
-                        str(sys.version_info.minor),
-                        str(sys.version_info.micro)])
-    if dassh_input.data['Plot'] and sys.version_info < (3, 7):
-        dassh_logger.log(
-            30,
-            'WARNING: DASSH plotting capability requires '
-            f'Python 3.7+; detected {version}')
-    if args.save_reactor and sys.version_info < (3, 7):
-        dassh_logger.log(
-            30,
-            'WARNING: --save_reactor capability requires '
-            f'Python 3.7+; detected {version}')
-    if dassh_input.data['Orificing'] and sys.version_info < (3, 7):
-        dassh_logger.log(
-            40,
-            'ERROR: DASSH orificing optimization requires '
-            f'Python 3.7+; detected {version}')
-        sys.exit(1)
-    else:
-        pass
+    # check_version(dassh_input, dassh_logger, args.save_reactor)
 
     # DASSH calculation without orificing optimization
     if dassh_input.data['Orificing'] is False:
@@ -107,6 +88,32 @@ def main(args=None):
     if args.profile:
         pr.disable()
         pr.dump_stats('dassh_profile.out')
+
+
+def check_version(dassh_inp, dassh_log, save_reactor):
+    """Check for DASSH limitations depending on Python version;
+    tentatively deprecated."""
+    version = '.'.join([str(sys.version_info.major),
+                        str(sys.version_info.minor),
+                        str(sys.version_info.micro)])
+    if dassh_inp.data['Plot'] and sys.version_info < (3, 7):
+        dassh_log.log(
+            30,
+            'WARNING: DASSH plotting capability requires '
+            f'Python 3.7+; detected {version}')
+    if save_reactor and sys.version_info < (3, 7):
+        dassh_log.log(
+            30,
+            'WARNING: --save_reactor capability requires '
+            f'Python 3.7+; detected {version}')
+    if dassh_log.data['Orificing'] and sys.version_info < (3, 7):
+        dassh_log.log(
+            40,
+            'ERROR: DASSH orificing optimization requires '
+            f'Python 3.7+; detected {version}')
+        sys.exit(1)
+    else:
+        pass
 
 
 def run_dassh(dassh_input, dassh_logger, rx_args):
@@ -209,12 +216,16 @@ def _run_dassh(dassh_inp, dassh_log, args, timestep, wdir, link=None):
 
     # Post-processing: write output, save reactor if desired
     dassh_log.log(_log_info, 'Temperature sweep complete')
-    if args['save_reactor'] and sys.version_info >= (3, 7):
+    if args['save_reactor'] or dassh_inp.data['Plot']:
+        if sys.version_info < (3, 7):
+            handlers = dassh_log.handlers[:]
+            for handler in handlers:
+                handler.close()
+                dassh_log.removeHandler(handler)
         reactor.save()
-    elif dassh_inp.data['Plot']:
-        reactor.save()  # just in case plotting fails
-    else:
-        pass
+        if sys.version_info < (3, 7):
+            dassh_log = dassh.logged_class.init_root_logger(
+                dassh_inp.path, 'dassh', 'a+')
     dassh_log.log(_log_info, 'Output written')
 
     # Post-processing: generate figures, if desired
@@ -222,6 +233,7 @@ def _run_dassh(dassh_inp, dassh_log, args, timestep, wdir, link=None):
             and len(dassh_inp.data['Plot']) > 0):
         dassh_log.log(_log_info, 'Generating figures')
         dassh.plot.plot_all(dassh_inp, reactor)
+    return dassh_log
 
 
 def plot():
