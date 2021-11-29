@@ -14,12 +14,11 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-12
+date: 2021-11-29
 author: matz
 Test the mapping of assemblies and inter-assembly gap coolant
 """
 ########################################################################
-import copy
 import numpy as np
 import pytest
 import dassh
@@ -107,7 +106,7 @@ def small_core_no_power(testdir, coolant, c_fuel_asm, c_ctrl_asm):
     return core_obj
 
 
-@pytest.fixture
+@pytest.fixture(scope='function')
 def small_core_no_power_all_fuel(testdir, coolant, c_fuel_asm):
     """DASSH Core object for a 7-assembly core"""
     asm_list = build_asm_list(2)
@@ -734,7 +733,7 @@ def test_accelerated_noflow_model(small_core_no_power_all_fuel):
     what was previously implemented (used to get the "answer" below)"""
     # Set up random values for coolant and gap temperatures to ensure
     # that you're not using the "flat" initial temperature profile
-    c = copy.deepcopy(small_core_no_power_all_fuel)
+    c = small_core_no_power_all_fuel
     c.model = 'no_flow'
     c.gap_flow_rate = 0.0
     c._make_conv_mask()  # Remake HT constants/masks for noflow model

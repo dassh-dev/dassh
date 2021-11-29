@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-24
+date: 2021-11-29
 author: matz
 Pytest fixtures and related test utilities for the whole shebang
 """
@@ -27,7 +27,6 @@ import subprocess
 import numpy as np
 import pytest
 import dassh
-# import py4c
 
 
 @pytest.fixture(scope='session')

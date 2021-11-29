@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-24
+date: 2021-11-29
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -25,6 +25,7 @@ import subprocess
 import logging
 import sys
 import pickle
+import dill
 import datetime
 import time
 import dassh
@@ -58,8 +59,12 @@ def load(path='dassh_reactor.pkl'):
     DASSH Reactor object
 
     """
-    with open(path, 'rb') as f:
-        obj = pickle.load(f)
+    if sys.version_info < (3, 7):
+        with open(path, 'rb') as f:
+            obj = dill.load(f)
+    else:
+        with open(path, 'rb') as f:
+            obj = pickle.load(f)
     return obj
 
 
@@ -115,6 +120,7 @@ class Reactor(LoggedClass):
         # Store general inputs
         self.inlet_temp = dassh_input.data['Core']['coolant_inlet_temp']
         self.asm_pitch = dassh_input.data['Core']['assembly_pitch']
+        self._input_path = dassh_input.path
         if path is None:
             self.path = dassh_input.path
         else:
@@ -880,14 +886,18 @@ class Reactor(LoggedClass):
         if path is None:
             path = self.path
 
-        # Close the open data files
-        try:
+        try:  # Close the open data files
             self._data_close()
         except (KeyError, AttributeError):  # no open data
             pass
 
-        with open(os.path.join(path, 'dassh_reactor.pkl'), 'wb') as f:
-            pickle.dump(self, f, protocol=pickle.DEFAULT_PROTOCOL)
+        if sys.version_info < (3, 7):
+            with open(os.path.join(path, 'dassh_reactor.pkl'), 'wb') as f:
+                dill.dump(self, f, protocol=dill.DEFAULT_PROTOCOL)
+
+        else:
+            with open(os.path.join(path, 'dassh_reactor.pkl'), 'wb') as f:
+                pickle.dump(self, f, protocol=pickle.DEFAULT_PROTOCOL)
 
     def reset(self):
         """Reset all the temperatures back to the inlet temperature"""

@@ -14,9 +14,9 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-24
+date: 2021-11-29
 author: matz
-Test the DASSH Assembly object
+Test the DASSH RoddedRegion object (pin bundle)
 """
 ########################################################################
 import numpy as np
@@ -1001,15 +1001,14 @@ def test_accelerated_coolant_sc_method_against_old(c_fuel_rr):
         return dT * dz
 
     dT = np.zeros(len(c_fuel_rr.temp['coolant_int']))
-    dT_old = copy.deepcopy(dT)
-    c_fuel_rr_old = copy.deepcopy(c_fuel_rr)
+    dT_old = dT.copy()
 
     dz = 0.01
     for i in range(50):
         pin_power = 2e4 + 5e3 * np.random.random(c_fuel_rr.n_pin)
         cool_power = 1.5e3 + 500 * np.random.random(len(dT))
         dT_old += calc_coolant_int_temp_old(
-            c_fuel_rr_old, dz, pin_power, cool_power)
+            c_fuel_rr, dz, pin_power, cool_power)
         dT += c_fuel_rr._calc_coolant_int_temp(
             dz, pin_power, cool_power)
 
@@ -1109,8 +1108,7 @@ def test_accelerated_bypass_method_against_old(c_ctrl_rr):
         return dT
 
     dT = np.zeros(c_ctrl_rr.temp['coolant_byp'].shape)
-    dT_old = copy.deepcopy(dT)
-    c_fuel_rr_old = copy.deepcopy(c_ctrl_rr)
+    dT_old = dT.copy()
     dz = 0.01
     start_temp = 623.15
     for i in range(50):
@@ -1119,8 +1117,7 @@ def test_accelerated_bypass_method_against_old(c_ctrl_rr):
              + (start_temp + i * 1.0))
 
         c_ctrl_rr.temp['duct_surf'] = duct_surf_temp
-        c_fuel_rr_old.temp['duct_surf'] = duct_surf_temp
-        dT_old += _calc_coolant_byp_temp_old(c_fuel_rr_old, dz)
+        dT_old += _calc_coolant_byp_temp_old(c_ctrl_rr, dz)
         dT += c_ctrl_rr._calc_coolant_byp_temp(dz)
 
     print(np.average(dT))

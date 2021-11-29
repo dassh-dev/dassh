@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-03
+date: 2021-11-29
 author: matz
 Main DASSH calculation procedure
 
@@ -440,7 +440,7 @@ class Orificing(object):
     def _setup_input_parametric(self, id, name, loc, power):
         """Set up a generic DASSH input structure to run for pre-
         optimization parametric sweep"""
-        inp = copy.deepcopy(self._base_input)
+        inp = self._base_input.clone()
 
         # Remove all unused assembly types
         for k in inp.data['Assembly'].keys():
@@ -494,7 +494,7 @@ class Orificing(object):
 
     def _setup_input_perfect(self):
         """Using new flow rates, create new DASSH input"""
-        inp = copy.deepcopy(self._base_input)
+        inp = self._base_input.clone()
         # Eliminate orificing optimization input
         inp.data['Orificing'] = False
         # Set input path

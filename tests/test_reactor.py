@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-24
+date: 2021-11-29
 author: matz
 Test the temperature sweep across the core
 """
@@ -24,6 +24,13 @@ import pytest
 import os
 import sys
 import dassh
+
+
+def save_reactor_pytest(r_obj):
+    """Only save the DASSH reactor object in a pytest environment
+    if using Python >= 3.7"""
+    if sys.version_info >= (3, 7):
+        r_obj.save()
 
 
 ########################################################################
@@ -114,7 +121,7 @@ def test_instantiation_silly_core(testdir):
     r = dassh.Reactor(inp, path=os.path.join(testdir,
                                              'test_results',
                                              'test_16a_silly'))
-    r.save()
+    save_reactor_pytest(r)
     r.write_summary()
 
     # Confirm 16 assemblies
@@ -396,14 +403,17 @@ def test_single_asm(testdir):
     inp = dassh.DASSH_Input(os.path.join(inpath, 'input_single_asm.txt'))
     r = dassh.Reactor(inp, path=outpath, write_output=True)
     r.temperature_sweep()
-    r.save()
+    save_reactor_pytest(r)
     assert 'dassh.out' in os.listdir(outpath)
     assert np.abs(r.assemblies[0].avg_coolant_temp - 273.15 - 500) < 1.0
 
 
 def test_single_asm_parameter_update_freq(testdir):
-    """Perform the temperature sweep for a single assembly and confirm that
-    the result is close to what's obtained from the previous test."""
+    """Perform temperature sweep for a single asm and confirm that result
+    is close to that from the previous test ("test_single_asm")."""
+    # Skip this test if Python < 3.7 because cannot save the reactor obj
+    if sys.version_info.minor < 7:
+        pytest.skip('Cannot run this test with Python <= 3.7')
     inpath = os.path.join(testdir, 'test_inputs')
     outpath = os.path.join(testdir, 'test_results',
                            'test_single_asm_param_freq')
@@ -416,7 +426,7 @@ def test_single_asm_parameter_update_freq(testdir):
     inp.data['Setup']['param_update_tol'] = 0.01
     r = dassh.Reactor(inp, path=outpath, write_output=True)
     r.temperature_sweep()
-    r.save()
+    save_reactor_pytest(r)
     assert 'dassh.out' in os.listdir(outpath)  # Did it run all the way?
     # Now check answer against previous
     anspath = os.path.join(testdir, 'test_results', 'test_single_asm')
@@ -445,7 +455,7 @@ def test_multiregion_ebal(testdir):
     )
     r = dassh.Reactor(inp, path=outpath, write_output=True)
     r.temperature_sweep()
-    r.save()
+    save_reactor_pytest(r)
     assert 'dassh.out' in os.listdir(outpath)
     # Check output file for energy balance
     with open(os.path.join(outpath, 'dassh.out'), 'r') as f:
@@ -467,10 +477,10 @@ def test_3asm_sweep(testdir):
     cleanup(outpath)
     inp = dassh.DASSH_Input(os.path.join(inpath, 'input_3a.txt'))
     r = dassh.Reactor(inp, path=outpath, write_output=True)
-    r.save()
+    save_reactor_pytest(r)
     r.temperature_sweep()
     assert 'dassh.out' in os.listdir(outpath)
-    r.save()
+    save_reactor_pytest(r)
 
     # Check that Q=mCdT is close (with these high flow rates,
     # it should be). Assembly 1 should recieve heat from the others
@@ -519,10 +529,10 @@ def test_2asm_ebal(testdir):
     r.assemblies[0].rodded.temp['coolant_int'] *= 0.0
     r.assemblies[0].rodded.temp['coolant_int'] += 700 + 273.15
     # Perform temperature sweep
-    r.save()
+    save_reactor_pytest(r)
     r.write_summary()
     r.temperature_sweep()
-    r.save()
+    save_reactor_pytest(r)
 
     # Check that energy was conserved
     dt = np.zeros(3)
@@ -554,9 +564,8 @@ def test_silly_core_sweep(testdir):
                                              'test_16a_silly'))
     r.write_summary()
     r.temperature_sweep()
-    r.save()
     r.write_output_summary()
-    r.save()
+    save_reactor_pytest(r)
 
 
 def test_duct_heating_ebal_adiabatic(testdir):
@@ -567,10 +576,9 @@ def test_duct_heating_ebal_adiabatic(testdir):
     outpath = os.path.join(testdir, 'test_results', name)
     inp = dassh.DASSH_Input(os.path.join(inpath))
     r = dassh.Reactor(inp, path=outpath, write_output=True)
-    r.save()
     r.write_summary()
     r.temperature_sweep()
-    r.save()
+    save_reactor_pytest(r)
     # Check that energy was conserved
     asm = r.assemblies[0]
     dt = asm.avg_coolant_temp - r.inlet_temp
@@ -586,10 +594,9 @@ def test_duct_heating_ebal(testdir):
     outpath = os.path.join(testdir, 'test_results', name)
     inp = dassh.DASSH_Input(os.path.join(inpath))
     r = dassh.Reactor(inp, path=outpath, write_output=True)
-    r.save()
     r.write_summary()
     r.temperature_sweep()
-    r.save()
+    save_reactor_pytest(r)
     # Check that energy was conserved
     cp = r.materials['sodium_fixed'].heat_capacity
     asm = r.assemblies[0]
@@ -612,7 +619,7 @@ def test_sweep_with_all_but_one_unrodded_asm(testdir):
     r = dassh.Reactor(inp, path=outpath, write_output=True,
                       calc_energy_balance=True)
     r.temperature_sweep()
-    r.save()
+    save_reactor_pytest(r)
     assert 'dassh.out' in os.listdir(outpath)
     # Check that average coolant temperatures in unrodded assemblies
     # are about equal to what we asked them to be
@@ -685,7 +692,7 @@ def test_double_duct_ebal(testdir):
     inp = dassh.DASSH_Input(os.path.join(inpath, 'input_dd_ebal.txt'))
     r = dassh.Reactor(inp, path=outpath, write_output=True)
     r.temperature_sweep()
-    r.save()
+    save_reactor_pytest(r)
     assert 'dassh.out' in os.listdir(outpath)
     # Confirm that dd ebal sums to zero
     rr = r.assemblies[0].region[0]
@@ -719,8 +726,7 @@ def test_stagnant_double_duct_ebal(testdir):
     inp = dassh.DASSH_Input(os.path.join(inpath, f'input_{name}.txt'))
     r = dassh.Reactor(inp, path=outpath, write_output=True)
     r.temperature_sweep()
-    # r.write_output_summary()
-    r.save()
+    save_reactor_pytest(r)
     assert 'dassh.out' in os.listdir(outpath)
     # Confirm that dd ebal sums to zero
     rr = r.assemblies[0].region[0]
@@ -745,7 +751,7 @@ def test_interasm_ebal(testdir):
     r = dassh.Reactor(inp, path=outpath, write_output=True)
     r._options['ebal'] = True
     r.temperature_sweep()
-    r.save()
+    save_reactor_pytest(r)
     assert 'dassh.out' in os.listdir(outpath)
 
     # Check that the interassembly energy balance sums to gap

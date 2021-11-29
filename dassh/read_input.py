@@ -569,6 +569,14 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         if not empty4c:
             self.check_geodst()
 
+    def clone(self):
+        """Create a clone of the DASSH_Input object"""
+        clone = copy.copy(self)
+        clone.data = copy.deepcopy(self.data)
+        clone.timepoints = copy.deepcopy(self.timepoints)
+        clone.path = copy.deepcopy(self.path)
+        return clone
+
     def get_input(self, infile):
         """Read input into dictionary using configobj.
 

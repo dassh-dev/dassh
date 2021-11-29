@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-24
+date: 2021-11-29
 author: matz
 Test the DASSH Assembly object
 """
@@ -110,6 +110,8 @@ def test_pin_only_int_coolant_verification(testdir):
     """Test that the method to calculate interior coolant temperatures
     performs as expected in the simplest case: adiabatic duct wall,
     power delivered only to pins"""
+    # if sys.version_info < (3, 7):
+    #     pytest.skip('Cannot run this test without Python >= 3.7')
     rpath = os.path.join(testdir,
                          'test_results',
                          'conservation-1',
@@ -122,7 +124,7 @@ def test_pin_only_int_coolant_verification(testdir):
     T_ans = copy.deepcopy(r.assemblies[0].rodded.temp['coolant_int'])
     dT_ans = T_ans - r.inlet_temp
     r.reset()
-    asm = copy.deepcopy(r.assemblies[0])
+    asm = r.assemblies[0].clone(new_loc=(0, 0))
     # # Set up some stuff
     inlet_temp = 623.15
     gap_t = np.ones(asm.rodded.subchannel.n_sc['duct']['total'])

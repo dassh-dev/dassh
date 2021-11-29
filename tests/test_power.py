@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-14
+date: 2021-11-29
 author: matz
 Test power assignment from binary files to reactor components
 """
@@ -23,9 +23,7 @@ Test power assignment from binary files to reactor components
 import numpy as np
 import pytest
 import os
-import copy
 import subprocess
-# import matplotlib.pyplot as plt
 import dassh
 
 
@@ -124,7 +122,7 @@ def test_new_power_method(testdir, small_reactor):
     results.
 
     """
-    p = copy.deepcopy(small_reactor.power['dif3d'])
+    p = small_reactor.power['dif3d']
     for a in small_reactor.assemblies[:2]:
         res = p.calc_power_profile(a, a.id)[0]
 
