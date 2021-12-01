@@ -1608,12 +1608,15 @@ class CoreHexPlot(CorePlot):
         to_plot = []
         hex_to_ignore = []
         for i in range(len(data)):
+            start_new_ring = (0.5 * (1 + np.sqrt(1 + 4 * (i - 1) // 3)))
             if i in asm_to_ignore:
                 continue
             elif data[i] >= nonvalue:
                 to_plot.append(data[i])
                 hex_to_color.append(self.hex[i])
-            elif np.all(data[i:] < nonvalue) and omit_nonvalue_rings:
+            elif (np.all(data[i:] < nonvalue)
+                  and omit_nonvalue_rings
+                  and start_new_ring.is_integer()):
                 break
             else:
                 hex_to_ignore.append(self.hex[i])
@@ -1634,7 +1637,7 @@ class CoreHexPlot(CorePlot):
         # are plotting
         n_rings = None
         if omit_nonvalue_rings:
-            n_rings = core.count_rings(len(to_plot))
+            n_rings = core.count_rings(len(to_plot)) + 1
         ax = self._set_ax_bnds(ax, rings=n_rings)
 
         # Add data labels
