@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-29
+date: 2021-12-01
 author: matz
 Main DASSH calculation procedure
 """
@@ -217,7 +217,15 @@ def _run_dassh(dassh_inp, dassh_log, args, timestep, wdir, link=None):
     # Post-processing: write output, save reactor if desired
     dassh_log.log(_log_info, 'Temperature sweep complete')
     if args['save_reactor'] or dassh_inp.data['Plot']:
+        if sys.version_info < (3, 7):
+            handlers = dassh_log.handlers[:]
+            for handler in handlers:
+                handler.close()
+                dassh_log.removeHandler(handler)
         reactor.save()
+        if sys.version_info < (3, 7):
+            dassh_log = dassh.logged_class.init_root_logger(
+                dassh_inp.path, 'dassh', 'a+')
     dassh_log.log(_log_info, 'Output written')
 
     # Post-processing: generate figures, if desired

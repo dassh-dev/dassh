@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-18
+date: 2021-12-01
 author: matz
 Methods to plot DASSH objects (such as hexagonal fuel assemblies and
 the pins and subchannels that comprise them).
@@ -128,7 +128,7 @@ def make_SubchannelPlot(dassh_reactor, plot_data):
                       pin_alpha=_data['pin_alpha'])
             z_str = np.around(_data['bwd_len_conv'](zi), 2)
             fname = '_'.join(['SubchannelPlot',
-                              'asm' + str(asm_id),
+                              'asm' + str(asm_id + 1),
                               f'z={z_str}'])
             fname += '.png'
             fname = os.path.join(dassh_reactor.path, fname)
@@ -144,8 +144,8 @@ def make_PinPlot(dassh_reactor, plot_data):
     except (FileNotFoundError, ValueError) as e:
         if e.__class__.__name__ == 'ValueError':
             msg = 8 * '.'
-            msg += (f'No data located in file "{f}" '
-                    'for requested assemblies; skipping...')
+            msg += (f'No data found in file "{f}" for '
+                    'requested assemblies; skipping...')
             module_logger.log(30, msg)
             return
         else:
@@ -174,7 +174,7 @@ def make_PinPlot(dassh_reactor, plot_data):
                         cmap=_data['cmap'],
                         cbar_label=_data['cbar_label'])
                 z_str = np.around(_data['bwd_len_conv'](zi), 2)
-                fname = '_'.join(['PinPlot', 'asm' + str(asm_id),
+                fname = '_'.join(['PinPlot', 'asm' + str(asm_id + 1),
                                   value, f'z={z_str}'])
                 fname += '.png'
                 fname = os.path.join(dassh_reactor.path, fname)
@@ -1430,7 +1430,7 @@ class PinPlot(AssemblyPlot):
 
     def _check_for_fuel_model(self, dassh_asm):
         """Check asm for fuel model; if none, no pin temps to plot"""
-        if self._skip_plotting_simple_model(self, dassh_asm):
+        if self._skip_plotting_simple_model(dassh_asm):
             return True
         if dassh_asm.has_rodded:
             if not hasattr(dassh_asm.rodded, 'pin_model'):
@@ -1441,6 +1441,7 @@ class PinPlot(AssemblyPlot):
                 return True
             else:
                 return False
+
 
 ########################################################################
 # PLOT FULL CORE MAPS
@@ -1608,15 +1609,18 @@ class CoreHexPlot(CorePlot):
         to_plot = []
         hex_to_ignore = []
         for i in range(len(data)):
-            start_new_ring = (0.5 * (1 + np.sqrt(1 + 4 * (i - 1) // 3)))
+            start_new_ring = False
+            if i > 0:
+                tmp = (0.5 * (1 + np.sqrt(1 + 4 * (i - 1) // 3)))
+                start_new_ring = tmp.is_integer()
             if i in asm_to_ignore:
                 continue
-            elif data[i] >= nonvalue:
+            elif data[i] > nonvalue:
                 to_plot.append(data[i])
                 hex_to_color.append(self.hex[i])
-            elif (np.all(data[i:] < nonvalue)
+            elif (np.all(data[i:] <= nonvalue)
                   and omit_nonvalue_rings
-                  and start_new_ring.is_integer()):
+                  and start_new_ring):
                 break
             else:
                 hex_to_ignore.append(self.hex[i])
@@ -1662,19 +1666,20 @@ class CoreHexPlot(CorePlot):
         fontsize = 12
         if fmt is None:
             fmt = '{:0.1f}'
+        data_fmt = [fmt.format(x) for x in data]
+        max_data_label_str_len = max([len(x) for x in data_fmt])
+        fmt = '{:^' + str(max_data_label_str_len) + 's}'
+        data_fmt = [fmt.format(s) for s in data_fmt]
         for i in range(len(data)):
-            if i not in ignore and data[i] >= nv:
-                txt = ax.annotate(fmt.format(data[i]),
+            if i not in ignore and data[i] > nv:
+                txt = ax.annotate(data_fmt[i],
                                   self.xy[i],
                                   size=fontsize,
                                   ha='center',
                                   va='center',
                                   weight='bold')
-                fontsize = self._auto_fit_fontsize(txt,
-                                                   txtwidth,
-                                                   None,
-                                                   fig=fig,
-                                                   ax=ax)
+                fontsize = self._auto_fit_fontsize(
+                    txt, txtwidth, None, fig=fig, ax=ax)
 
     def _auto_fit_fontsize(self, text, width, height, fig=None, ax=None):
         """Auto-decrease the fontsize of a text object.
@@ -1751,6 +1756,12 @@ class CoreHexPlot(CorePlot):
         None
 
         """
+        if 'avg' in value:
+            msg = (8 * '.' + 'Axial total CoreHexPlot only available '
+                   'for peak, not average, temperatures; skipping '
+                   f'request for "{value}" ...')
+            module_logger.log(30, msg)
+            return
         cbar_lab = self._get_cbar_label(plot_data, value)
         data = self._get_axial_peak_data(dassh_reactor, value)
         self.plot(self.temp_conv(data),
@@ -2350,14 +2361,6 @@ def _get_data_bnds(data, lbnd, ubnd, mpnt):
 def _sort_asm(dassh_reactor, plot_data):
     """Order the assemblies requested by the user"""
     # Get the assembly indices; also convert to python (base-0 index)
-    # user_asm_list = []
-    # if dassh_reactor._options['dif3d_idx']:
-    #     for user_asm in plot_data['assembly_id']:
-    #         for asm in dassh_reactor.assemblies:
-    #             if asm.dif3d_id == user_asm - 1:
-    #                 user_asm_list.append(asm.id)
-    #                 break
-    # else:
     user_asm_list = [a_id - 1 for a_id in plot_data['assembly_id']]
     return user_asm_list
 
@@ -2471,6 +2474,8 @@ def _load_data(file, z_user, asmlist=None):
 
     if data.size == 0:
         raise ValueError('No data loaded')
+    if data.ndim == 1:  # If only one row in data
+        data = data[np.newaxis, :]
 
     # Connect z-data in numpy array with user request
     z_dict = {}
