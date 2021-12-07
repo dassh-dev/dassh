@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-24
+date: 2021-12-06
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -612,7 +612,8 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         self.data = inp
 
     def get_timepoints(self, infile):
-        txt = open(infile).read().splitlines()
+        with open(infile, 'r') as f:
+            txt = f.read().splitlines()
         if self._cccc_power:
             tpts_cccc = self._get_cccc_timepoints(txt)
         else:
@@ -679,7 +680,8 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         """Check that mandatory sections are present in the input.
         Note: RegionList is optional."""
         # Read from the input file
-        txt = open(inputfile).read()
+        with open(inputfile, 'r') as f:
+            txt = f.read()
         txtlines = txt.splitlines()
         for sec in ['Assembly', 'Core', 'Assignment', 'Power']:
             tmp = [i for i, s in enumerate(txtlines) if f'[{sec}]' in s]

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-12-01
+date: 2021-12-06
 author: matz
 Main DASSH calculation procedure
 """
@@ -24,6 +24,7 @@ import sys
 import dassh
 import argparse
 import cProfile
+import logging
 _log_info = 20  # logging levels must be int
 
 
@@ -88,6 +89,9 @@ def main(args=None):
     if args.profile:
         pr.disable()
         pr.dump_stats('dassh_profile.out')
+
+    # Shutdown logger by removing file handlers
+    dassh.logged_class.shutdown_logger('dassh')
 
 
 def check_version(dassh_inp, dassh_log, save_reactor):

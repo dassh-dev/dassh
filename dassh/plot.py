@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-12-01
+date: 2021-12-06
 author: matz
 Methods to plot DASSH objects (such as hexagonal fuel assemblies and
 the pins and subchannels that comprise them).
@@ -132,8 +132,7 @@ def make_SubchannelPlot(dassh_reactor, plot_data):
                               f'z={z_str}'])
             fname += '.png'
             fname = os.path.join(dassh_reactor.path, fname)
-            plt.savefig(fname, bbox_inches='tight', dpi=_data['dpi'])
-            plt.close()
+            _save_and_close(fname, _data['dpi'])
 
 
 def make_PinPlot(dassh_reactor, plot_data):
@@ -178,8 +177,7 @@ def make_PinPlot(dassh_reactor, plot_data):
                                   value, f'z={z_str}'])
                 fname += '.png'
                 fname = os.path.join(dassh_reactor.path, fname)
-                plt.savefig(fname, bbox_inches='tight', dpi=_data['dpi'])
-                plt.close()
+                _save_and_close(fname, _data['dpi'])
 
 
 def make_CoreSubchannelPlot(dassh_reactor, plot_data):
@@ -205,8 +203,7 @@ def make_CoreSubchannelPlot(dassh_reactor, plot_data):
         fname = '_'.join(['CoreSubchannelPlot', f'z={z_str}'])
         fname += '.png'
         fname = os.path.join(dassh_reactor.path, fname)
-        plt.savefig(fname, bbox_inches='tight', dpi=_data['dpi'])
-        plt.close()
+        _save_and_close(fname, _data['dpi'])
 
 
 def make_CorePinPlot(dassh_reactor, plot_data):
@@ -232,8 +229,7 @@ def make_CorePinPlot(dassh_reactor, plot_data):
             fname = '_'.join(['CorePinPlot', v, f'z={z_str}'])
             fname += '.png'
             fname = os.path.join(dassh_reactor.path, fname)
-            plt.savefig(fname, bbox_inches='tight', dpi=_data['dpi'])
-            plt.close()
+            _save_and_close(fname, _data['dpi'])
 
 
 def make_CoreHexPlot(dassh_reactor, plot_data):
@@ -1734,10 +1730,9 @@ class CoreHexPlot(CorePlot):
                   cmap=plot_data['cmap'],
                   cbar_label=cbl,
                   data_label=plot_data['data_label'])
-        fname = os.path.join(dassh_reactor.path,
-                             'CoreHexPlot_total_power.png')
-        plt.savefig(fname, bbox_inches='tight', dpi=plot_data['dpi'])
-        plt.close()
+        fname = 'CoreHexPlot_total_power.png'
+        fname = os.path.join(dassh_reactor.path, fname)
+        _save_and_close(fname, plot_data['dpi'])
 
     def make_axial_peak(self, dassh_reactor, plot_data, value):
         """Generate CoreHexPlot figure containing maximum temperature
@@ -1772,10 +1767,9 @@ class CoreHexPlot(CorePlot):
                   cbar_label=cbar_lab,
                   data_label=plot_data['data_label'],
                   omit_nonvalue_rings=plot_data['omit_nonvalue_rings'])
-        fname = os.path.join(dassh_reactor.path,
-                             f'CoreHexPlot_{value}.png',)
-        plt.savefig(fname, bbox_inches='tight', dpi=plot_data['dpi'])
-        plt.close()
+        fname = f'CoreHexPlot_{value}.png'
+        fname = os.path.join(dassh_reactor.path, fname)
+        _save_and_close(fname, plot_data['dpi'])
 
     def make_radial_peak_or_avg(self, dassh_reactor, plot_data, value):
         """Generate CoreHexPlot figure containing maximum temperature
@@ -1827,9 +1821,7 @@ class CoreHexPlot(CorePlot):
                                   value,
                                   f'z={z_str}.png'])
                 fname = os.path.join(dassh_reactor.path, fname)
-                plt.savefig(fname, bbox_inches='tight',
-                            dpi=plot_data['dpi'])
-                plt.close()
+                _save_and_close(fname, plot_data['dpi'])
 
     def _get_cbar_label(self, plot_data, value):
         """If no colorbar label is provided, generate one based on
@@ -2285,6 +2277,14 @@ class CorePinPlot(CorePlot):
 ########################################################################
 
 
+def _save_and_close(plot_file_path, dpi):
+    l = logging.getLogger('matplotlib.text')
+    l.setLevel(40)
+    plt.savefig(plot_file_path, bbox_inches='tight', dpi=dpi)
+    l.setLevel(30)
+    plt.close()
+
+
 def _prepare_input(dassh_reactor, plot_data, file_to_load):
     """Prepare and store data necessary to make any figure
 
@@ -2386,8 +2386,7 @@ def _add_colorbar(ax, text, cmap, norm):
     """
     divider = make_axes_locatable(ax)
     color_axis = divider.append_axes("right", size="5%", pad=0.1)
-    cbar_colors = mpl.cm.ScalarMappable(norm=norm,
-                                        cmap=cmap)
+    cbar_colors = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
     cbar = plt.colorbar(cbar_colors, cax=color_axis)
     cbar.set_label(text, fontsize=11)
     return ax

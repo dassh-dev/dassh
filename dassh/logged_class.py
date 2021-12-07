@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-24
+date: 2021-12-06
 author: matz (inherited from Dr. A. Nelson)
 Log messages, warnings, and errors produced by each class in DASSH
 """
@@ -111,6 +111,15 @@ def change_log_level_console(logger, new_level):
     return logger
 
 
+def shutdown_logger(name):
+    logger = logging.getLogger(name)
+    handlers = logger.handlers[:]
+    for handler in handlers:
+        handler.close()
+        logger.removeHandler(handler)
+    del logger
+
+
 class LoggedClass(object):
     """This class provides a consistent logger interface across
     classes.
@@ -199,3 +208,32 @@ class LoggingContext(object):
         if self.level is not None:
             self.logger.handlers[1].setLevel(self.old_level)
         # implicit return of None => don't swallow exceptions
+
+
+class CloseLogStreams(object):
+    """Temporarily redirect all logging messages to stdout and stderr
+    when pickling in Python < 3.7."""
+    def __init__(self, logger):
+        self.logger = logger
+
+    def __enter__(self):
+        if sys.version_info < (3, 7):
+            self.handler_info = []
+            handlers = self.logger.handlers[:]
+            for handler in handlers:
+                self.handler_info.append(
+                    [type(handler),
+                     handler.baseFilename,
+                     handler.mode,
+                     handler.level,
+                     handler.formatter])
+                handler.close()
+                self.logger.removeHandler(handler)
+
+    def __exit__(self):
+        if sys.version_info < (3, 7):
+            for h_info in self.handler_info:
+                handler = h_info[0](h_info[1], h_info[2])
+                handler.setLevel(h_info[3])
+                handler.setFormatter(h_info[4])
+            del self.handler_info
