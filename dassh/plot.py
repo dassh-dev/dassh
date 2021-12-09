@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-12-06
+date: 2021-12-08
 author: matz
 Methods to plot DASSH objects (such as hexagonal fuel assemblies and
 the pins and subchannels that comprise them).
@@ -2116,6 +2116,10 @@ class CorePinPlot(CorePlot):
         data = {'pins': data}
         kwargs = self.parse_args(data, lbnd, ubnd, middle, **kwargs)
         data = data['pins']
+
+        # Round all assembly identifiers (read as floats but are actually
+        # int) so that we can properly match them later
+        data[:, 0] = np.round(data[:, 0], decimals=12)
 
         # isolate the patch kwargs
         patch_kwargs = {'cmap': kwargs['cmap'],
