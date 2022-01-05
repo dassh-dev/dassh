@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-20
+date: 2022-01-05
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -86,7 +86,8 @@ class Assembly(LoggedClass):
         # unrodded region using the bundle parameters
         if asm_input.get('use_low_fidelity_model'):
             self.region = [region_unrodded.make_ur_asm(
-                asm_input, mat_dict, flow_rate, se2geo)]
+                self.name, asm_input, mat_dict, flow_rate, se2geo)
+            ]
         else:
             self.region = [
                 region_rodded.make_rr_asm(asm_input,
@@ -124,6 +125,11 @@ class Assembly(LoggedClass):
         if self.region[0].is_rodded:
             self._rodded_idx = sorted_region.index(self.region[0])
         self.region = sorted_region
+
+        # For all regions: add assembly ID and location
+        for i in range(len(self.region)):
+            self.region[i]._id = self._id
+            self.region[i]._loc = self._loc
 
         # Activate first region manually
         self.region[0].coolant = mat_dict['coolant']
@@ -311,11 +317,6 @@ class Assembly(LoggedClass):
     @property
     def active_region_idx(self):
         """Return the axial region index you're currently in"""
-        # if self.z == 0.0:
-        #     return 0
-        # else:
-        #     idx = bisect.bisect_left(self.region_bnd, self.z) - 1
-        #     return self.region_idx[idx]
         return self._active_region_idx
 
     @property
@@ -452,11 +453,11 @@ class Assembly(LoggedClass):
         """
         if self.active_region.is_rodded:
             p0 = np.zeros(self.active_region.temp['duct_mw'].size)
-            self.active_region._calc_duct_temp(p0, temp_gap, htc_gap,
-                                               adiabatic)
+            self.active_region._calc_duct_temp(
+                p0, temp_gap, htc_gap, adiabatic)
         else:
-            self.active_region._calc_duct_temp(temp_gap, htc_gap,
-                                               adiabatic)
+            self.active_region._calc_duct_temp(
+                temp_gap, htc_gap, adiabatic)
 
     def calculate(self, z, dz, t_gap, h_gap, adiabatic=False, ebal=False):
         """Calculate coolant and temperatures at axial level j+1 based

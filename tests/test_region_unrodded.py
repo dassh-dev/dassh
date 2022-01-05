@@ -49,7 +49,7 @@ def test_ur_reg_instantiation_fancy(testdir):
 
     # Test fully unrodded assembly
     ur1 = dassh.region_unrodded.make_ur_asm(
-        inp.data['Assembly']['fuel'], mat, 1.0)
+        'testboi', inp.data['Assembly']['fuel'], mat, 1.0)
     print(ur1.mratio)
     print(ur1._mratio)
     print(inp.data['Assembly']['fuel']['convection_factor'])
@@ -245,7 +245,7 @@ def test_ur_asm_pressure_drop(c_shield_rr_params):
     # Make unrodded region; manually set UR params
     input['use_low_fidelity_model'] = True
     input['convection_factor'] = 'calculate'
-    ur = dassh.region_unrodded.make_ur_asm(input, mat, fr)
+    ur = dassh.region_unrodded.make_ur_asm('testboi', input, mat, fr)
 
     T_in = 623.15
     dz = 0.01
@@ -358,7 +358,7 @@ def test_ur_ctrl_asm_sweep(simple_ctrl_params):
     # Make unrodded region; manually set UR params
     input['use_low_fidelity_model'] = True
     input['convection_factor'] = "calculate"
-    ur = dassh.region_unrodded.make_ur_asm(input, mat.copy(), fr)
+    ur = dassh.region_unrodded.make_ur_asm('testboi', input, mat.copy(), fr)
 
     # Manual activation
     for k in rr.temp.keys():
@@ -693,7 +693,8 @@ def test_ur_vs_rr_yoyoyo1(c_shield_rr_params):
         # Make unrodded region; manually set UR params
         asm_params['use_low_fidelity_model'] = True
         asm_params['convection_factor'] = x
-        ur = dassh.region_unrodded.make_ur_asm(asm_params, mat_dict, fr)
+        ur = dassh.region_unrodded.make_ur_asm(
+            'testboi', asm_params, mat_dict, fr)
 
         for k in rr.temp.keys():
             rr.temp[k] *= 623.15
@@ -791,8 +792,8 @@ def test_ur_vs_rr_yoyoyo2(c_shield_rr_params):
     rr = dassh.region_rodded.make_rr_asm(aparams, 'dummy', mat.copy(), fr)
     # Make unrodded region; manually set UR params
     aparams['use_low_fidelity_model'] = True
-    aparams['convection_factor'] = 1.0  #'calculate'
-    ur = dassh.region_unrodded.make_ur_asm(aparams, mat.copy(), fr)
+    aparams['convection_factor'] = 1.0  # 'calculate'
+    ur = dassh.region_unrodded.make_ur_asm('testboi', aparams, mat.copy(), fr)
 
     for k in rr.temp.keys():
         rr.temp[k] *= 623.15

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-09-21
+date: 2022-01-05
 author: matz
 Methods for unrodded axial regions; to be used within Assembly objects
 """
@@ -28,11 +28,13 @@ from dassh.pin import PinLattice
 from dassh.pin import count_pins
 from dassh.subchannel import Subchannel
 from dassh.region_rodded import RoddedRegion
+from dassh.logged_class import LoggedClass
+
 
 _sqrt3 = np.sqrt(3)
 
 
-def make_ur_asm(asm_input, mat_dict, flow_rate, se2geo=False):
+def make_ur_asm(name, asm_input, mat_dict, flow_rate, se2geo=False):
     """Process DASSH Assembly input to obtain un-rodded region input
     parameters; to be used when instantiating un-rodded region objects
     in DASSH Assembly object"""
@@ -40,7 +42,8 @@ def make_ur_asm(asm_input, mat_dict, flow_rate, se2geo=False):
     A_pins += np.pi * asm_input['wire_diameter']**2 / 4
     A_pins *= count_pins(asm_input['num_rings'])
     A_hex = _sqrt3 * 0.5 * min(asm_input['duct_ftf'])**2
-    args = [asm_input['AxialRegion']['rods']['z_lo'],
+    args = [name,
+            asm_input['AxialRegion']['rods']['z_lo'],
             asm_input['AxialRegion']['rods']['z_hi'],
             asm_input['duct_ftf'],
             (A_hex - A_pins) / A_hex,
@@ -66,7 +69,8 @@ def make_ur_axialregion(asm_input, reg, mat_dict, flow_rate):
     region input parameters; to be used when instantiating un-rodded
     region objects as axial regions in DASSH Assembly object"""
     model = asm_input['AxialRegion'][reg]['model']
-    args = [asm_input['AxialRegion'][reg]['z_lo'],
+    args = [reg,
+            asm_input['AxialRegion'][reg]['z_lo'],
             asm_input['AxialRegion'][reg]['z_hi'],
             asm_input['duct_ftf'],
             asm_input['AxialRegion'][reg]['vf_coolant'],
@@ -107,7 +111,7 @@ def _get_rr_kwargs(asm_input, mat_dict, fr, temp):
     return kwargs
 
 
-class SingleNodeHomogeneous(DASSH_Region):
+class SingleNodeHomogeneous(LoggedClass, DASSH_Region):
     """Base reflector type; represents a simple, one-node, homogeneous
     axial region.
 
@@ -137,10 +141,13 @@ class SingleNodeHomogeneous(DASSH_Region):
         Contains duct wall material properties
 
     """
-    def __init__(self, z_lo, z_hi, duct_ftf, vf_cool, flow_rate,
+    def __init__(self, name, z_lo, z_hi, duct_ftf, vf_cool, flow_rate,
                  coolant_mat, duct_mat, htc_params, eps=0.0, de=0.0,
                  convection_factor=None, rr_equiv=None, lowflow=False):
         """Create a porous media region"""
+        # Instantiate Logger
+        LoggedClass.__init__(self, 4, 'dassh.SingleNodeHomogeneousRegion')
+        self.name = name
         self.model = 'simple'
         self.z = [z_lo, z_hi]
         duct_ftf = [sorted(duct_ftf)[i:i + 2] for i in
@@ -270,7 +277,8 @@ class SingleNodeHomogeneous(DASSH_Region):
             'swirl': swirl velocity
 
         """
-        self.coolant.update(temp)
+        # self.coolant.update(temp)
+        self._update_coolant(temp)
         if self._rr_equiv is not None:
             self._rr_equiv._update_coolant_int_params(
                 temp, use_mat_tracker)
@@ -492,7 +500,8 @@ class SingleNodeHomogeneous(DASSH_Region):
         else:
             # Update coolant parameters and material properties
             # self._update_coolant_params(self.avg_coolant_int_temp)
-            self.duct.update(self.avg_duct_mw_temp[0])
+            # self.duct.update(self.avg_duct_mw_temp[0])
+            self._update_duct(self.avg_duct_mw_temp[0])
             L_over_2 = self.duct_thickness / 2
             # c1 = (self.coolant_params['htc']
             #       * (temp_gap - self.temp['coolant_int'])
@@ -548,13 +557,13 @@ class MultiNodeHomogeneous(SingleNodeHomogeneous, DASSH_Region):
 
     """
 
-    def __init__(self, z_lo, z_hi, duct_ftf, vf_cool, flow_rate,
+    def __init__(self, name, z_lo, z_hi, duct_ftf, vf_cool, flow_rate,
                  coolant_mat, duct_mat, htc_params, eps=0.0, de=0.0,
                  convection_factor=1.0, rr_equiv=None, lowflow=False):
         """Create the MultiNodeHomogeneous region object"""
         # Inherit from SingleNodeHomogeneous; overwrite some methods
         SingleNodeHomogeneous.__init__(
-            self, z_lo, z_hi, duct_ftf, vf_cool, flow_rate,
+            self, name, z_lo, z_hi, duct_ftf, vf_cool, flow_rate,
             coolant_mat, duct_mat, htc_params, eps=eps, de=de,
             convection_factor=convection_factor, rr_equiv=rr_equiv,
             lowflow=lowflow)
