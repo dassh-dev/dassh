@@ -200,7 +200,10 @@ class Assembly(LoggedClass):
 
         new_regs = []
         for ri in range(len(self.region)):
-            new_regs.append(self.region[ri].clone(new_flowrate))
+            tmp_region = self.region[ri].clone(new_flowrate)
+            tmp_region._id = clone._id
+            tmp_region._loc = clone._loc
+            new_regs.append(tmp_region)
 
         # Update pin temp array identifiers
         if self.has_rodded and hasattr(self.rodded, 'pin_model'):
