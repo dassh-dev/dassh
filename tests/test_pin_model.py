@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-24
+date: 2022-01-11
 author: matz
 Test the clad/fuel pin temperature model
 """
@@ -492,8 +492,8 @@ def test_verify_general_pin_model(testdir):
     ans = np.zeros(5)
     k_clad = 25.0
     k_fuel = 20.0
-    t_clad = 0.05
-    ro_clad = 0.3175
+    t_clad = inp.data['Assembly']['driver']['clad_thickness']
+    ro_clad = 0.5 * inp.data['Assembly']['driver']['pin_diameter']
     ri_clad = ro_clad - t_clad
     rm_clad = ro_clad - t_clad * 0.5
     a_pin = np.pi * ri_clad**2
