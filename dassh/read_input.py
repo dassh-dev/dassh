@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-12-06
+date: 2022-01-11
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -936,6 +936,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                        'inner/outer FTF for each duct')
                 self.log('error', pre + msg)
 
+            # Check duct thicknesses
             for d in range(int(len(self.data['Assembly'][a]['duct_ftf']) / 2)):
                 d1 = self.data['Assembly'][a]['duct_ftf'][2 * d]
                 d2 = self.data['Assembly'][a]['duct_ftf'][2 * d + 1]
@@ -949,6 +950,14 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                 msg = 'Duct outer FTF must be greater than inner FTF'
                 if d1 == d2:
                     self.log('error', pre + msg)
+
+            # Confirm duct FTF values are less than assembly pitch
+            if any(ftf >= self.data['Core']['assembly_pitch']
+                   for ftf in self.data['Assembly'][a]['duct_ftf']):
+                msg = (f'Duct FTF values must be less than assembly '
+                       'pitch specified in "Core" section: '
+                       f'{self.data["Core"]["assembly_pitch"]}')
+                self.log('error', pre + msg)
 
             # Add outer duct outer FTF to list
             outer_duct_oftf.append(

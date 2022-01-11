@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-01
+date: 2022-01-11
 author: matz
 Test the DASSH read_input module and DASSH_input object
 """
@@ -633,4 +633,17 @@ def test_fail_unspecified_pinmat(testdir, caplog):
                 'test_inputs',
                 'x_undefined_pin_mat.txt'))
     msg = 'Cannot find properties for material oxide1'
+    assert msg in caplog.text
+
+
+def test_fail_duct_ftf_gt_assembly_pitch(testdir, caplog):
+    """Confirm DASSH error if duct FTF is greater than assembly pitch"""
+    with pytest.raises(SystemExit):
+        dassh.DASSH_Input(
+            os.path.join(
+                testdir,
+                'test_inputs',
+                'x_input_duct_ftf_gt_asm_pitch.txt'))
+    msg = ('Duct FTF values must be less than assembly pitch specified '
+           'in "Core" section: 4.7244')
     assert msg in caplog.text
