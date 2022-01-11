@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-29
+date: 2022-01-05
 author: matz
 Pytest fixtures and related test utilities for the whole shebang
 """
@@ -786,6 +786,7 @@ def c_lrefl_simple(c_fuel_params, c_fuel_rr):
     z_hi = 1.25
     vf_coolant = 0.25
     return dassh.SingleNodeHomogeneous(
+        'test_simple_reg',
         z_lo, z_hi,
         c_fuel_rr.duct_ftf[-1],
         vf_coolant,
@@ -805,8 +806,8 @@ def shield_ur_mnh():
     fr = 0.01      # Coolant FR (kg/s)
     coolant_mat = dassh.Material('sodium_se2anl_425')
     duct_mat = dassh.Material('ht9_se2anl_425')
-    mnh = dassh.MultiNodeHomogeneous(z_low, z_high, dftf, vfc, fr,
-                                     coolant_mat, duct_mat,
+    mnh = dassh.MultiNodeHomogeneous('test_mnh_reg', z_low, z_high, dftf,
+                                     vfc, fr, coolant_mat, duct_mat,
                                      htc_params=None)
     return activate_rodded_region(mnh, 623.15)
 
@@ -821,9 +822,9 @@ def shield_ur_simple():
     fr = 0.2      # Coolant FR (kg/s)
     coolant_mat = dassh.Material('sodium_se2anl_425')
     duct_mat = dassh.Material('ht9_se2anl_425')
-    ur = dassh.SingleNodeHomogeneous(z_low, z_high, dftf, vfc, fr,
-                                     coolant_mat, duct_mat,
-                                     htc_params=None)
+    ur = dassh.SingleNodeHomogeneous('test_simple_reg', z_low, z_high,
+                                     dftf, vfc, fr, coolant_mat,
+                                     duct_mat, htc_params=None)
     for key in ur.temp:
         ur.temp[key] *= 623.15
     return ur

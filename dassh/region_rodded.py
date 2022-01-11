@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-24
+date: 2022-01-05
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -719,7 +719,8 @@ class RoddedRegion(LoggedClass, DASSH_Region):
             'swirl': swirl velocity
 
         """
-        self.coolant.update(temp)
+        # self.coolant.update(temp)
+        self._update_coolant(temp)
 
         # Only reason you wouldn't update all correlated parameters is if
         # the coolant tracker object says not to. If it says not to, skip
@@ -800,7 +801,8 @@ class RoddedRegion(LoggedClass, DASSH_Region):
 
         """
         for i in range(self.n_bypass):
-            self.coolant.update(temp_list[i])
+            # self.coolant.update(temp_list[i])
+            self._update_coolant(temp_list[i])
 
             if np.sum(self.byp_flow_rate) > 0.0:
                 # Bypass velocity
@@ -988,126 +990,6 @@ class RoddedRegion(LoggedClass, DASSH_Region):
     # COOLANT TEMPERATURE CALCULATION METHODS
     ####################################################################
 
-    def _calc_coolant_int_temp_old(self, dz, q_pins, q_cool, ebal=False):
-        """Calculate assembly coolant temperatures at next axial mesh
-
-        Parameters
-        ----------
-        dz : float
-            Axial step size (m)
-        q_pins : numpy.ndarray
-            Linear power generation (W/m) for each pin in the assembly
-        q_cool : numpy.ndarray
-            Linear power generation (W/m) for each coolant subchannel
-        ebal : boolean
-            Indicate whether to perform/update energy balance
-
-        Returns
-        -------
-        numpy.ndarray
-            Vector (length = # coolant subchannels) of temperatures
-            (K) at the next axial level
-
-        """
-        # Calculate avg coolant temperature; update coolant properties
-        # self._update_coolant_int_params(self.avg_coolant_int_temp)
-
-        # Update coolant material properties; correlated parameters
-        # were updated after the previous step
-        # T_avg = self.avg_coolant_int_temp
-        # self.coolant.update(T_avg)
-
-        # HEAT FROM ADJACENT FUEL PINS
-        # denom puts q in the same units as the next dT steps
-        q = self._calc_int_sc_power(q_pins, q_cool)
-        dT = q / self.ht['q_denom']
-
-        # CONDUCTION BETWEEN COOLANT SUBCHANNELS
-        # Effective thermal conductivity
-        keff = (self.coolant_int_params['eddy']
-                * self.coolant.density
-                * self.coolant.heat_capacity
-                + self._sf * self.coolant.thermal_conductivity)
-        # keff = 0.0
-        tmp = (self.ht['cond']['const']
-               * (self.temp['coolant_int'][self.ht['cond']['adj']]
-                  - self.temp['coolant_int'][:, np.newaxis]))
-        # dT += keff * np.sum(tmp, axis=1)
-        dT += keff * (tmp[:, 0] + tmp[:, 1] + tmp[:, 2])
-
-        # CONVECTION BETWEEN EDGE/CORNER SUBCHANNELS AND DUCT WALL
-        # Heat transfer coefficient
-        tmp = self.coolant_int_params['htc'][self.ht['conv']['type']]
-        # Low flow case: use SE2ANL model
-        if self._conv_approx:
-            # Resistance between coolant and duct MW
-            self.duct.update(self.avg_duct_mw_temp[0])
-            # R1 = 1 / h; R2 = dw / 2 / k (half wall thickness over k)
-            # R units: m2K / W; heat transfer area included in const
-            R1 = 1 / tmp  # R1 = 1 / h
-            R2 = 0.5 * self.d['wall'][0] / self.duct.thermal_conductivity
-            # tmp += 0.5 * self.d['wall'][0] / self.duct.thermal_conductivity
-            # dT[self._conv['ind']] += \
-            #     (self._conv['const'] / tmp
-            #      * (self.temp['duct_mw'][0, self._conv['adj']]
-            #         - self.temp['coolant_int'][self._conv['ind']]))
-            # dT[self._conv['ind']] += \
-            #     (self._conv['const'] / (R1 + R2)
-            #      * (self.temp['duct_mw'][0, self._conv['adj']]
-            #         - self.temp['coolant_int'][self._conv['ind']]))
-            dT_conv_over_R = \
-                ((self.temp['duct_mw'][0, self.ht['conv']['adj']]
-                  - self.temp['coolant_int'][self.ht['conv']['ind']])
-                 / (R1 + R2))
-        else:
-            # dT[self._conv['ind']] += \
-            #     tmp * self._conv['const'] * (
-            #         self.temp['duct_surf'][0, 0, self._conv['adj']]
-            #         - self.temp['coolant_int'][self._conv['ind']])
-            dT_conv_over_R = \
-                tmp * (self.temp['duct_surf'][0, 0, self.ht['conv']['adj']]
-                       - self.temp['coolant_int'][self.ht['conv']['ind']])
-        dT[self.ht['conv']['ind']] += \
-            self.ht['conv']['const'] * dT_conv_over_R
-
-        # DIVIDE THROUGH BY MCP
-        mCp = 1 * self.coolant.heat_capacity * self.coolant_int_params['fs']
-        mCp = mCp[self.subchannel.type[
-            :self.subchannel.n_sc['coolant']['total']]]
-        dT /= mCp
-
-        # SWIRL FLOW AROUND EDGES (no div by mCp so it comes after)
-        # Can just use the convection indices again bc they're the same
-        swirl_consts = (self.ht['swirl']
-                        * self.coolant.density
-                        * self.coolant_int_params['swirl']
-                        / self.coolant_int_params['fs'])
-        swirl_consts = swirl_consts[self.subchannel.type[
-            :self.subchannel.n_sc['coolant']['total']]]
-        swirl_consts = swirl_consts[self.ht['conv']['ind']]
-        # swirl_consts = swirl_consts[self.subchannel.type[
-        #     self.subchannel.n_sc['coolant']['interior']:
-        #     self.subchannel.n_sc['coolant']['total']]]
-        # Swirl flow from adjacent subchannel; =0 for interior sc
-        # The adjacent subchannel is the one the swirl flow is
-        # coming from i.e. it's in the opposite direction of the
-        # swirl flow itself. Recall that the edge/corner sub-
-        # channels are indexed in the clockwise direction.
-        # Example: Let sci == 26. The next subchannel in the clock-
-        # wise direction is 27; the preceding one is 25.
-        # - clockwise: use 25 as the swirl adjacent sc
-        # - counterclockwise: use 27 as the swirl adjacent sc
-        dT[self.ht['conv']['ind']] += \
-            (swirl_consts
-             * (self.temp['coolant_int'][self.subchannel.sc_adj[
-                self.ht['conv']['ind'], self._adj_sw]]
-                - self.temp['coolant_int'][self.ht['conv']['ind']]))
-
-        if ebal:
-            qduct = self.ht['conv']['ebal'] * dT_conv_over_R
-            self.update_ebal(dz * np.sum(q), dz * qduct)
-        return dT * dz
-
     def _calc_coolant_int_temp(self, dz, q_pins, q_cool, ebal=False):
         """Calculate assembly coolant temperatures at next axial mesh
 
@@ -1129,14 +1011,6 @@ class RoddedRegion(LoggedClass, DASSH_Region):
             (K) at the next axial level
 
         """
-        # Calculate avg coolant temperature; update coolant properties
-        # self._update_coolant_int_params(self.avg_coolant_int_temp)
-
-        # Update coolant material properties; correlated parameters
-        # were updated after the previous step
-        # T_avg = self.avg_coolant_int_temp
-        # self.coolant.update(T_avg)
-
         # HEAT FROM ADJACENT FUEL PINS
         # denom puts q in the same units as the next dT steps
         q = self._calc_int_sc_power(q_pins, q_cool)
@@ -1152,7 +1026,6 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         tmp = (self.ht['cond']['const']
                * (self.temp['coolant_int'][self.ht['cond']['adj']]
                   - self.temp['coolant_int'][:, np.newaxis]))
-        # dT += keff * np.sum(tmp, axis=1)
         dT += keff * (tmp[:, 0] + tmp[:, 1] + tmp[:, 2])
 
         # CONVECTION BETWEEN EDGE/CORNER SUBCHANNELS AND DUCT WALL
@@ -1161,29 +1034,17 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         # Low flow case: use SE2ANL model
         if self._conv_approx:
             # Resistance between coolant and duct MW
-            self.duct.update(self.avg_duct_mw_temp[0])
+            # self.duct.update(self.avg_duct_mw_temp[0])
+            self._update_duct(self.avg_duct_mw_temp[0])
             # R1 = 1 / h; R2 = dw / 2 / k (half wall thickness over k)
             # R units: m2K / W; heat transfer area included in const
             R1 = 1 / tmp  # R1 = 1 / h
             R2 = 0.5 * self.d['wall'][0] / self.duct.thermal_conductivity
-            # tmp += 0.5 * self.d['wall'][0] / self.duct.thermal_conductivity
-            # dT[self._conv['ind']] += \
-            #     (self._conv['const'] / tmp
-            #      * (self.temp['duct_mw'][0, self._conv['adj']]
-            #         - self.temp['coolant_int'][self._conv['ind']]))
-            # dT[self._conv['ind']] += \
-            #     (self._conv['const'] / (R1 + R2)
-            #      * (self.temp['duct_mw'][0, self._conv['adj']]
-            #         - self.temp['coolant_int'][self._conv['ind']]))
             dT_conv_over_R = \
                 ((self.temp['duct_mw'][0, self.ht['conv']['adj']]
                   - self.temp['coolant_int'][self.ht['conv']['ind']])
                  / (R1 + R2))
         else:
-            # dT[self._conv['ind']] += \
-            #     tmp * self._conv['const'] * (
-            #         self.temp['duct_surf'][0, 0, self._conv['adj']]
-            #         - self.temp['coolant_int'][self._conv['ind']])
             dT_conv_over_R = \
                 tmp * (self.temp['duct_surf'][0, 0, self.ht['conv']['adj']]
                        - self.temp['coolant_int'][self.ht['conv']['ind']])
@@ -1202,9 +1063,6 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                         * self.coolant.density
                         * self.coolant_int_params['swirl']
                         / self.coolant_int_params['fs'])
-        # swirl_consts = swirl_consts[self.subchannel.type[
-        #     :self.subchannel.n_sc['coolant']['total']]]
-        # swirl_consts = swirl_consts[self.ht['conv']['ind']]
         swirl_consts = swirl_consts[self.subchannel.type[
             self.subchannel.n_sc['coolant']['interior']:
             self.subchannel.n_sc['coolant']['total']]]
@@ -1295,7 +1153,8 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         for i in range(self.n_bypass):
             # Update coolant material properties; correlated parameters
             # were updated after the previous step
-            self.coolant.update(T_avg[i])
+            # self.coolant.update(T_avg[i])
+            self._update_coolant(T_avg[i])
 
             # This factor is in many terms; technically, the mass flow
             # rate is already accounted for in constants defined earlier
@@ -1328,14 +1187,16 @@ class RoddedRegion(LoggedClass, DASSH_Region):
             if self._conv_approx:
                 htc_inv = 1 / htc_i
                 # Interior duct wall
-                self.duct.update(self.avg_duct_mw_temp[i])
+                self._update_duct(self.avg_duct_mw_temp[i])
+                # self.duct.update(self.avg_duct_mw_temp[i])
                 R = htc_inv + (0.5 * self.d['wall'][i]
                                / self.duct.thermal_conductivity)
                 dT_in = (byp_conv_const[:, 0] / R
                          * (self.temp['duct_mw'][i]
                             - self.temp['coolant_byp'][i]))
                 # Exterior duct wall
-                self.duct.update(self.avg_duct_mw_temp[i + 1])
+                self._update_duct(self.avg_duct_mw_temp[i + 1])
+                # self.duct.update(self.avg_duct_mw_temp[i + 1])
                 R = htc_inv + (0.5 * self.d['wall'][i + 1]
                                / self.duct.thermal_conductivity)
                 dT_out = (byp_conv_const[:, 0] / R
@@ -1409,7 +1270,8 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         for i in range(self.n_bypass):
             # Update coolant material properties; correlated parameters
             # were updated after the previous step
-            self.coolant.update(T_avg[i])
+            # self.coolant.update(T_avg[i])
+            self._update_coolant(T_avg[i])
 
             # starting index to lookup type is after all interior
             # coolant channels and all preceding duct and bypass
@@ -1476,12 +1338,7 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         """
         # Average duct temperatures (only want to have to get once)
         duct_avg_temps = self.avg_duct_mw_temp
-        #
-        # Update coolant parameters
-        # self._update_coolant_int_params(self.avg_coolant_int_temp)
-        # if self.n_bypass > 0:
-        #     self._update_coolant_byp_params(self.avg_coolant_byp_temp)
-        #
+
         # If you haven't already, set up array of duct type indices
         # so you don't have to do it in the loop every time
         if not hasattr(self, '_duct_idx'):
@@ -1496,13 +1353,10 @@ class RoddedRegion(LoggedClass, DASSH_Region):
 
         for i in range(self.n_duct):
             # No params to update, just need avg duct temp
-            self.duct.update(duct_avg_temps[i])
-            # start = i * self.subchannel.n_sc['duct']['total']
-            # end = (i + 1) * self.subchannel.n_sc['duct']['total']
-            # # Convert linear power (W/m) to volumetric power (W/m^3)
-            # # (qtp == q triple prime); value is very large
-            # qtp = (p_duct[start:end]
-            #        / self.duct_params['area'][i, self._duct_idx])
+            # self.duct.update(duct_avg_temps[i])
+            self._update_duct(duct_avg_temps[i])
+
+            # Convert linear power (W/m) to volumetric power (W/m^3)
             qtp = self._calc_duct_power(p_duct, i)
 
             # Need to get inner and outer coolant temperatures and

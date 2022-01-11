@@ -14,12 +14,13 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-20
+date: 2022-01-05
 author: matz
 Test the base Region class and its methods
 """
 ########################################################################
 import numpy as np
+import pytest
 from tests import conftest
 
 
@@ -277,3 +278,18 @@ def test_activate_from_rr_dd(c_ctrl_params, c_lrefl_simple):
     msg = 'Average coolant temperature error'
     diff = rr.avg_coolant_temp - ur.avg_coolant_temp
     assert np.abs(diff) < 1e-9, msg
+
+
+def test_material_update_errors(c_fuel_params, caplog):
+    """Test that material update failures return error messages"""
+    flowrate = 1.0
+    rr = conftest.make_rodded_region_fixture('conceptual_fuel',
+                                             c_fuel_params[0],
+                                             c_fuel_params[1],
+                                             flowrate)
+    rr = conftest.activate_rodded_region(rr, 650.0)
+    with pytest.raises(SystemExit):
+        rr._update_coolant(-50.0)
+
+    msg = "Coolant material update failure; Name: conceptual_fuel"
+    assert msg in caplog.text
