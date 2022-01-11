@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-02
+date: 2021-11-29
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -25,10 +25,9 @@ import subprocess
 import logging
 import sys
 import pickle
+import dill
 import datetime
 import time
-import multiprocessing as mp
-
 import dassh
 from dassh.logged_class import LoggedClass
 
@@ -60,8 +59,12 @@ def load(path='dassh_reactor.pkl'):
     DASSH Reactor object
 
     """
-    with open(path, 'rb') as f:
-        obj = pickle.load(f)
+    if sys.version_info < (3, 7):
+        with open(path, 'rb') as f:
+            obj = dill.load(f)
+    else:
+        with open(path, 'rb') as f:
+            obj = pickle.load(f)
     return obj
 
 
@@ -87,13 +90,25 @@ class Reactor(LoggedClass):
     - oriface method to iteratively call sweep method
 
     """
-    def __init__(self, dassh_input, path=None, calc_power=True, **kwargs):
+    def __init__(self, dassh_input, path=None, calc_power=True,
+                 timestep=0, **kwargs):
         """Initialize Reactor object for DASSH simulation
 
         Parameters
         ----------
         dassh_input : DASSH_Input object
             DASSH input from read_input.DASSH_Input
+        path : str (optional)
+            Path to working directory where DASSH should be executed
+            (default = None; perform calculations next to input file)
+        calc_power : boolean (optional)
+            Indicate whether power distributions should be calculated
+            or read from existing VARPOW outputs (default = True)
+        timestep : int (optional)
+            Indicate timestep for which to generate power distributions
+            (default = 0)
+        kwargs : dict
+            Many; see "_setup_options" method for more
 
         """
         LoggedClass.__init__(self, 0, 'dassh.reactor.Reactor')
@@ -105,6 +120,7 @@ class Reactor(LoggedClass):
         # Store general inputs
         self.inlet_temp = dassh_input.data['Core']['coolant_inlet_temp']
         self.asm_pitch = dassh_input.data['Core']['assembly_pitch']
+        self._input_path = dassh_input.path
         if path is None:
             self.path = dassh_input.path
         else:
@@ -116,7 +132,7 @@ class Reactor(LoggedClass):
 
         # Set up power, obtain axial region boundaries
         self.log('info', 'Setting up power distribution')
-        self._setup_power(dassh_input, calc_power)
+        self._setup_power(dassh_input, calc_power, timestep)
         self._setup_axial_region_bnds(dassh_input)
 
         # Set up DASSH Assemblies by first creating templates, then
@@ -153,9 +169,10 @@ class Reactor(LoggedClass):
         self.log('info', f'{len(self.z) - 1} axial steps required')
         # Warn if axial steps too small (< 0.5 mm) or too many (> 4k)
         if self.req_dz < 0.0005 or len(self.z) - 1 > 2500:
-            msg = ('Your axial step size is very small so this '
-                   'problem might take a while to solve;\nConsider '
-                   'checking input for flow maldistribution.')
+            msg = ('Axial step size is very small so this problem '
+                   'might take a while to solve')
+            self.log('warning', msg)
+            msg = ('Consider checking input for flow maldistribution.')
             self.log('warning', msg)
 
         # Raise warning if est. coolant temp will exceed extreme limit
@@ -224,16 +241,20 @@ class Reactor(LoggedClass):
         if any(self._options['dump'].values()):
             self._options['dump']['any'] = True
 
-    def _setup_power(self, inp, calc_power_flag):
+    def _setup_power(self, inp, calc_power_flag, timestep=0):
         """Create the power distributions from ARC binary files or
         user specifications
 
         Parameters
         ----------
         inp : DASSH_Input object
+            Contains filepaths necessary for power distribution
         calc_power_flag : bool
             Flag indicating whether to run VARPOW to calculate power
             distribution from ARC binary files
+        timestep : int (optional)
+            Indicate for which timestep the power distribution should
+            be created
 
         """
         # NEED TO FIGURE OUT HOW TO TREAT MULTI-TIMEPOINT PROBLEMS
@@ -252,20 +273,21 @@ class Reactor(LoggedClass):
                        'binary files')
                 self.log('info', msg)
                 self.power['dif3d'] = \
-                    calc_power_VARIANT(inp.data, self.path)
+                    calc_power_VARIANT(inp.data, self.path, timestep)
             else:  # Go find it in the working directory
                 msg = ('Reading core power profile from VARPOW '
                        'output files')
                 self.log('info', msg)
                 self.power['dif3d'] = \
-                    import_power_VARIANT(inp.data, self.path)
+                    import_power_VARIANT(inp.data, self.path, timestep)
 
         # 2. Read user power, if given
-        if inp.data['Power']['user_power'][0] is not None:
+        if inp.data['Power']['user_power'][timestep] is not None:
             msg = ('Reading user-specified power profiles from '
-                   + inp.data['Power']['user_power'][0])
+                   + inp.data['Power']['user_power'][timestep])
             self.power['user'] = \
-                dassh.power._from_file(inp.data['Power']['user_power'][0])
+                dassh.power._from_file(
+                    inp.data['Power']['user_power'][timestep])
 
     def _setup_axial_region_bnds(self, inp):
         """Get axial mesh points from ARC binary files, user-specified
@@ -336,15 +358,25 @@ class Reactor(LoggedClass):
             mat_data['duct'] = self.materials[
                 asm_data['duct_material'].lower()].clone()
             if 'FuelModel' in asm_data:
-                mat_data['clad'] = self.materials[
-                    asm_data['FuelModel']['clad_material'].lower()
-                ].clone()
+                m = asm_data['FuelModel']['clad_material'].lower()
+                mat_data['clad'] = self.materials[m].clone()
                 if asm_data['FuelModel']['gap_material'] is not None:
-                    mat_data['gap'] = self.materials[
-                        asm_data['FuelModel']['gap_material'].lower()
-                    ].clone()
+                    m = asm_data['FuelModel']['gap_material'].lower()
+                    mat_data['gap'] = self.materials[m].clone()
                 else:
                     mat_data['gap'] = None
+            if 'PinModel' in asm_data:
+                m = asm_data['PinModel']['clad_material'].lower()
+                mat_data['clad'] = self.materials[m].clone()
+                if asm_data['PinModel']['gap_material'] is not None:
+                    m = asm_data['PinModel']['gap_material'].lower()
+                    mat_data['gap'] = self.materials[m].clone()
+                else:
+                    mat_data['gap'] = None
+                mat_data['pin'] = []
+                for m in asm_data['PinModel']['pin_material']:
+                    mm = m.lower()
+                    mat_data['pin'].append(self.materials[mm].clone())
             # make the list of "template" Assembly objects
             asm_templates[a] = dassh.assembly.Assembly(
                 a,
@@ -664,8 +696,10 @@ class Reactor(LoggedClass):
                 dz, sc = dassh.assembly.calculate_min_dz(
                     asm, self.inlet_temp, asm._estimated_T_out,
                     self._is_adiabatic)
-                self.log('info', msg1.format(asm.id, str(sc), dz_old))
-                self.log('info', msg2.format(dz))
+                self.log('info_file',
+                         msg1.format(asm.id, str(sc), dz_old))
+                self.log('info_file',
+                         msg2.format(dz))
             self.min_dz['dz'].append(dz)
             self.min_dz['sc'].append(sc)
 
@@ -852,15 +886,18 @@ class Reactor(LoggedClass):
         if path is None:
             path = self.path
 
-        # Close the open data files
-        try:
+        try:  # Close the open data files
             self._data_close()
         except (KeyError, AttributeError):  # no open data
             pass
 
-        with open(os.path.join(path, 'dassh_reactor.pkl'), 'wb') as f:
-            # cPickle.dump(self, f, cPickle.HIGHEST_PROTOCOL)
-            pickle.dump(self, f, protocol=pickle.DEFAULT_PROTOCOL)
+        if sys.version_info < (3, 7):
+            with open(os.path.join(path, 'dassh_reactor.pkl'), 'wb') as f:
+                dill.dump(self, f, protocol=dill.DEFAULT_PROTOCOL)
+
+        else:
+            with open(os.path.join(path, 'dassh_reactor.pkl'), 'wb') as f:
+                pickle.dump(self, f, protocol=pickle.DEFAULT_PROTOCOL)
 
     def reset(self):
         """Reset all the temperatures back to the inlet temperature"""
@@ -971,8 +1008,11 @@ class Reactor(LoggedClass):
     def _data_close(self):
         """Close the data files"""
         for k in self._options['dump']['files'].keys():
-            self._options['dump']['files'][k].close()
-            self._options['dump']['files'][k] = None
+            try:
+                self._options['dump']['files'][k].close()
+                self._options['dump']['files'][k] = None
+            except KeyError:
+                continue
 
     ####################################################################
     # TEMPERATURE SWEEP
@@ -1001,19 +1041,12 @@ class Reactor(LoggedClass):
         # Initialize duct temperatures in all assemblies
         self.axial_step0()
 
-        # Open workers, if parallel (NOT FUNCTIONAL)
-        if self._options['parallel']:
-            pool = mp.Pool()
-
         # Track the time elapsed
         self._starttime = time.time()
 
         for i in range(1, len(self.z)):
             # Calculate temperatures
-            if self._options['parallel']:
-                self.axial_step_parallel(self.z[i], self.dz[i - 1], pool)
-            else:
-                self.axial_step(self.z[i], self.dz[i - 1], i, verbose)
+            self.axial_step(self.z[i], self.dz[i - 1], i, verbose)
 
             # Log progress, if requested
             if self._options['log_progress']:
@@ -1022,9 +1055,6 @@ class Reactor(LoggedClass):
                     self._print_log_msg(i)
 
         # Once the sweep is done close the CSV data files, if open
-        if self._options['parallel']:
-            pool.close()
-            pool.join()
         try:
             self._data_close()
         except (AttributeError, KeyError):
@@ -1071,7 +1101,21 @@ class Reactor(LoggedClass):
         # dumping temperatures at this axial step
         dump_step = self._determine_whether_to_dump_data(z, dz)
 
-        # 1. Calculate gap coolant temperatures at the j+1 level
+        # 1. Calculate assembly duct and coolant temperatures.
+        #    Different treatment depending on whether in the
+        #    heterogeneous or homogeneous region; varies assembly to
+        #    assembly, handled in the same method.
+        #        - Calculate assembly duct wall temperatures at the j
+        #          level based on assembly and gap coolant temperatures
+        #          at the j-1 level
+        #        - Calculate assembly coolant temperatures at the j
+        #          level based on coolant temepratures at the j-1 level
+        #          and duct temperatures at the j level.
+        for ai in range(len(self.assemblies)):
+            self._calculate_asm_temperatures(self.assemblies[ai], ai,
+                                             z, dz, dump_step)
+
+        # 2. Calculate gap coolant temperatures at the j level
         #    based on duct wall temperatures at the j level.
         if self.core.model is not None:
             t_duct = np.array(
@@ -1090,24 +1134,6 @@ class Reactor(LoggedClass):
                     self._options['dump']['files']['coolant_gap_fine'],
                     to_write,
                     delimiter=',')
-
-        # 2. Calculate assembly coolant and duct temperatures.
-        #    Different treatment depending on whether in the
-        #    heterogeneous or homogeneous region; varies assembly to
-        #    assembly, handled in the same method.
-        #    (a) Heterogeneous region:
-        #        - Calculate assembly coolant temperatures at the j+1
-        #          level based on coolant and duct wall temepratures
-        #          at the j level
-        #        - Calculate assembly duct wall temperatures at the j+1
-        #          level based on assembly and gap coolant temperatures
-        #          at the j+1 level
-        #    (b) Homogeneous region (porous media)
-        #        - Calculate assembly coolant and duct temepratures at
-        #          the j+1 level based on temperatures at the j level
-        for ai in range(len(self.assemblies)):
-            self._calculate_asm_temperatures(self.assemblies[ai], ai,
-                                             z, dz, dump_step)
 
         if verbose:
             print(self._print_step_summary(z, dz))

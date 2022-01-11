@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-09-24
+date: 2021-10-22
 author: matz
 Generate power distributions in assembly components based on neutron
 flux; object to assign to individual assemblies
@@ -141,7 +141,6 @@ class Power(LoggedClass):
 
         # --------------------------------------------------------------
         # Calculate assembly total power; rearrange material power dens
-        n_asm = len(finemesh_to_activenode[finemesh_to_activenode != 0])
         n_pos = int(np.max(-finemesh_to_activenode))
         n_ring = core.count_rings(n_pos)
         if n_ring == 1:
@@ -773,7 +772,6 @@ class AssemblyPower(object):
             if profile is not None:
                 self.n_terms = profile.shape[2]
                 break
-        # self.norm = np.ones(len(self.z_finemesh) - 1)
 
     def get_power(self, z):
         """Calculate the linear power in all components at the
@@ -884,34 +882,6 @@ class AssemblyPower(object):
         # return -(z_abs / dz + const)
         return (z_abs / dz + const)
 
-    # def transform_z2(self, k_fint, z_abs):
-    #     """Transform z-position in the core to the relative z-position
-    #     within the appropriate VARIANT mesh cell
-    #
-    #     Parameters
-    #     ----------
-    #     k_fint : int (or numpy.ndarray of int)
-    #         Axial region in which to obtain the power distribution
-    #     z_abs : float (or numpy.ndarry of float)
-    #         Axial position in the core (cm)
-    #
-    #     Returns
-    #     -------
-    #     float (or numpy.ndarray of float)
-    #         Value(s) between -0.5 and 0.5 corresponding to the
-    #         relative position in the active VARIANT mesh cell
-    #
-    #     """
-    #     z_lo = self.z_finemesh[k_fint]
-    #     z_hi = self.z_finemesh[k_fint + 1]
-    #     dz = z_hi - z_lo
-    #     const = -0.5 - (z_lo / dz)
-    #     assert np.allclose(const, 0.5 - (z_hi / dz))
-    #     # Because VARPOW spits out the power densities backwards with
-    #     # respect to z in each region, we want to invert the relative
-    #     # z-coordinate
-    #     return -(z_abs / dz + const)
-
     def get_kfint(self, z_abs):
         """Get the fine mesh interval for a given axial position
 
@@ -992,6 +962,24 @@ class AssemblyPower(object):
         power_per_pin = np.dot(dz_finemesh, diff_across_region)
         # Now can evaluate skew
         return np.max(power_per_pin) / np.average(power_per_pin)
+
+    def calculate_avg_peak_linear_power(self):
+        """Calculate peak-average linear pin power in the assembly"""
+        exponents = np.arange(self.n_terms)
+        avg_coeffs = np.average(self.pin_power, axis=1)
+        deriv = avg_coeffs * exponents
+        deriv = np.flip(deriv[:, 1:], 1)
+        y = []
+        for mesh in range(self.pin_power.shape[0]):
+            roots = np.roots(deriv[mesh])
+            roots = roots.real[abs(roots.imag) < 1e-5]
+            roots = roots[(-0.5 <= roots) & (roots <= 0.5)]
+            x = np.concatenate(([-0.5, 0.5], roots))
+            x = x.reshape(x.shape[0], 1)
+            x_exp = np.power(x, exponents.reshape(1, -1))
+            y.append(np.dot(avg_coeffs[mesh], x_exp.T))
+        y = np.concatenate(y)
+        return np.max(y) * 100  # W/m
 
     def save_to_file(self, path, asm_id, pin=True, duct=True, cool=True):
         """Save power profiles to CSV"""

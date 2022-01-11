@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-02
+date: 2021-12-08
 author: matz
 Methods to plot DASSH objects (such as hexagonal fuel assemblies and
 the pins and subchannels that comprise them).
@@ -100,7 +100,7 @@ def plot_all(dassh_inp, dassh_reactor):
 
 def make_SubchannelPlot(dassh_reactor, plot_data):
     """Generate the assembly subchannel figures"""
-    f = 'temp_coolant_int.csv'
+    f = os.path.join(dassh_reactor.path, 'temp_coolant_int.csv')
     try:
         _data = _prepare_input(dassh_reactor, plot_data, f)
     except FileNotFoundError:
@@ -109,8 +109,13 @@ def make_SubchannelPlot(dassh_reactor, plot_data):
         return
     for i in range(len(_data['assembly_id'])):
         asm_id = _data['assembly_id'][i]
-        ascp = SubchannelPlot(dassh_reactor.assemblies[asm_id])
+        asm = dassh_reactor.assemblies[asm_id]
+        ascp = SubchannelPlot(asm)
+        if ascp._skip_plotting_simple_model(asm):
+            continue
         for zi in _data['z_data'].keys():
+            if ascp._skip_plotting_simple_model(asm, zi):
+                continue
             asm_zdata = _data['z_data'][zi][
                 _data['z_data'][zi][:, 0] == asm_id]
             ascp.plot(asm_zdata[0, 3:],
@@ -123,25 +128,40 @@ def make_SubchannelPlot(dassh_reactor, plot_data):
                       pin_alpha=_data['pin_alpha'])
             z_str = np.around(_data['bwd_len_conv'](zi), 2)
             fname = '_'.join(['SubchannelPlot',
-                              'asm' + str(asm_id),
+                              'asm' + str(asm_id + 1),
                               f'z={z_str}'])
             fname += '.png'
-            plt.savefig(fname, bbox_inches='tight', dpi=_data['dpi'])
-            plt.close()
+            fname = os.path.join(dassh_reactor.path, fname)
+            _save_and_close(fname, _data['dpi'])
 
 
 def make_PinPlot(dassh_reactor, plot_data):
     """Generate the assembly pin-by-pin figures"""
-    f = 'temp_pin.csv'
+    f = os.path.join(dassh_reactor.path, 'temp_pin.csv')
     try:
         _data = _prepare_input(dassh_reactor, plot_data, f)
-    except FileNotFoundError:
-        msg = 8 * '.' + f'File "{f}" not found, skipping...'
-        module_logger.log(30, msg)
-        return
+    except (FileNotFoundError, ValueError) as e:
+        if e.__class__.__name__ == 'ValueError':
+            msg = 8 * '.'
+            msg += (f'No data found in file "{f}" for '
+                    'requested assemblies; skipping...')
+            module_logger.log(30, msg)
+            return
+        else:
+            msg = 8 * '.' + f'File "{f}" not found, skipping...'
+            module_logger.log(30, msg)
+            return
     for i in range(len(_data['assembly_id'])):
         asm_id = _data['assembly_id'][i]
-        pp = PinPlot(dassh_reactor.assemblies[asm_id])
+        asm = dassh_reactor.assemblies[asm_id]
+        pp = PinPlot(asm)
+        if pp._skip_plotting_simple_model(asm):
+            continue
+        if pp._check_for_fuel_model(asm):
+            continue
+        for zi in _data['z_data'].keys():
+            if pp._skip_plotting_simple_model(asm, zi):
+                continue
         for zi in _data['z_data'].keys():
             asm_zdata = _data['z_data'][zi][
                 _data['z_data'][zi][:, 0] == asm_id]
@@ -153,16 +173,16 @@ def make_PinPlot(dassh_reactor, plot_data):
                         cmap=_data['cmap'],
                         cbar_label=_data['cbar_label'])
                 z_str = np.around(_data['bwd_len_conv'](zi), 2)
-                fname = '_'.join(['PinPlot', 'asm' + str(asm_id),
+                fname = '_'.join(['PinPlot', 'asm' + str(asm_id + 1),
                                   value, f'z={z_str}'])
                 fname += '.png'
-                plt.savefig(fname, bbox_inches='tight', dpi=_data['dpi'])
-                plt.close()
+                fname = os.path.join(dassh_reactor.path, fname)
+                _save_and_close(fname, _data['dpi'])
 
 
 def make_CoreSubchannelPlot(dassh_reactor, plot_data):
     """Generate the core-wide subchannel figures"""
-    f = 'temp_coolant_int.csv'
+    f = os.path.join(dassh_reactor.path, 'temp_coolant_int.csv')
     try:
         _data = _prepare_input(dassh_reactor, plot_data, f)
     except FileNotFoundError:
@@ -182,13 +202,13 @@ def make_CoreSubchannelPlot(dassh_reactor, plot_data):
         z_str = np.around(_data['bwd_len_conv'](zi), 2)
         fname = '_'.join(['CoreSubchannelPlot', f'z={z_str}'])
         fname += '.png'
-        plt.savefig(fname, bbox_inches='tight', dpi=_data['dpi'])
-        plt.close()
+        fname = os.path.join(dassh_reactor.path, fname)
+        _save_and_close(fname, _data['dpi'])
 
 
 def make_CorePinPlot(dassh_reactor, plot_data):
     """Make core pin-by-pin figures"""
-    f = 'temp_pin.csv'
+    f = os.path.join(dassh_reactor.path, 'temp_pin.csv')
     try:
         _data = _prepare_input(dassh_reactor, plot_data, f)
     except FileNotFoundError:
@@ -208,8 +228,8 @@ def make_CorePinPlot(dassh_reactor, plot_data):
             z_str = np.around(_data['bwd_len_conv'](zi), 2)
             fname = '_'.join(['CorePinPlot', v, f'z={z_str}'])
             fname += '.png'
-            plt.savefig(fname, bbox_inches='tight', dpi=_data['dpi'])
-            plt.close()
+            fname = os.path.join(dassh_reactor.path, fname)
+            _save_and_close(fname, _data['dpi'])
 
 
 def make_CoreHexPlot(dassh_reactor, plot_data):
@@ -236,6 +256,9 @@ class AssemblyPlot(object):
     def __init__(self, dassh_asm, simple_model=False):
         """Save the assembly to get all the geometry chars you want,
         but pull out a bunch of stuff to get it easily"""
+        self.name = 'AssemblyPlot'
+        self.id = dassh_asm.id
+        self.loc = dassh_asm.loc
         if simple_model:
             # Duct characteristics
             self.duct = {}
@@ -312,8 +335,14 @@ class AssemblyPlot(object):
             kwargs['cmap'] = mpl.cm.jet
 
         if not kwargs.get('norm'):
-            kwargs['norm'] = colors.TwoSlopeNorm(
-                vmin=lbnd, vcenter=middle, vmax=ubnd)
+            try:
+                kwargs['norm'] = colors.TwoSlopeNorm(
+                    vmin=lbnd, vcenter=middle, vmax=ubnd)
+            except:
+                print('lower bound = ', lbnd)
+                print('midpoint = ', middle)
+                print('uppder bound = ', ubnd)
+                raise
 
         return kwargs
 
@@ -370,6 +399,40 @@ class AssemblyPlot(object):
         ax.set_ylim([-axlim, axlim])
         return ax
 
+    def _skip_plotting_simple_model(self, asm, z=None):
+        """Do not generate single-assembly plots for simple-model regions
+
+        Parameters
+        ----------
+        asm : DASSH Assembly object
+            Contains all assembly information
+        id : int
+            Assembly ID
+        plot_type : str
+            Type of plot being checked
+        z (optional): float
+            Axial height (m)
+            default=None checks whether assembly has any pin bundle region
+
+        """
+        if z is None:
+            if not asm.has_rodded:
+                msg = 8 * '.'
+                msg += (f'Assembly {self.id + 1} has no pin bundle '
+                        f'region; skipping {self.name}...')
+                return True
+            else:
+                return False
+        else:
+            if not asm.region[asm._identify_active_region(z)].is_rodded:
+                msg = 8 * '.'
+                msg += (f'Assembly {self.id + 1} utilizes simple model '
+                        f'at axial position {z}; skipping ...')
+                module_logger.log(30, msg)
+                return True
+            else:
+                return False
+
 
 class SubchannelPlot(AssemblyPlot):
     """Plot subchannel temperature data"""
@@ -377,6 +440,7 @@ class SubchannelPlot(AssemblyPlot):
     def __init__(self, dassh_asm):
         """Initialize the SubchannelPlot instance"""
         AssemblyPlot.__init__(self, dassh_asm)
+        self.name = 'SubchannelPlot'
 
     def plot(self, data, lbnd=None, ubnd=None, middle=None,
              xy_shift=None, **kwargs):
@@ -1268,6 +1332,7 @@ class PinPlot(AssemblyPlot):
     def __init__(self, dassh_asm):
         """Initialize the PinPlot instance"""
         AssemblyPlot.__init__(self, dassh_asm)
+        self.name = 'PinPlot'
 
     def plot(self, data, lbnd=None, ubnd=None, middle=None,
              xy_shift=None, **kwargs):
@@ -1358,6 +1423,20 @@ class PinPlot(AssemblyPlot):
         c.set_array(data)
         ax.add_collection(c)
         return ax
+
+    def _check_for_fuel_model(self, dassh_asm):
+        """Check asm for fuel model; if none, no pin temps to plot"""
+        if self._skip_plotting_simple_model(dassh_asm):
+            return True
+        if dassh_asm.has_rodded:
+            if not hasattr(dassh_asm.rodded, 'pin_model'):
+                msg = 8 * '.'
+                msg += (f'Assembly {self.id + 1} has no pin temperature '
+                        f'model; skipping {self.name}...')
+                module_logger.log(30, msg)
+                return True
+            else:
+                return False
 
 
 ########################################################################
@@ -1526,12 +1605,18 @@ class CoreHexPlot(CorePlot):
         to_plot = []
         hex_to_ignore = []
         for i in range(len(data)):
+            start_new_ring = False
+            if i > 0:
+                tmp = (0.5 * (1 + np.sqrt(1 + 4 * (i - 1) // 3)))
+                start_new_ring = tmp.is_integer()
             if i in asm_to_ignore:
                 continue
-            elif data[i] >= nonvalue:
+            elif data[i] > nonvalue:
                 to_plot.append(data[i])
                 hex_to_color.append(self.hex[i])
-            elif np.all(data[i:] < nonvalue) and omit_nonvalue_rings:
+            elif (np.all(data[i:] <= nonvalue)
+                  and omit_nonvalue_rings
+                  and start_new_ring):
                 break
             else:
                 hex_to_ignore.append(self.hex[i])
@@ -1552,7 +1637,7 @@ class CoreHexPlot(CorePlot):
         # are plotting
         n_rings = None
         if omit_nonvalue_rings:
-            n_rings = core.count_rings(len(to_plot))
+            n_rings = core.count_rings(len(to_plot)) + 1
         ax = self._set_ax_bnds(ax, rings=n_rings)
 
         # Add data labels
@@ -1577,19 +1662,20 @@ class CoreHexPlot(CorePlot):
         fontsize = 12
         if fmt is None:
             fmt = '{:0.1f}'
+        data_fmt = [fmt.format(x) for x in data]
+        max_data_label_str_len = max([len(x) for x in data_fmt])
+        fmt = '{:^' + str(max_data_label_str_len) + 's}'
+        data_fmt = [fmt.format(s) for s in data_fmt]
         for i in range(len(data)):
-            if i not in ignore and data[i] >= nv:
-                txt = ax.annotate(fmt.format(data[i]),
+            if i not in ignore and data[i] > nv:
+                txt = ax.annotate(data_fmt[i],
                                   self.xy[i],
                                   size=fontsize,
                                   ha='center',
                                   va='center',
                                   weight='bold')
-                fontsize = self._auto_fit_fontsize(txt,
-                                                   txtwidth,
-                                                   None,
-                                                   fig=fig,
-                                                   ax=ax)
+                fontsize = self._auto_fit_fontsize(
+                    txt, txtwidth, None, fig=fig, ax=ax)
 
     def _auto_fit_fontsize(self, text, width, height, fig=None, ax=None):
         """Auto-decrease the fontsize of a text object.
@@ -1630,12 +1716,6 @@ class CoreHexPlot(CorePlot):
         # don't have to go through these iterations.
         return fs
 
-    # @staticmethod
-    # def _count_rings(n_asm):
-    #     """Given some number of assemblies, count hex rings"""
-    #     nr = int(np.ceil(0.5 * (1 + np.sqrt(1 + 4 * (n_asm - 1) // 3))))
-    #     return nr
-
     def make_power(self, dassh_reactor, plot_data):
         """Generate the total assembly power hex plot"""
         data = np.array([sum(list(a._power_delivered.values())) / 1e6
@@ -1650,9 +1730,9 @@ class CoreHexPlot(CorePlot):
                   cmap=plot_data['cmap'],
                   cbar_label=cbl,
                   data_label=plot_data['data_label'])
-        plt.savefig('CoreHexPlot_total_power.png',
-                    bbox_inches='tight', dpi=plot_data['dpi'])
-        plt.close()
+        fname = 'CoreHexPlot_total_power.png'
+        fname = os.path.join(dassh_reactor.path, fname)
+        _save_and_close(fname, plot_data['dpi'])
 
     def make_axial_peak(self, dassh_reactor, plot_data, value):
         """Generate CoreHexPlot figure containing maximum temperature
@@ -1671,6 +1751,12 @@ class CoreHexPlot(CorePlot):
         None
 
         """
+        if 'avg' in value:
+            msg = (8 * '.' + 'Axial total CoreHexPlot only available '
+                   'for peak, not average, temperatures; skipping '
+                   f'request for "{value}" ...')
+            module_logger.log(30, msg)
+            return
         cbar_lab = self._get_cbar_label(plot_data, value)
         data = self._get_axial_peak_data(dassh_reactor, value)
         self.plot(self.temp_conv(data),
@@ -1681,9 +1767,9 @@ class CoreHexPlot(CorePlot):
                   cbar_label=cbar_lab,
                   data_label=plot_data['data_label'],
                   omit_nonvalue_rings=plot_data['omit_nonvalue_rings'])
-        plt.savefig(f'CoreHexPlot_{value}.png',
-                    bbox_inches='tight', dpi=plot_data['dpi'])
-        plt.close()
+        fname = f'CoreHexPlot_{value}.png'
+        fname = os.path.join(dassh_reactor.path, fname)
+        _save_and_close(fname, plot_data['dpi'])
 
     def make_radial_peak_or_avg(self, dassh_reactor, plot_data, value):
         """Generate CoreHexPlot figure containing maximum temperature
@@ -1734,9 +1820,8 @@ class CoreHexPlot(CorePlot):
                 fname = '_'.join(['CoreHexPlot',
                                   value,
                                   f'z={z_str}.png'])
-                plt.savefig(fname, bbox_inches='tight',
-                            dpi=plot_data['dpi'])
-                plt.close()
+                fname = os.path.join(dassh_reactor.path, fname)
+                _save_and_close(fname, plot_data['dpi'])
 
     def _get_cbar_label(self, plot_data, value):
         """If no colorbar label is provided, generate one based on
@@ -1917,11 +2002,11 @@ class CoreSubchannelPlot(CorePlot):
 
             # If only a single value is given, use the proper plotting
             # object for that; just create on the fly b/c it's small
-            # elif np.sum(asm_data['int'] > 0) == 1:
-            #    snp = SingleNodePlot(asm)
-            #    ax = snp.plot(ax, asm_data['int'][0], patch_kwargs['cmap'],
-            #                  patch_kwargs['norm'], ignore_ur, 0.0,
-            #                  self.asm_xy[i])
+            elif np.sum(asm_data['int'] > 0) == 1:
+                snp = SingleNodePlot(asm)
+                ax = snp.plot(ax, asm_data['int'][0], patch_kwargs['cmap'],
+                              patch_kwargs['norm'], ignore_ur, 0.0,
+                              self.asm_xy[i])
 
             # Otherwise plot every subchannel in the assembly.
             else:
@@ -2031,6 +2116,10 @@ class CorePinPlot(CorePlot):
         data = {'pins': data}
         kwargs = self.parse_args(data, lbnd, ubnd, middle, **kwargs)
         data = data['pins']
+
+        # Round all assembly identifiers (read as floats but are actually
+        # int) so that we can properly match them later
+        data[:, 0] = np.round(data[:, 0], decimals=12)
 
         # isolate the patch kwargs
         patch_kwargs = {'cmap': kwargs['cmap'],
@@ -2192,6 +2281,14 @@ class CorePinPlot(CorePlot):
 ########################################################################
 
 
+def _save_and_close(plot_file_path, dpi):
+    l = logging.getLogger('matplotlib.text')
+    l.setLevel(40)
+    plt.savefig(plot_file_path, bbox_inches='tight', dpi=dpi)
+    l.setLevel(30)
+    plt.close()
+
+
 def _prepare_input(dassh_reactor, plot_data, file_to_load):
     """Prepare and store data necessary to make any figure
 
@@ -2268,14 +2365,6 @@ def _get_data_bnds(data, lbnd, ubnd, mpnt):
 def _sort_asm(dassh_reactor, plot_data):
     """Order the assemblies requested by the user"""
     # Get the assembly indices; also convert to python (base-0 index)
-    # user_asm_list = []
-    # if dassh_reactor._options['dif3d_idx']:
-    #     for user_asm in plot_data['assembly_id']:
-    #         for asm in dassh_reactor.assemblies:
-    #             if asm.dif3d_id == user_asm - 1:
-    #                 user_asm_list.append(asm.id)
-    #                 break
-    # else:
     user_asm_list = [a_id - 1 for a_id in plot_data['assembly_id']]
     return user_asm_list
 
@@ -2301,8 +2390,7 @@ def _add_colorbar(ax, text, cmap, norm):
     """
     divider = make_axes_locatable(ax)
     color_axis = divider.append_axes("right", size="5%", pad=0.1)
-    cbar_colors = mpl.cm.ScalarMappable(norm=norm,
-                                        cmap=cmap)
+    cbar_colors = mpl.cm.ScalarMappable(norm=norm, cmap=cmap)
     cbar = plt.colorbar(cbar_colors, cax=color_axis)
     cbar.set_label(text, fontsize=11)
     return ax
@@ -2351,8 +2439,8 @@ def _identify_user_units(user_temp_unit):
     elif user_unit in utils._degK:
         return 'K'
     else:
-        raise ValueError(f'do not understand user '
-                         'temperature unit {user_temp_unit}')
+        raise ValueError('Do not understand requested temperature '
+                         f'unit {user_temp_unit}')
 
 
 def _load_data(file, z_user, asmlist=None):
@@ -2387,6 +2475,11 @@ def _load_data(file, z_user, asmlist=None):
             _filter_lines(f, z_to_load, asmlist),
             delimiter=',')
 
+    if data.size == 0:
+        raise ValueError('No data loaded')
+    if data.ndim == 1:  # If only one row in data
+        data = data[np.newaxis, :]
+
     # Connect z-data in numpy array with user request
     z_dict = {}
     for z in z_user:
@@ -2396,7 +2489,6 @@ def _load_data(file, z_user, asmlist=None):
             z1, x1, z2, x2 = interp_dict[z]
             z_dict[z] = (data[data[:, 1] == z1] * x1
                          + data[data[:, 1] == z2] * x2)
-
     return z_dict
 
 

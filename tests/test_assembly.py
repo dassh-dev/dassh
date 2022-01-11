@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-05-26
+date: 2022-01-05
 author: matz
 Test the DASSH Assembly object
 """
@@ -146,6 +146,17 @@ def test_assembly_clone_unchanged_og(textbook_asm):
     assert not np.allclose(clone.rodded.temp['coolant_int'],
                            textbook_asm.rodded.temp['coolant_int'],
                            atol=10.0)
+
+
+def test_material_update_error_msg(c_shield_asm, caplog):
+    """Check that material update error provides detailed message"""
+    with pytest.raises(SystemExit):
+        c_shield_asm.active_region._update_coolant(-50.0)
+    msg = "Coolant material update failure; "
+    msg += f"Asm: {c_shield_asm.id}; "
+    msg += f"Loc: {c_shield_asm.loc}; "
+    msg += f"Name: {c_shield_asm.active_region.name}"
+    assert msg in caplog.text
 
 
 def test_identify_axial_region(c_fuel_asm, small_core_asm_power):

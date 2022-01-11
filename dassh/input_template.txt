@@ -7,8 +7,9 @@
     calc_energy_balance = boolean(default=False)
     se2geo = boolean(default=False)
     debug = boolean(default=False)
-    parallel = boolean(default=False)
     param_update_tol = float(min=0.0, max=1.0, default=0.0)
+    parallel = boolean(default=False)
+    n_cpu = integer(min=1, default=None)
     [[Dump]]
         all = boolean(default=False)
         coolant = boolean(default=False)
@@ -23,6 +24,7 @@
         temperature = string(default='kelvin')
         length = string(default='m')
         mass_flow_rate = string(default='kg/s')
+
 
 [Materials]
     [[__many__]]
@@ -43,7 +45,7 @@
         fuel_material = option('metal', 'oxide', 'nitride', default=None)
         fuel_alloy = option('zr', 'zirconium', 'al', 'aluminum', None, default=None)
         power_model = option('distribute', 'pin_only', default='distribute')
-        pmatrx = string(default=None)
+        pmatrx = force_list(min=1, default=None)
         geodst = force_list(min=1, default=None)
         ndxsrf = force_list(min=1, default=None)
         znatdn = force_list(min=1, default=None)
@@ -60,6 +62,7 @@
     assembly_pitch = float
     gap_model = option('flow', 'no_flow', 'duct_average', 'none', default='no_flow')
     htc_params_duct = float_list(default=None)
+
 
 [Assembly]
     [[__many__]]
@@ -97,7 +100,7 @@
                 htc_params = float_list(default=None)
                 convection_factor = float(min=0.000001, max=1.0, default=1.0)
         [[[FuelModel]]]
-            fcgap_thickness = float(min=0.0, default=0.0)
+            gap_thickness = float(min=0.0, default=0.0)
             clad_material = string(default=None)
             gap_material = string(default=None)
             htc_params_clad = float_list(default=None)
@@ -105,4 +108,23 @@
             pu_frac = force_list(default=list(0.0))
             zr_frac = force_list(default=list(0.0))
             porosity = force_list(default=list(0.0))
+        [[[PinModel]]]
+            gap_material = string(default=None)
+            gap_thickness = float(min=0.0, default=0.0)
+            clad_material = string(default=None)
+            htc_params_clad = float_list(default=None)
+            pin_material = force_list(default=None)
+            r_frac = force_list(default=list(0.0))
 
+
+[Orificing]
+    assemblies_to_group = force_list(min=1, default=None)
+    n_groups = integer(min=1, default=None)
+    group_cutoff = float(min=0.001, max=1.0, default=0.05)
+    group_cutoff_delta = float(min=0.00001, max=1.0, default=0.001)
+    value_to_optimize = option('peak coolant temp', 'peak clad MW temp', 'peak clad ID temp', 'peak fuel temp', default=None)
+    bulk_coolant_temp = float(default=None)
+    iteration_limit = integer(min=1, default=10)
+    convergence_tol = float(min=1e-6, default=1e-3)
+    pressure_drop_limit = float(min=0.0, default=None)
+    recycle_results = boolean(default=False)

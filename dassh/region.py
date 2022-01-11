@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-20
+date: 2022-01-05
 author: matz
 Methods to describe the axial regions in an assembly
 """
@@ -137,12 +137,6 @@ class DASSH_Region(object):
     def avg_duct_mw_temp(self):
         """Calculate volume-average of individual duct node
         temperatures"""
-        # return np.sum(self.temp['duct_mw']
-        #               * self.area['duct_mw_over_total'],
-        #               axis=1)
-        # tot = np.sum(self.temp['duct_mw']
-        #              * self.area['duct_mw'], axis=1)
-        # return tot / self.total_area['duct_mw']
         return np.diagonal(
             np.dot(self.temp['duct_mw'],
                    self.area['duct_mw_over_total'].T))
@@ -237,18 +231,6 @@ class DASSH_Region(object):
             self.temp['duct_mw'][d] *= avg_cool_int_temp
             self.temp['duct_surf'][d] *= avg_cool_int_temp
 
-    # def update_peak_temp(self, z):
-    #     """Update trackers on peak coolant and duct temperature"""
-    #     max_cool = np.max(self.temp['coolant_int'])
-    #     if max_cool > self._peak_temp['cool']:
-    #         self._peak_temp['cool'] = max_cool
-    #         self._peak_temp['z_cool'] = z
-    #     max_duct = np.max(self.temp['duct_mw'], axis=1)
-    #     for i in range(max_duct.shape[0]):
-    #         if max_duct[i] > self._peak_temp['duct_mw'][i]:
-    #             self._peak_temp['duct'][i] = max_duct[i]
-    #             self._peak_temp['z_duct'][i] = z
-
     def update_ebal(self, q_in, q_from_duct):
         """Update the region energy-balance tallies
 
@@ -316,5 +298,36 @@ class DASSH_Region(object):
                 eps[:, (0, -1)] *= 0.5
                 self.ebal['per_hex_side_byp_out'][byp] += \
                     np.sum(eps, axis=1)
+
+    def _update_duct(self, temp):
+        """Wrapper method to update duct material temperature"""
+        try:
+            self.duct.update(temp)
+        except SystemExit:
+            msg = 'Duct material update failure'
+            msg += self._raise_material_update_error()
+            self.log('error', msg)
+            raise
+
+    def _update_coolant(self, temp):
+        """Wrapper method to update coolant material temperature"""
+        try:
+            self.coolant.update(temp)
+        except SystemExit:
+            msg = 'Coolant material update failure'
+            msg += self._raise_material_update_error()
+            self.log('error', msg)
+            raise
+
+    def _raise_material_update_error(self):
+        """Echo available region IDs when material update fails"""
+        msg = ""
+        if hasattr(self, '_id'):
+            msg += f'; Asm: {self._id}'
+        if hasattr(self, '_loc'):
+            msg += f'; Loc: {self._loc}'
+        if hasattr(self, 'name'):
+            msg += f'; Name: {self.name}'
+        return msg
 
 ########################################################################

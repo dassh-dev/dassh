@@ -59,7 +59,7 @@
 
         [[[FuelModel]]]
             clad_material   = HT9
-            fcgap_thickness = 0.0
+            gap_thickness = 0.0
             r_frac   =  0.0, 0.33333, 0.66667
             pu_frac  = 0.20,    0.20,    0.20
             zr_frac  = 0.10,    0.10,    0.10

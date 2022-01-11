@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-20
+date: 2022-01-05
 author: matz
 Pytest fixtures and related test utilities for the whole shebang
 """
@@ -27,7 +27,6 @@ import subprocess
 import numpy as np
 import pytest
 import dassh
-# import py4c
 
 
 @pytest.fixture(scope='session')
@@ -43,6 +42,21 @@ def resdir(testdir):
 def pytest_addoption(parser):
     help = "Only run verification print tests if requested"
     parser.addoption("--printverify", action="store", default=0, help=help)
+
+
+@pytest.fixture(scope='session')
+def wdir_setup():
+    """Return the function that performs teardown of old execution
+    test results and setup for new execution tests"""
+    def tmp(infile_path, outpath):
+        # Remove the DASSH reactor object, if it exists
+        if os.path.exists(outpath):
+            shutil.rmtree(outpath)
+        os.makedirs(outpath, exist_ok=True)
+        infile_name = os.path.split(infile_path)[1]
+        shutil.copy(infile_path, os.path.join(outpath, infile_name))
+        return os.path.join(outpath, infile_name)
+    return tmp
 
 
 # def pytest_configure(config):
@@ -772,6 +786,7 @@ def c_lrefl_simple(c_fuel_params, c_fuel_rr):
     z_hi = 1.25
     vf_coolant = 0.25
     return dassh.SingleNodeHomogeneous(
+        'test_simple_reg',
         z_lo, z_hi,
         c_fuel_rr.duct_ftf[-1],
         vf_coolant,
@@ -791,8 +806,8 @@ def shield_ur_mnh():
     fr = 0.01      # Coolant FR (kg/s)
     coolant_mat = dassh.Material('sodium_se2anl_425')
     duct_mat = dassh.Material('ht9_se2anl_425')
-    mnh = dassh.MultiNodeHomogeneous(z_low, z_high, dftf, vfc, fr,
-                                     coolant_mat, duct_mat,
+    mnh = dassh.MultiNodeHomogeneous('test_mnh_reg', z_low, z_high, dftf,
+                                     vfc, fr, coolant_mat, duct_mat,
                                      htc_params=None)
     return activate_rodded_region(mnh, 623.15)
 
@@ -807,9 +822,9 @@ def shield_ur_simple():
     fr = 0.2      # Coolant FR (kg/s)
     coolant_mat = dassh.Material('sodium_se2anl_425')
     duct_mat = dassh.Material('ht9_se2anl_425')
-    ur = dassh.SingleNodeHomogeneous(z_low, z_high, dftf, vfc, fr,
-                                     coolant_mat, duct_mat,
-                                     htc_params=None)
+    ur = dassh.SingleNodeHomogeneous('test_simple_reg', z_low, z_high,
+                                     dftf, vfc, fr, coolant_mat,
+                                     duct_mat, htc_params=None)
     for key in ur.temp:
         ur.temp[key] *= 623.15
     return ur
@@ -1109,12 +1124,12 @@ def pin(c_fuel_rr):
                    'zr_frac': [0.1, 0.1, 0.1],
                    'pu_frac': [0.2, 0.2, 0.2],
                    'porosity': [0.25, 0.25, 0.25],
-                   'fcgap_thickness': 0.0,
+                   'gap_thickness': 0.0,
                    'htc_params_clad': htcp}
-    return dassh.FuelPin(0.00628142,
-                         0.00050292,
-                         dassh.Material('ht9_se2anl'),
-                         fuel_params)
+    return dassh.PinModel(0.00628142,
+                          0.00050292,
+                          dassh.Material('ht9_se2anl'),
+                          fuel_params)
 
 
 @pytest.fixture
@@ -1131,13 +1146,13 @@ def pin_boc():
                    'zr_frac': [0.1, 0.1, 0.1],
                    'pu_frac': [0.2, 0.2, 0.2],
                    'porosity': [0.0, 0.0, 0.0],
-                   'fcgap_thickness': fc_gap,
+                   'gap_thickness': fc_gap,
                    'htc_params_clad': htcp}
-    return dassh.FuelPin(d_pin,
-                         clad_thiccness,
-                         dassh.Material('ht9_se2anl'),
-                         fuel_params,
-                         gap_mat=dassh.Material('sodium'))
+    return dassh.PinModel(d_pin,
+                          clad_thiccness,
+                          dassh.Material('ht9_se2anl'),
+                          fuel_params,
+                          gap_mat=dassh.Material('sodium'))
 
 
 @pytest.fixture
@@ -1164,7 +1179,7 @@ def se2anl_peaktemp_params(c_fuel_rr):
             'pin_diameter': c_fuel_rr.pin_diameter,
             'pin_pitch': c_fuel_rr.pin_pitch,
             'clad_thickness': c_fuel_rr.clad_thickness,
-            'fcgap_thickness': 0.0,
+            'gap_thickness': 0.0,
             'r_fuel': (c_fuel_rr.pin_diameter / 2
                        - c_fuel_rr.clad_thickness),
             'dr_clad': c_fuel_rr.clad_thickness / 2,

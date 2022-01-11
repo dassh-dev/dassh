@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-02
+date: 2021-11-12
 author: matz
 Methods to describe the layout of assemblies in the reactor core and
 the coolant in the gap between them
@@ -26,9 +26,8 @@ from dassh.correlations import nusselt_db
 
 
 _sqrt3 = np.sqrt(3)
-# Directions around assembly
+# Directions around assembly faces
 _dirs = {}
-# _dirs[0] = [(-1, -1), (-1, 0), (0, 1), (1, 1), (1, 0), (0, -1)]
 _dirs[0] = [(0, -1), (-1, -1), (-1, 0), (0, 1), (1, 1), (1, 0)]
 _dirs[2] = _dirs[0][1:] + [_dirs[0][0]]
 _dirs[1] = _dirs[0][2:] + _dirs[0][:2]
@@ -1172,8 +1171,7 @@ class Core(LoggedClass):
         self._conv_util['mask2'] = self._conv_util['inds'][2][0] >= 0
 
         if self.model == 'no_flow':
-            self._conv_util['const'] = \
-                2 * self._conv_util['const'] / self.d_gap
+            self._conv_util['const'] *= (2 / self.d_gap)
 
     def _make_cond_mask(self):
         """Just like for the convection lookup, make a mask that can
@@ -1185,28 +1183,15 @@ class Core(LoggedClass):
         the conduction resistance
 
         """
-        # as stored, min(self.sc_adj) is 1. This is not useful for
-        # Python indexing, so we'll subtract 1 to make the values
-        # useful as Python indices. There are 3 subchannel adjacencies
-        # possible, but most subchannels only have 2. These are stored
-        # as 0s but will become -1s after the subtraction. We need a
-        # mask to filter them out.
-        # tmp = self._sc_adj - 1  # N_subchannel x 3 (max 3 adj possible)
-        # adj_types = self.sc_types[tmp]  # Adjacent types!
-        # old_L = np.array(self.L)  # old L
-        # new_L = np.zeros((len(self.sc_types), 3))  # what L will become
-        # For each gap subchannel i
-        # type_i = self.sc_types[i]
-        # type_a = adj_types[i] (up to 3)
-        # for i in range(3):
-        #     new_L[:, i] = old_L[self.sc_types, adj_types[:, i]]
+        # The conduction resistance constant is just the gap width
+        # "d_gap" divided by the heat transfer distance ("L", the
+        # distance between subchannels). Where a subchannel doesn't
+        # have a neighbor, L=0 and can't be in the denominator. In
+        # that case, we set the conduction constant to zero so that
+        # heat transfer cannot occur.
         self._Rcond = np.divide(self.d_gap, self.gap_params['L'],
                                 out=np.zeros_like(self.gap_params['L']),
                                 where=(self.gap_params['L'] != 0))
-        # Since new_L had some bad values due to the -1s in tmp, we
-        # will now filter them out of our array before we store it
-        # tmp = tmp >= 0
-        # self._Rcond = self._Rcond * tmp
 
     ####################################################################
     # TEMPERATURE PROPERTIES
@@ -1310,10 +1295,10 @@ class Core(LoggedClass):
             # self.coolant_gap_params['htc'] = \
             #     (self.gap_coolant.thermal_conductivity
             #      / self.gap_params['de'])
-            self.coolant_gap_params['htc'] = np.ones(self.n_sc)
-            self.coolant_gap_params['htc'] *= 0.5 * self.d_gap
-        # self.coolant_gap_params['htc'] = np.array([4e4, 4e4])
-        # self._Rcond[:, 1:] *= 0.0
+            # self.coolant_gap_params['htc'] = np.ones(self.n_sc)
+            # self.coolant_gap_params['htc'] *= 0.5 * self.d_gap
+            h = 2 * self.gap_coolant.thermal_conductivity / self.d_gap
+            self.coolant_gap_params['htc'] = np.full((self.n_sc,), h)
 
     ####################################################################
     # COOLANT TEMPERATURE CALCULATION
@@ -1363,8 +1348,6 @@ class Core(LoggedClass):
         # Adj_cool = N_asm x 6 x n_sc
         adj_cool = self.coolant_gap_temp[self._asm_sc_adj - 1]
         # Smush to be N_asm x (6 * n_sc)
-        # adj_cool = adj_cool.reshape(adj_cool.shape[0], -1)
-        # adj_cool[self.asm_sc_adj < 1] = 0.0
         self.ebal['asm'] += (h * self.gap_params['asm wp']
                              * dz * (approx_duct_temps - adj_cool))
 
@@ -1433,24 +1416,7 @@ class Core(LoggedClass):
 
         """
         # CONVECTION TO/FROM DUCT WALL
-        # R_conv = np.array(
-        #     [1 / (1 / self.L[0][0] / self.coolant_gap_params['htc'][0]
-        #           + (self.d['gap'] / 2 / self.L[0][0]
-        #              / self.gap_coolant.thermal_conductivity)),
-        #      1 / (1 / (2 * self.d['wcorner'])
-        #           / self.coolant_gap_params['htc'][1]
-        #           + (self.d['gap'] / 2 / (2 * self.d['wcorner'])
-        #              / self.gap_coolant.thermal_conductivity))])
-        R_conv = (self._conv_util['const']
-                  * self.gap_coolant.thermal_conductivity
-                  / (0.5 * self.d_gap))
-        # R_conv = np.array(
-        #     [1 / (1 / self.L[0][0] / self.coolant_gap_params['htc'][0]),
-        #      1 / (1 / (2 * self.d['wcorner'])
-        #           / self.coolant_gap_params['htc'][1])])
-
-        # if not hasattr(self, '_conv_util'):
-        #     self._make_conv_mask()  # creates lookup indices and masks
+        R_conv = self._conv_util['const']
 
         # Lookup temperatures and mask as necessary
         T = R_conv[:, 0] * t_duct[tuple(self._conv_util['inds'][0])]
@@ -1459,21 +1425,13 @@ class Core(LoggedClass):
         # Get the total convection resistance, which will go in the
         # denominator at the end
         C_conv = R_conv[:, 0] + R_conv[:, 1] + R_conv[:, 2]
-        # C_conv = copy.deepcopy(R_conv)
-        # C_conv += R_conv * self._conv_util['mask1']
-        # C_conv += R_conv * self._conv_util['mask2']
 
         # CONDUCTION TO/FROM OTHER COOLANT CHANNELS
-        # Set up masks, if necessary
-        # if not hasattr(self, '_Rcond'):
-        #     self._make_cond_mask()
-
-        # Now do some thangs c'mon
-        R_cond = self._Rcond * self.gap_coolant.thermal_conductivity
+        R_cond = self._Rcond
         adj_ctemp = self.coolant_gap_temp[self._sc_adj - 1] * R_cond
-        # C_cond = np.sum(R_cond, axis=1)  # will add to denom at the end
         C_cond = R_cond[:, 0] + R_cond[:, 1] + R_cond[:, 2]
-        # Round it out bb
+
+        # COMBINE AND APPLY TOTAL RESISTANCE DENOM
         T += adj_ctemp[:, 0] + adj_ctemp[:, 1] + adj_ctemp[:, 2]
         return T / (C_cond + C_conv)
 

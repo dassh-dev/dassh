@@ -14,12 +14,14 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-20
+date: 2021-10-23
 author: matz
 Utility methods
 """
 ########################################################################
 import logging
+import os
+import errno
 module_logger = logging.getLogger('dassh.utils')
 
 
@@ -361,6 +363,28 @@ def _get_profile_data(path='dassh_profile.out', n=50):
     import pstats
     p = pstats.Stats(path)
     p.sort_stats('cumulative').print_stats(n)
+
+
+########################################################################
+
+
+def _symlink(target, link_name):
+    """Try to symlink original file "target" to link "link_name";
+    if it fails b/c of existing file, it removes it and links
+    again
+
+    From: https://stackoverflow.com/questions/8299386/
+          modifying-a-symlink-in-python/55742015#55742015
+
+    """
+    try:
+        os.symlink(target, link_name)
+    except (OSError, FileExistsError) as e:
+        if e.errno == errno.EEXIST:
+            os.remove(link_name)
+            os.symlink(target, link_name)
+        else:
+            raise e
 
 
 ########################################################################

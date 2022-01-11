@@ -1,5 +1,7 @@
 language: python
 python:
+  - "3.6"
+  - "3.7.2"
   - "3.8"
   # - "weekly"  # weekly build
   # - "nightly"  # nightly build
