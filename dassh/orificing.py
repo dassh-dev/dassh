@@ -163,7 +163,7 @@ class Orificing(object):
         Parameters
         ----------
         res : numpy.ndarray
-            Sweep results for all timesteps from "_get_dassh_results method"
+            Results for all timesteps from "_get_dassh_results" method
 
         Returns
         -------
@@ -171,7 +171,7 @@ class Orificing(object):
             One row per group; last row is for core-wide data.
             Columns:
             1. Bulk coolant temperature
-            2. Peak coolant temperature
+            2. Peak bulk coolant temperature (among asm in group)
             3. Average temperature of variable being optimized
             4. Peak temperature of variable being optimized
 
@@ -1004,7 +1004,7 @@ class Orificing(object):
             x_interp = mfr
             # Calculate a corrective ratio to improve estimate of
             # dependent variable based on data from previous sweep
-            y_data = res_prev[:, -1]
+            y_data = res_prev[:, self._opt_col]
             interpolated_pts = []
             for i in range(len(xy)):
                 interpolated_pts.append(
