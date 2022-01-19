@@ -1,0 +1,68 @@
+########################################################################
+# author: Milos Atz
+# date: 2022-01-18
+# comment: DASSH input example (single assembly)
+########################################################################
+# SETUP: Problem setup, user options, etc
+
+
+########################################################################
+
+[Materials]
+    [[sodium_se2anl_csv]]
+        from_file = sodium_se2anl.csv
+
+
+########################################################################
+# POWER DISTRIBUTIONS
+[Power]
+    user_power  = ../test_data/user_power_asm_idx_fail.csv
+
+
+########################################################################
+# CORE DETAILS: Describe characteristics of the reactor core
+
+[Core]
+    coolant_inlet_temp = 623.15
+    coolant_material   = sodium_se2anl
+    length             = 1.0000
+    gap_model          = none
+    assembly_pitch     = 0.05893
+    bypass_fraction    = 0.0
+
+
+########################################################################
+# ASSEMBLY DETAILS: Describe a group of assemblies
+# NAME identifies a group of assemblies (e.g. "INNER_DRIVER")
+# Can be repeated for as many assemblies as required by the user.
+
+[Assembly]
+    [[fuel]]
+        num_rings       = 6
+        pin_pitch       = 0.0056
+        pin_diameter    = 0.0044
+        clad_thickness  = 0.0003
+        wire_pitch      = 0.1500
+        wire_diameter   = 0.0011
+        duct_ftf        = 0.0561, 0.0581
+        duct_material   = ss316
+        corr_mixing     = CTD
+        corr_friction   = CTD
+        corr_flowsplit  = CTD
+        corr_nusselt    = DB
+        shape_factor    = 1.0
+        htc_params_duct = 0.025, 0.8, 0.8, 7.0
+
+
+########################################################################
+# ASSIGN assemblies to positions in the core; assign fixed
+# flow rates or temperature limits to one or multiple assemblies.
+# Indicate which assemblies must be grouped together in an orificing
+# calculation.
+
+[Assignment]
+    [[ByPosition]]
+        fuel = 1, 1, 1, flowrate=10.0
+
+
+########################################################################
