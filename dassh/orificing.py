@@ -142,11 +142,19 @@ class Orificing(object):
         # Distribute flow among groups to meet bulk coolant temp
         msg = f"Iter {iter}: Distributing coolant flow among groups"
         self._logger.log(20, msg)
+        if iter == 2 and data_prev is not None:
+            print('Trying to regroup...')
+            print()
+            self.regroup(data_prev, 0.05, 0.05)
+            print()
         m, tlim = self.distribute(data_prev, t_out)
-        mx, nx = np.unique(m, return_counts=True)
+        tmp, nx = np.unique(self.group_data[:, 2], return_counts=True)
+        m_sorted_by_grp = m[np.argsort(self.group_data[:, 2])]
+        inds = np.unique(m_sorted_by_grp, return_index=True)[1]
+        mx = np.array([m_sorted_by_grp[i] for i in sorted(inds)])
         print('T_opt_max: ', tlim)
-        print('Asm per group: ', nx[::-1])
-        print('Flow rates: ', mx[::-1])
+        print('Asm per group: ', nx)
+        print('Flow rates: ', mx)
         print('Total flow rate: ', np.sum(m))
 
         # Run DASSH iteration calculation
@@ -558,7 +566,6 @@ class Orificing(object):
         if linked > 0 and linked == expected:
             return True
         else:
-            assert 0
             return False
 
     def _get_dassh_results(self, wdpath):
@@ -1034,6 +1041,232 @@ class Orificing(object):
         new = new[np.arange(new.shape[0]),
                   self._parametric['asm_ids'][:, 1]]
         return new * ratio
+
+    ####################################################################
+    # REGROUPING
+    ####################################################################
+
+    def regroup(self, data, regroup_tol, improvement_tol):
+        """Based on the results from the previous iteration,
+        look into whether the assemblies should be regrouped.
+
+        Parameters
+        ----------
+        data : numpy.ndarray
+            Data from previous iteration; see below for columns
+        regroup_tol : float
+            Tolerance used to decide whether an assembly "fits"
+            well enough in its group or whether the code should
+            try to shuffle it
+        improvement_tol : float
+            Tolerance used to assess the improvement in grouping.
+            If the improvement is sufficiently significant,
+            approve it; otherwise, don't do it.
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        Columns in parameter "data":
+            1.  Timestep
+            2.  Assembly ID
+            3.  Total power
+            4.  Flow rate
+            5.  Bulk coolant outlet temperature
+            6.  Peak coolant temperature
+            7.  Clad outer temperature
+            8.  Clad MW temperature
+            9.  Clad inner temperature
+            10. Fuel outer temperature
+            11. Fuel CL temperature
+
+        """
+        # Prepare data from parametric sweep for interpolation; use
+        # flow rate vs. T_opt
+        xy = []
+        for i in range(len(self._parametric['data'])):
+            tmp = self._parametric['data'][i]
+            tmp = tmp[tmp[:, 2].argsort()]
+            xy.append(tmp[:, (2, -1)])
+
+        # For each assembly, find data at timestep that yields max
+        # value of optimization variable
+        n_asm = np.unique(data[:, 1]).shape[0]
+        group_mfr = np.unique(data[:, 3])[::-1]
+        n_group = group_mfr.shape[0]
+        # Columns: Asm ID, Group, Power, FR, Peak Temp
+        peak = np.zeros((n_asm, 5))
+        asm_ids = np.unique(data[:, 1])
+        for a in range(n_asm):
+            tmp = data[data[:, 1] == asm_ids[a]]
+            grp = self.group_data[a, 2]
+            row = np.argmax(tmp[:, 5])
+            power, fr, optvar = tmp[row, [2, 3, self._opt_col]]
+            peak[a] = [asm_ids[a], grp, power, fr, optvar]
+
+        peak2 = peak.copy()
+        shuffled = []
+
+        # First, look at potentially moving assemblies down a group
+        # (e.g. group G --> group G+1).
+        #   1. Compare asm with min optimization temp in group G
+        #      to asm with max optimization temp in group G+1.
+        #   2. If advantageous to switch: do so, repeat step 1.
+        #      There is now a new asm with the min optimization
+        #      temp in group G and a new (estimated) max temp asm
+        #      in group G+1. If not, continue to step 3.
+        #   3. Repeat steps 1 and 2 with all groups (e.g. compare
+        #      groups G+1 and G+2 and so on.)
+        for g in range(n_group - 1):
+            print()
+            print(f"Considering Group {g} --> Group {g + 1}")
+            asm_in_group = peak[peak[:, 1] == g].shape[0]
+            for a in range(asm_in_group):
+                # Optimization variables for group G
+                opt_g = peak2[peak2[:, 3] == group_mfr[g], -1]
+                # Check if you want to move the minimum temp asm
+                # from group G to G+1. If not, break this loop and
+                # go to the next group. If so, investigate further.
+                min2avg_g = np.min(opt_g) / np.average(opt_g)
+                print(f'Min/Avg (Group {g}) = {min2avg_g}')
+                # If the 1 - min/avg ratio is less than the tolerance,
+                # no need to move anything: just break and move on.
+                if 1 - min2avg_g <= regroup_tol:  # min/avg < 1
+                    print('No shuffling, move on')
+                    print()
+                    break
+                # Otherwise, look into whether it is advantageous
+                # to move the assembly
+                else:
+                    print('Shuffle!')
+                    # Optimization variables for group G+1
+                    opt_gp1 = peak2[peak2[:, 3] == group_mfr[g + 1], -1]
+                    # Evaluate the cumulative "spread" - the degree to
+                    # which the min temp assembly in G and the max temp
+                    # assembly in G+1 differ from their group averages
+                    max2avg_gp1 = np.min(opt_gp1) / np.average(opt_gp1)
+                    print(f'Max/Avg (Group {g+1}) = {max2avg_gp1}')
+                    # Note: because max2avg_gp1 > 1 and min2avg_g < 1,
+                    # the following is the same as:
+                    # abs(max_to_avg_gp1 -1) + abs(min_to_avg_g - 1)
+                    cumulative_old = max2avg_gp1 - min2avg_g
+                    print(f'Cumulative = {cumulative_old}')
+                    # Try pushing the min T assembly down one group
+                    tmp = peak2.copy()
+                    row = np.where(tmp == np.min(opt_g))[0][0]
+                    tmp[row, 1] = g + 1
+                    tmp[row, 3] = group_mfr[g + 1]
+                    opt_tmp = self._estimate_optvar(tmp[:, 3], xy, data)
+                    tmp[row, -1] = opt_tmp[row]
+                    # Evaluate the new "spread"
+                    new_opt_g = tmp[tmp[:, 3] == group_mfr[g], -1]
+                    new_opt_gp1 = tmp[tmp[:, 3] == group_mfr[g + 1], -1]
+                    new_min2avg_g = np.min(new_opt_g) / np.average(new_opt_g)
+                    new_max2avg_gp1 = np.max(new_opt_gp1) / np.average(new_opt_gp1)
+                    print(f'New Min/Avg (Group {g}) = {new_min2avg_g}')
+                    print(f'New Max/Avg (Group {g+1}) = {new_max2avg_gp1}')
+                    cumulative_new = new_max2avg_gp1 - new_min2avg_g
+                    print(f'New cumulative = {cumulative_new}')
+                    # If the new spread is less than the old spread,
+                    # moving the assembly improved overall agreement
+                    # between the two groups.
+                    if 0 < cumulative_old - cumulative_new > improvement_tol:
+                        print('MOVE. THAT. ASSEMBLAYYYYYY!')
+                        print()
+                        # Formalize change by adopting "temporary"
+                        # peak array as the working array.
+                        peak2 = tmp
+                        # Track that you pushed an assembly from
+                        # g to g+1 so that you don't push it back.
+                        shuffled.append((g, g + 1))
+                        continue
+                    # Otherwise: don't move the assembly, and don't
+                    # look at any more in this group.
+                    else:
+                        break
+
+        # Next, look at potentially moving assemblies up a group
+        # (e.g. group G --> group G-1).
+        #   0. If you moved any asm from group G-1 --> group G, skip.
+        #   1. Compare asm with max optimization temp in group G to
+        #      asm with min optimization temp in group G-1.
+        #   2. If advantageous to switch: do so, repeat step 1. There
+        #      is now a new asm with the max optimization temp in
+        #      group G and a new (estimated) min temp asm in group
+        #      G-1. If not, continue to step 3.
+        #   3. Repeat steps 1 and 2 with all groups
+        for g in range(1, n_group):
+            print()
+            print(f"Considering Group {g} --> Group {g - 1}")
+            if (g - 1, g) in shuffled:
+                print('Shuffled the other way, skipping...')
+                continue
+            asm_in_group = peak[peak[:, 1] == g].shape[0]
+            for a in range(asm_in_group):
+                # Optimization variables for group G
+                opt_g = peak2[peak2[:, 3] == group_mfr[g], -1]
+                # Check if you want to move the minimum temp assembly
+                # from group G to G+1. If not, break this loop and go
+                # to the next group. If so, investigate further.
+                max2avg_g = np.max(opt_g) / np.average(opt_g)
+                print(f'Max/Avg (Group {g}) = {max2avg_g}')
+                # If the 1 - min/avg ratio is less than the tolerance,
+                # no need to move anything: just break and move on.
+                if max2avg_g - 1 <= regroup_tol:  # min/avg < 1
+                    print('No shuffling, move on')
+                    print()
+                    break
+                # Otherwise, look into whether it is advantageous
+                # to move the assembly
+                else:
+                    print('Shuffle!')
+                    # Optimization variables for group G+1
+                    opt_gm1 = peak2[peak2[:, 3] == group_mfr[g - 1], -1]
+                    # Evaluate the cumulative "spread" - the degree
+                    # to which the max temp asm in G and the min temp
+                    # asm in G-1 differ from their group averages
+                    min2avg_gm1 = np.min(opt_gm1) / np.average(opt_gm1)
+                    print(f'Min/Avg (Group {g+1}) = {min2avg_gm1}')
+                    # Note: because max2avg_g > 1 and min2avg_gm1 < 1,
+                    # the following is the same as:
+                    # abs(max2avg_g -1) + abs(min2avg_gm1 - 1)
+                    cumulative_old = max2avg_g - min2avg_gm1
+                    print(f'Cumulative = {cumulative_old}')
+                    # Try pushing the min T assembly down one group
+                    tmp = peak2.copy()
+                    row = np.where(tmp == np.max(opt_g))[0][0]
+                    tmp[row, 1] = g - 1
+                    tmp[row, 3] = group_mfr[g - 1]
+                    opt_tmp = self._estimate_optvar(tmp[:, 3], xy, data)
+                    tmp[row, -1] = opt_tmp[row]
+                    # Evaluate the new "spread"
+                    new_opt_g = tmp[tmp[:, 3] == group_mfr[g], -1]
+                    new_opt_gm1 = tmp[tmp[:, 3] == group_mfr[g - 1], -1]
+                    new_max2avg_g = np.max(new_opt_g) / np.average(new_opt_g)
+                    new_min2avg_gm1 = np.min(new_opt_gm1) / np.average(new_opt_gm1)
+                    print(f'New Max/Avg (Group {g}) = {new_max2avg_g}')
+                    print(f'New Min/Avg (Group {g+1}) = {new_min2avg_gm1}')
+                    cumulative_new = new_max2avg_g - new_min2avg_gm1
+                    print(f'New cumulative = {cumulative_new}')
+                    # If the new spread is less than the old spread,
+                    # moving the asm improved overall agreement
+                    # between the two groups.
+                    if 0 < cumulative_old - cumulative_new > improvement_tol:
+                        # Formalize change by adopting "temporary"
+                        # peak array as the working array.
+                        print('MOVE. THAT. ASSEMBLAYYYYYY!')
+                        print()
+                        peak2 = tmp
+                        continue
+                    # Otherwise: don't move the assembly, and
+                    # don't look at any more in this group.
+                    else:
+                        break
+
+        # Finally: update Orificing object attributes
+        self.group_data[:, 2] = peak2[:, 1]
 
     ####################################################################
     # WRITE RESULTS TO CSV
