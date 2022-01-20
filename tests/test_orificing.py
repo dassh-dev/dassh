@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-01-19
+date: 2022-01-20
 author: matz
 Unit tests for orificing optimization execution
 """
@@ -188,53 +188,38 @@ def test_orificing_peak_coolant(testdir, wdir_setup):
     assert abs(avg - 817.5) < 0.1
 
 
-def test_regrouping(testdir, wdir_setup, caplog):
+def test_regrouping1(testdir, wdir_setup, caplog):
     """Test that regrouping method properly identifies assembly too hot
     for Group 2 and moves it to Group 1, showing improvement"""
     datapath = os.path.join(testdir, 'test_data', 'orifice_regrouping')
     infile = 'input_orifice_regrouping.txt'
     inpath = os.path.join(testdir, 'test_inputs', infile)
-    outpath = os.path.join(testdir, 'test_results', 'orifice_regrouping')
+    outpath = os.path.join(testdir, 'test_results', 'orifice_regrouping-1')
     path_to_tmp_infile = wdir_setup(inpath, outpath)
     dassh.utils._symlink(os.path.join(datapath, '_parametric'),
                          os.path.join(outpath, '_parametric'))
     dassh.utils._symlink(os.path.join(datapath, 'pin_power.csv'),
                          os.path.join(outpath, 'pin_power.csv'))
 
-    # Set up DASSH Orificing object and all of the attributes it needs to
-    # be able to regroup.
-    dassh_logger = dassh.logged_class.init_root_logger(outpath, 'dassh')
-    dassh_input = dassh.DASSH_Input(path_to_tmp_infile)
-    orifice_obj = dassh.orificing.Orificing(dassh_input, dassh_logger)
-    with dassh.logged_class.LoggingContext(40):
-        orifice_obj.group_by_power()
-    orifice_obj._parametric = {}
-    with dassh.logged_class.LoggingContext(40):
-        orifice_obj.run_parametric()  # With recycled results
+    # Run DASSH
+    return_code = subprocess.call(['dassh', path_to_tmp_infile])
+    assert return_code == 0
 
-    # Check initial grouping
-    initial_grouping = np.ones(19, dtype=int)
-    initial_grouping[1:7] = 0
-    assert np.allclose(orifice_obj.group_data[:, 2], initial_grouping)
+    # Check for outcomes in iteration data
+    iter1_datapath = os.path.join(outpath, '_iter1', 'data.csv')
+    iter1_data = np.loadtxt(iter1_datapath, delimiter=',')
+    iter1_fr = iter1_data[:, 3]
+    assert iter1_fr[0] != iter1_fr[1]  # Asm 1 in Group 2
+    iter2_datapath = os.path.join(outpath, '_iter2', 'data.csv')
+    iter2_data = np.loadtxt(iter2_datapath, delimiter=',')
+    iter2_fr = iter2_data[:, 3]
+    assert iter2_fr[0] == iter2_fr[1]  # Asm 1 now in Group 1
 
-    # Don't need to run an iteration: use data stored in the datapath
-    # Import "iteration 1" data
-    i1_datapath = os.path.join(datapath, 'iter1_data_regrouping.csv')
-    iter1_data = np.loadtxt(i1_datapath, delimiter=',')
-
-    # Do a regrouping on it. This should result in moving Assembly 1
-    # from Group 2 to Group 1
-    orifice_obj.regroup(iter1_data, verbose=True)
-    print(orifice_obj.group_data[:, 2])
-
-    # Check result
-    ans = initial_grouping.copy()
-    ans[0] = 0
-    assert np.allclose(orifice_obj.group_data[:, 2], ans)
-
-    # Check logs
-    msg = 'Moved Assembly 1 from Group 2 to Group 1'
-    assert msg in caplog.text
+    # Check for outcomes in the logs
+    with open(os.path.join(outpath, 'dassh.log'), 'r') as f:
+        logfile = f.read()
+    msg_to_find = 'Moved Assembly 1 from Group 2 to Group 1'
+    assert msg_to_find in logfile
 
 
 def test_regrouping_tolerance(testdir, wdir_setup, caplog):
@@ -243,38 +228,40 @@ def test_regrouping_tolerance(testdir, wdir_setup, caplog):
     datapath = os.path.join(testdir, 'test_data', 'orifice_regrouping')
     infile = 'input_orifice_regrouping.txt'
     inpath = os.path.join(testdir, 'test_inputs', infile)
-    outpath = os.path.join(testdir, 'test_results', 'orifice_regrouping')
+    outpath = os.path.join(testdir, 'test_results', 'orifice_regrouping-2')
     path_to_tmp_infile = wdir_setup(inpath, outpath)
     dassh.utils._symlink(os.path.join(datapath, '_parametric'),
                          os.path.join(outpath, '_parametric'))
     dassh.utils._symlink(os.path.join(datapath, 'pin_power.csv'),
                          os.path.join(outpath, 'pin_power.csv'))
 
-    # Set up DASSH Orificing object and all of the attributes it needs to
-    # be able to regroup.
-    dassh_logger = dassh.logged_class.init_root_logger(outpath, 'dassh')
-    dassh_input = dassh.DASSH_Input(path_to_tmp_infile)
-    orifice_obj = dassh.orificing.Orificing(dassh_input, dassh_logger)
-    with dassh.logged_class.LoggingContext(40):
-        orifice_obj.group_by_power()
-    orifice_obj._parametric = {}
-    with dassh.logged_class.LoggingContext(40):
-        orifice_obj.run_parametric()  # With recycled results
+    # Link "fake" iteration 1 data - DASSH will "recycle" it,
+    # skipping iteration 1 and that should lead it to skip
+    # regrouping.
+    os.makedirs(os.path.join(outpath, '_iter1'))
+    dassh.utils._symlink(
+        os.path.join(datapath, 'iter1_data_no_regrouping.csv'),
+        os.path.join(outpath, '_iter1', 'data.csv'))
 
-    # Check initial grouping
-    initial_grouping = np.ones(19, dtype=int)
-    initial_grouping[1:7] = 0
-    assert np.allclose(orifice_obj.group_data[:, 2], initial_grouping)
+    # Run DASSH
+    return_code = subprocess.call(['dassh', path_to_tmp_infile])
+    assert return_code == 0
 
-    # Don't need to run an iteration: use data stored in the datapath
-    # Import "iteration 1" data
-    i1_datapath = os.path.join(datapath, 'iter1_data_no_regrouping.csv')
-    iter1_data = np.loadtxt(i1_datapath, delimiter=',')
+    # Check for outcomes in iteration data
+    iter1_datapath = os.path.join(outpath, '_iter1', 'data.csv')
+    iter1_data = np.loadtxt(iter1_datapath, delimiter=',')
+    iter1_fr = iter1_data[:, 3]
+    assert iter1_fr[0] != iter1_fr[1]  # Asm 1 in Group 2
+    iter2_datapath = os.path.join(outpath, '_iter2', 'data.csv')
+    iter2_data = np.loadtxt(iter2_datapath, delimiter=',')
+    iter2_fr = iter2_data[:, 3]
+    assert iter2_fr[0] != iter2_fr[1]  # Asm 1 still in Group 2
 
-    # Do a regrouping on it. No values should change because the
-    # max/avg ratio in Group 2 is within the given tolerance (~1.049)
-    orifice_obj.regroup(iter1_data, verbose=True)
-    assert np.allclose(orifice_obj.group_data[:, 2], initial_grouping)
+    # Check for outcomes in the logs
+    with open(os.path.join(outpath, 'dassh.log'), 'r') as f:
+        logfile = f.read()
+    msg_to_find = 'Moved Assembly 1 from Group 2 to Group 1'
+    assert msg_to_find not in logfile
 
 
 def test_regrouping_multiple_asm(testdir, wdir_setup, caplog):
@@ -283,48 +270,46 @@ def test_regrouping_multiple_asm(testdir, wdir_setup, caplog):
     datapath = os.path.join(testdir, 'test_data', 'orifice_regrouping')
     infile = 'input_orifice_regrouping.txt'
     inpath = os.path.join(testdir, 'test_inputs', infile)
-    outpath = os.path.join(testdir, 'test_results', 'orifice_regrouping')
+    outpath = os.path.join(testdir, 'test_results', 'orifice_regrouping-3')
     path_to_tmp_infile = wdir_setup(inpath, outpath)
     dassh.utils._symlink(os.path.join(datapath, '_parametric'),
                          os.path.join(outpath, '_parametric'))
     dassh.utils._symlink(os.path.join(datapath, 'pin_power.csv'),
                          os.path.join(outpath, 'pin_power.csv'))
 
-    # Set up DASSH Orificing object and all of the attributes it needs to
-    # be able to regroup.
-    dassh_logger = dassh.logged_class.init_root_logger(outpath, 'dassh')
-    dassh_input = dassh.DASSH_Input(path_to_tmp_infile)
-    orifice_obj = dassh.orificing.Orificing(dassh_input, dassh_logger)
-
-    with dassh.logged_class.LoggingContext(40):
-        orifice_obj.group_by_power()
-    orifice_obj._parametric = {}
-    with dassh.logged_class.LoggingContext(40):
-        orifice_obj.run_parametric()  # With recycled results
-
-    # Check initial grouping
-    initial_grouping = np.ones(19, dtype=int)
-    initial_grouping[1:7] = 0
-    assert np.allclose(orifice_obj.group_data[:, 2], initial_grouping)
-
-    # Don't need to run an iteration: use data stored in the datapath
-    # Import "iteration 1" data
+    # Link "fake" iteration 1 data - DASSH will "recycle" it,
+    # skipping iteration 1 and that should lead it to skip
+    # regrouping.
     i1_datapath = os.path.join(datapath, 'iter1_data_regrouping.csv')
     iter1_data = np.loadtxt(i1_datapath, delimiter=',')
     # Make it so that another assembly in Group 2 has hecka high temps
     iter1_data[-1, -1] = 1100.0
+    # Put fake data in working directory
+    os.makedirs(os.path.join(outpath, '_iter1'))
+    np.savetxt(
+        os.path.join(outpath, '_iter1', 'data.csv'),
+        iter1_data,
+        delimiter=',')
 
-    # Do a regrouping on it. This should result in moving Assemblies
-    # 1 and 19 from Group 2 to Group 1
-    orifice_obj.regroup(iter1_data, verbose=True)
+    # Run DASSH
+    return_code = subprocess.call(['dassh', path_to_tmp_infile])
+    assert return_code == 0
 
-    # Check result
-    ans = initial_grouping.copy()
-    ans[[0, 18]] = 0
-    assert np.allclose(orifice_obj.group_data[:, 2], ans)
+    # Check for outcomes in iteration data
+    iter1_datapath = os.path.join(outpath, '_iter1', 'data.csv')
+    iter1_data = np.loadtxt(iter1_datapath, delimiter=',')
+    iter1_fr = iter1_data[:, 3]
+    assert iter1_fr[0] != iter1_fr[1]  # Asm 1 in Group 2
+    iter2_datapath = os.path.join(outpath, '_iter2', 'data.csv')
+    iter2_data = np.loadtxt(iter2_datapath, delimiter=',')
+    iter2_fr = iter2_data[:, 3]
+    assert iter2_fr[0] == iter2_fr[1]  # Asm 1 now in Group 1
+    assert iter2_fr[-1] == iter2_fr[1]  # Asm 19 now also in Group 1
 
-    # Check logs
-    msg = 'Moved Assembly 1 from Group 2 to Group 1'
-    assert msg in caplog.text
-    msg = 'Moved Assembly 19 from Group 2 to Group 1'
-    assert msg in caplog.text
+    # Check for outcomes in the logs
+    with open(os.path.join(outpath, 'dassh.log'), 'r') as f:
+        logfile = f.read()
+    msg_to_find = 'Moved Assembly 1 from Group 2 to Group 1'
+    assert msg_to_find in logfile
+    msg_to_find = 'Moved Assembly 19 from Group 2 to Group 1'
+    assert msg_to_find in logfile

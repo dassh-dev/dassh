@@ -28,7 +28,7 @@
     value_to_optimize = peak fuel temp
     bulk_coolant_temp = 773.15
     convergence_tol = 0.002
-    iteration_limit = 4
+    iteration_limit = 2
     regroup_option_tol = 0.05
     regroup_improvement_tol = 0.05
     recycle_results = True

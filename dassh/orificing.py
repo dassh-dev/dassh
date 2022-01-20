@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-01-19
+date: 2022-01-20
 author: matz
 Main DASSH calculation procedure
 
@@ -58,9 +58,8 @@ class Orificing(LoggedClass):
                      'varpow_MatPower.out',
                      'varpow_MonoExp.out')
 
-    def __init__(self, dassh_input, root_logger):
+    def __init__(self, dassh_input):
         LoggedClass.__init__(self, 0, 'dassh.Orificing')
-        self._root_logger = root_logger
         self._base_input = dassh_input
         self.orifice_input = dassh_input.data['Orificing']
         coolant_name = dassh_input.data['Core']['coolant_material']
@@ -108,14 +107,14 @@ class Orificing(LoggedClass):
         msg = "Grouping assemblies"
         # self._logger.log(20, msg)
         self.log('info', msg)
-        with dassh.logged_class.LoggingContext(40):
+        with dassh.logged_class.LogStreamContext(40):
             self.group_by_power()
 
         msg = "Performing single-assembly parametric calculations"
         # self._logger.log(20, msg)
         self.log('info', msg)
         self._parametric = {}
-        with dassh.logged_class.LoggingContext(40):
+        with dassh.logged_class.LogStreamContext(40):
             self.run_parametric()
 
         # msg = "Performing perfect-orificing calculation"
@@ -148,16 +147,14 @@ class Orificing(LoggedClass):
     def _do_iter(self, iter, data_prev=None, t_out=None):
         """Update coolant flow distributions between orifice groups
         and run DASSH sweeps for each timestep"""
+        if iter == 2 and data_prev is not None:
+            if self.orifice_input['regroup_option_tol'] is not None:
+                self.log('info', 'Regrouping...')
+                self.regroup(data_prev, verbose=True)
         # Distribute flow among groups to meet bulk coolant temp
         msg = f"Iter {iter}: Distributing coolant flow among groups"
         # self._logger.log(20, msg)
         self.log('info', msg)
-        if iter == 2 and data_prev is not None:
-            if self.orifice_input['regroup_option_tol'] is not None:
-                print('Regrouping...')
-                print()
-                self.regroup(data_prev)
-                print()
         m, tlim = self.distribute(data_prev, t_out)
         tmp, nx = np.unique(self.group_data[:, 2], return_counts=True)
         m_sorted_by_grp = m[np.argsort(self.group_data[:, 2])]
@@ -404,7 +401,7 @@ class Orificing(LoggedClass):
                     'verbose': False,
                     'no_power_calc': True}
             dassh_inp = self._setup_input_perfect()
-            dassh.__main__.run_dassh(dassh_inp, self._root_logger, args)
+            dassh.__main__.run_dassh(dassh_inp, args)
             results = self._get_dassh_results(dassh_inp.path)
             np.savetxt(data_path, results, delimiter=',')
         return results
@@ -452,7 +449,7 @@ class Orificing(LoggedClass):
                     'no_power_calc': not found}  # Do the power calc?
             dassh_inp = self._setup_input_orifice(mfr)
             dassh_inp.path = wd_path
-            dassh.__main__.run_dassh(dassh_inp, self._root_logger, args)
+            dassh.__main__.run_dassh(dassh_inp, args)
             results = self._get_dassh_results(dassh_inp.path)
             np.savetxt(data_path, results, delimiter=',')
         return results
@@ -1335,7 +1332,7 @@ class Orificing(LoggedClass):
         msg += indent + f'OLD: Group {go} {ratio1} = {r1o}; '
         msg += f'Group {gn} {ratio2} = {r2o}\n'
         msg += indent + f'NEW: Group {go} {ratio1} = {r1n}; '
-        msg += f'Group {gn} {ratio2} = {r2n}\n'
+        msg += f'Group {gn} {ratio2} = {r2n}'
         return msg
 
     ####################################################################

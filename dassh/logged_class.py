@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-01-19
+date: 2022-01-20
 author: matz (inherited from Dr. A. Nelson)
 Log messages, warnings, and errors produced by each class in DASSH
 """
@@ -69,11 +69,11 @@ def init_root_logger(path, name, logfile_openmode="w+"):
                                            datefmt='%d-%b-%y %H:%M:%S')
 
     # Create the Handler for logging data to a file
+    logger._root_logfile_path = f'{os.path.join(path, name.lower())}.log'
     logger_file_handler = logging.FileHandler(
-        f'{os.path.join(path, name.lower())}.log',
-        logfile_openmode)
+        logger._root_logfile_path, logfile_openmode)
     logger_file_handler.setLevel(FILE_LOG_LEVEL)
-
+    logger_file_handler.set_name('file_handler')
     # Add the Formatter to the Handler
     logger_file_handler.setFormatter(log_file_formatter)
 
@@ -83,6 +83,7 @@ def init_root_logger(path, name, logfile_openmode="w+"):
     # Repeat the above for a to-screen logger
     logger_stream_handler = logging.StreamHandler()
     logger_stream_handler.setLevel(LOG_LEVEL)
+    logger_stream_handler.set_name('stream_handler')
     logger_stream_formatter = \
         logging.Formatter(f'{name.upper()}....%(message)s')
     logger_stream_handler.setFormatter(logger_stream_formatter)
@@ -118,6 +119,56 @@ def shutdown_logger(name):
         handler.close()
         logger.removeHandler(handler)
     del logger
+
+
+def redirect_logfile(new_path, name):
+    """Point file handler to a new logfile"""
+    logger = logging.getLogger(name)
+    # Remove the old file handler, but save the old name
+    for h in logger.handlers:
+        if h.name == 'file_handler':
+            logger._original_logfile_path = h.baseFilename
+            logger.removeHandler(h)
+            break
+    new_file_handler = logging.FileHandler(
+        f'{os.path.join(new_path, name.lower())}.log', 'w+')
+    new_file_handler.setLevel(FILE_LOG_LEVEL)
+    new_file_handler.set_name('file_handler')
+    # Add the Formatter to the Handler
+    new_file_handler.setFormatter(
+        logging.Formatter('%(asctime)s - '
+                          '%(name)18s - '
+                          '%(levelname)8s - '
+                          '%(message)s - ',
+                          datefmt='%d-%b-%y %H:%M:%S'))
+
+    # Add the Handler to the Logger
+    logger.addHandler(new_file_handler)
+
+
+def restore_root_logfile(name):
+    """Return the root logfile path to the original"""
+    logger = logging.getLogger(name)
+    # Remove the new file handler, but save the old name
+    for h in logger.handlers:
+        if h.name == 'file_handler':
+            logger.removeHandler(h)
+            break
+    file_handler_to_restore = logging.FileHandler(
+        logger._root_logfile_path, 'w+')
+    file_handler_to_restore.setLevel(FILE_LOG_LEVEL)
+    file_handler_to_restore.set_name('file_handler')
+    # Add the Formatter to the Handler
+    file_handler_to_restore.setFormatter(
+        logging.Formatter('%(asctime)s - '
+                          '%(name)18s - '
+                          '%(levelname)8s - '
+                          '%(message)s - ',
+                          datefmt='%d-%b-%y %H:%M:%S'))
+    # Add the Handler to the Logger
+    logger.addHandler(file_handler_to_restore)
+    print('RESTORING ROOT LOGGER LOL')
+    logger.log(20, 'RESTORING ROOT LOGGER LOL')
 
 
 class LoggedClass(object):
@@ -179,9 +230,10 @@ class DuplicateFilter:
         self.logger.removeFilter(self)
 
 
-class LoggingContext(object):
-    """Temporarily change the DASSH logging configuration to do
-    something, then revert it back
+class LogStreamContext(object):
+    """Temporarily change the DASSH stream (terminal) logging
+    configuration to do something you don't need printed to
+    the screen, then revert it back.
 
     Usage
     -----
@@ -203,12 +255,16 @@ class LoggingContext(object):
     def __enter__(self):
         if self.level is not None:
             self.old_level = self.logger.level
-            self.logger.handlers[1].setLevel(self.level)
+            for i in range(len(self.logger.handlers)):
+                if self.logger.handlers[i].name == 'stream_handler':
+                    self.logger.handlers[i].setLevel(self.level)
 
     def __exit__(self, et, ev, tb):
         # implicit return of None => don't swallow exceptions
         if self.level is not None:
-            self.logger.handlers[1].setLevel(self.old_level)
+            for i in range(len(self.logger.handlers)):
+                if self.logger.handlers[i].name == 'stream_handler':
+                    self.logger.handlers[i].setLevel(self.old_level)
 
 
 class CloseLogStreams(object):
