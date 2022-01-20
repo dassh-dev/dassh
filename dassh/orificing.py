@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-29
+date: 2022-01-19
 author: matz
 Main DASSH calculation procedure
 
@@ -39,9 +39,10 @@ import os
 import sys
 import numpy as np
 import dassh
+from dassh.logged_class import LoggedClass
 
 
-class Orificing(object):
+class Orificing(LoggedClass):
     """Group assemblies and distribute coolant flow rate to optimize
     user-selected parameter-of-interest.
 
@@ -49,16 +50,17 @@ class Orificing(object):
     ----------
     dassh_input : DASSH_Input object
         Contains inputs to describe model and control optimization
-    root_logger : DASSH logger
-        Given from __main__
 
     """
+    # root_logger : DASSH logger
+    #    Given from __main__
     _VARPOW_FILES = ('VARPOW.out',
                      'varpow_MatPower.out',
                      'varpow_MonoExp.out')
 
     def __init__(self, dassh_input, root_logger):
-        self._logger = root_logger
+        LoggedClass.__init__(self, 0, 'dassh.Orificing')
+        self._root_logger = root_logger
         self._base_input = dassh_input
         self.orifice_input = dassh_input.data['Orificing']
         coolant_name = dassh_input.data['Core']['coolant_material']
@@ -84,30 +86,36 @@ class Orificing(object):
         else:  # Here for safety; shouldn't be raised b/c input limits
             msg = 'Do not understand optimiation variable; given '
             msg += f'"{self.orifice_input[x]}"'
-            self._logger.log(40, msg)
-            sys.exit()
+            # self._logger.log(40, msg)
+            # sys.exit()
+            self.log('error', msg)
 
     def optimize(self):
         """Perform that orificing optimzation"""
         # Initial setup
         msg = "DASSH orificing optimization calculation"
-        self._logger.log(20, msg)
+        # self._logger.log(20, msg)
+        self.log('info', msg)
         k = 'value_to_optimize'
         msg = f'Value to minimize: "{self.orifice_input[k]}"'
-        self._logger.log(20, msg)
+        # self._logger.log(20, msg)
+        self.log('info', msg)
         k = 'n_groups'
         msg = f"Requested number of groups: {self.orifice_input[k]}"
-        self._logger.log(20, msg)
+        # self._logger.log(20, msg)
+        self.log('info', msg)
 
         msg = "Grouping assemblies"
-        self._logger.log(20, msg)
-        with dassh.logged_class.LoggingContext(self._logger, 40):
+        # self._logger.log(20, msg)
+        self.log('info', msg)
+        with dassh.logged_class.LoggingContext(40):
             self.group_by_power()
 
         msg = "Performing single-assembly parametric calculations"
-        self._logger.log(20, msg)
+        # self._logger.log(20, msg)
+        self.log('info', msg)
         self._parametric = {}
-        with dassh.logged_class.LoggingContext(self._logger, 40):
+        with dassh.logged_class.LoggingContext(40):
             self.run_parametric()
 
         # msg = "Performing perfect-orificing calculation"
@@ -130,7 +138,8 @@ class Orificing(object):
             if np.any(self._dp_limit):
                 msg = ("Breaking optimization iteration due to "
                        "incurred pressure drop limit")
-                self._logger.log(30, msg)
+                # self._logger.log(30, msg)
+                self.log('warning', msg)
                 break
 
         # Write results to CSV files
@@ -141,12 +150,14 @@ class Orificing(object):
         and run DASSH sweeps for each timestep"""
         # Distribute flow among groups to meet bulk coolant temp
         msg = f"Iter {iter}: Distributing coolant flow among groups"
-        self._logger.log(20, msg)
+        # self._logger.log(20, msg)
+        self.log('info', msg)
         if iter == 2 and data_prev is not None:
-            print('Trying to regroup...')
-            print()
-            self.regroup(data_prev, 0.05, 0.05)
-            print()
+            if self.orifice_input['regroup_option_tol'] is not None:
+                print('Regrouping...')
+                print()
+                self.regroup(data_prev)
+                print()
         m, tlim = self.distribute(data_prev, t_out)
         tmp, nx = np.unique(self.group_data[:, 2], return_counts=True)
         m_sorted_by_grp = m[np.argsort(self.group_data[:, 2])]
@@ -159,7 +170,8 @@ class Orificing(object):
 
         # Run DASSH iteration calculation
         msg = f"Iter {iter}: Running DASSH with orificed assemblies"
-        self._logger.log(20, msg)
+        # self._logger.log(20, msg)
+        self.log('info', msg)
         iter_data = self.run_dassh_orifice(iter, m)
         summary_data = self._summarize_group_data(iter_data)
         return iter_data, summary_data
@@ -392,7 +404,7 @@ class Orificing(object):
                     'verbose': False,
                     'no_power_calc': True}
             dassh_inp = self._setup_input_perfect()
-            dassh.__main__.run_dassh(dassh_inp, self._logger, args)
+            dassh.__main__.run_dassh(dassh_inp, self._root_logger, args)
             results = self._get_dassh_results(dassh_inp.path)
             np.savetxt(data_path, results, delimiter=',')
         return results
@@ -440,7 +452,7 @@ class Orificing(object):
                     'no_power_calc': not found}  # Do the power calc?
             dassh_inp = self._setup_input_orifice(mfr)
             dassh_inp.path = wd_path
-            dassh.__main__.run_dassh(dassh_inp, self._logger, args)
+            dassh.__main__.run_dassh(dassh_inp, self._root_logger, args)
             results = self._get_dassh_results(dassh_inp.path)
             np.savetxt(data_path, results, delimiter=',')
         return results
@@ -722,8 +734,9 @@ class Orificing(object):
             msg = ('Argument "group_by" must be "power" or '
                    + f'"linear_power"; input {group_by} not '
                    + 'recognized')
-            self._logger.log(40, msg)
-            sys.exit()
+            # self._logger.log(40, msg)
+            # sys.exit()
+            self.log('error', msg)
 
     def _group(self, params):
         """Divide assemblies into orifice groups based on some parameter
@@ -782,8 +795,9 @@ class Orificing(object):
             msg = ('Grouping not converged; please adjust '
                    + '"group_cutoff" and "group_cutoff_delta" '
                    + 'parameters')
-            self._logger.log(40, msg)
-            sys.exit()
+            # self._logger.log(40, msg)
+            # sys.exit()
+            self.log('error', msg)
 
         # Attach grouping to group parameter data and return
         group_data = np.zeros((params.shape[0], 3))
@@ -957,27 +971,31 @@ class Orificing(object):
         # print(f'Convergence (want less than {tol}): ', convergence)
         # Check conservation of mass - this should never fail
         if not abs(np.sum(m) - m_total) < 1e-6:
-            self._logger.log(40, "Error: Mass flow rate not conserved")
-            sys.exit(1)
+            # self._logger.log(40, "Error: Mass flow rate not conserved")
+            # sys.exit(1)
+            self.log('error', "Error: Mass flow rate not conserved")
         # Report whether the pressure drop mass flow rate limit was met
         if np.any(self._dp_limit):  # if dp_warning:
             msg = ("Warning: Peak mass flow rate restricted to "
                    + "accommodate user-specified pressure drop limit")
-            self._logger.log(30, msg)
+            # self._logger.log(30, msg)
+            self.log('warning', msg)
         # If multiple groups hit the pressure drop limit, the problem
         # is poorly posed (i.e. the limit is too tight to achieve adequate
         # cooling). Doubt this situation would ever occur, not sure what
         # to do about it if it does.
         if np.sum(self._dp_limit) > 1:
             msg = "Error: Multiple groups constrained by pressure drop limit"
-            self._logger.log(40, msg)
-            sys.exit(1)
+            # self._logger.log(40, msg)
+            # sys.exit(1)
+            self.log('error', msg)
         # Raise error if we did not achieve requested number of groups
         if np.unique(m).shape[0] != self.orifice_input['n_groups']:
             msg = ("Error: Flow allocation did not achieve "
                    + "requested number of orifice groups")
-            self._logger.log(40, msg)
-            sys.exit(1)
+            # self._logger.log(40, msg)
+            # sys.exit(1)
+            self.log('error', msg)
         # Return results
         return m, max(group_max)
 
@@ -1046,7 +1064,7 @@ class Orificing(object):
     # REGROUPING
     ####################################################################
 
-    def regroup(self, data, regroup_tol, improvement_tol):
+    def regroup(self, data, verbose=False):
         """Based on the results from the previous iteration,
         look into whether the assemblies should be regrouped.
 
@@ -1054,14 +1072,8 @@ class Orificing(object):
         ----------
         data : numpy.ndarray
             Data from previous iteration; see below for columns
-        regroup_tol : float
-            Tolerance used to decide whether an assembly "fits"
-            well enough in its group or whether the code should
-            try to shuffle it
-        improvement_tol : float
-            Tolerance used to assess the improvement in grouping.
-            If the improvement is sufficiently significant,
-            approve it; otherwise, don't do it.
+        verbose : boolean
+            Print messages about regrouping
 
         Returns
         -------
@@ -1082,7 +1094,22 @@ class Orificing(object):
             10. Fuel outer temperature
             11. Fuel CL temperature
 
+        Parameters obtained from DASSH Input file:
+        regroup_tol : float
+            Tolerance used to decide whether an assembly "fits"
+            well enough in its group or whether the code should
+            try to shuffle it. If None (default), skip regrouping.
+        improvement_tol : float
+            Tolerance used to assess the improvement in grouping.
+            If the improvement is sufficiently significant,
+            approve it; otherwise, don't do it.
+
         """
+        regroup_tol = self.orifice_input['regroup_option_tol']
+        improve_tol = self.orifice_input['regroup_improvement_tol']
+        if regroup_tol is None:
+            return
+
         # Prepare data from parametric sweep for interpolation; use
         # flow rate vs. T_opt
         xy = []
@@ -1120,8 +1147,7 @@ class Orificing(object):
         #   3. Repeat steps 1 and 2 with all groups (e.g. compare
         #      groups G+1 and G+2 and so on.)
         for g in range(n_group - 1):
-            print()
-            print(f"Considering Group {g} --> Group {g + 1}")
+            # print(f"Considering Group {g} --> Group {g + 1}")
             asm_in_group = peak[peak[:, 1] == g].shape[0]
             for a in range(asm_in_group):
                 # Optimization variables for group G
@@ -1130,29 +1156,28 @@ class Orificing(object):
                 # from group G to G+1. If not, break this loop and
                 # go to the next group. If so, investigate further.
                 min2avg_g = np.min(opt_g) / np.average(opt_g)
-                print(f'Min/Avg (Group {g}) = {min2avg_g}')
+                # print(f'Min/Avg (Group {g}) = {min2avg_g}')
                 # If the 1 - min/avg ratio is less than the tolerance,
                 # no need to move anything: just break and move on.
                 if 1 - min2avg_g <= regroup_tol:  # min/avg < 1
-                    print('No shuffling, move on')
-                    print()
+                    # print('No shuffling, move on')
                     break
                 # Otherwise, look into whether it is advantageous
                 # to move the assembly
                 else:
-                    print('Shuffle!')
+                    # print('Shuffle!')
                     # Optimization variables for group G+1
                     opt_gp1 = peak2[peak2[:, 3] == group_mfr[g + 1], -1]
                     # Evaluate the cumulative "spread" - the degree to
                     # which the min temp assembly in G and the max temp
                     # assembly in G+1 differ from their group averages
                     max2avg_gp1 = np.min(opt_gp1) / np.average(opt_gp1)
-                    print(f'Max/Avg (Group {g+1}) = {max2avg_gp1}')
+                    # print(f'Max/Avg (Group {g+1}) = {max2avg_gp1}')
                     # Note: because max2avg_gp1 > 1 and min2avg_g < 1,
                     # the following is the same as:
                     # abs(max_to_avg_gp1 -1) + abs(min_to_avg_g - 1)
                     cumulative_old = max2avg_gp1 - min2avg_g
-                    print(f'Cumulative = {cumulative_old}')
+                    # print(f'Cumulative = {cumulative_old}')
                     # Try pushing the min T assembly down one group
                     tmp = peak2.copy()
                     row = np.where(tmp == np.min(opt_g))[0][0]
@@ -1164,24 +1189,36 @@ class Orificing(object):
                     new_opt_g = tmp[tmp[:, 3] == group_mfr[g], -1]
                     new_opt_gp1 = tmp[tmp[:, 3] == group_mfr[g + 1], -1]
                     new_min2avg_g = np.min(new_opt_g) / np.average(new_opt_g)
-                    new_max2avg_gp1 = np.max(new_opt_gp1) / np.average(new_opt_gp1)
-                    print(f'New Min/Avg (Group {g}) = {new_min2avg_g}')
-                    print(f'New Max/Avg (Group {g+1}) = {new_max2avg_gp1}')
+                    new_max2avg_gp1 = (np.max(new_opt_gp1) /
+                                       np.average(new_opt_gp1))
+                    # print(f'New Min/Avg (Group {g}) = {new_min2avg_g}')
+                    # print(f'New Max/Avg (Group {g+1}) = {new_max2avg_gp1}')
                     cumulative_new = new_max2avg_gp1 - new_min2avg_g
-                    print(f'New cumulative = {cumulative_new}')
+                    # print(f'New cumulative = {cumulative_new}')
                     # If the new spread is less than the old spread,
                     # moving the assembly improved overall agreement
                     # between the two groups.
-                    if 0 < cumulative_old - cumulative_new > improvement_tol:
-                        print('MOVE. THAT. ASSEMBLAYYYYYY!')
-                        print()
+                    if 0 < cumulative_old - cumulative_new > improve_tol:
                         # Formalize change by adopting "temporary"
                         # peak array as the working array.
                         peak2 = tmp
+                        if verbose:
+                            msg = self._make_update_msg(
+                                int(tmp[row, 0]),
+                                g + 1,
+                                g + 2,
+                                min2avg_g,
+                                max2avg_gp1,
+                                new_min2avg_g,
+                                new_max2avg_gp1)
+                            self.log('info', msg)
+
                         # Track that you pushed an assembly from
                         # g to g+1 so that you don't push it back.
                         shuffled.append((g, g + 1))
+                        # Then go to the next assembly in the group
                         continue
+
                     # Otherwise: don't move the assembly, and don't
                     # look at any more in this group.
                     else:
@@ -1198,10 +1235,9 @@ class Orificing(object):
         #      G-1. If not, continue to step 3.
         #   3. Repeat steps 1 and 2 with all groups
         for g in range(1, n_group):
-            print()
-            print(f"Considering Group {g} --> Group {g - 1}")
+            # print(f"Considering Group {g} --> Group {g - 1}")
             if (g - 1, g) in shuffled:
-                print('Shuffled the other way, skipping...')
+                # print('Shuffled the other way, skipping...')
                 continue
             asm_in_group = peak[peak[:, 1] == g].shape[0]
             for a in range(asm_in_group):
@@ -1211,29 +1247,27 @@ class Orificing(object):
                 # from group G to G+1. If not, break this loop and go
                 # to the next group. If so, investigate further.
                 max2avg_g = np.max(opt_g) / np.average(opt_g)
-                print(f'Max/Avg (Group {g}) = {max2avg_g}')
+                # print(f'Max/Avg (Group {g}) = {max2avg_g}')
                 # If the 1 - min/avg ratio is less than the tolerance,
                 # no need to move anything: just break and move on.
                 if max2avg_g - 1 <= regroup_tol:  # min/avg < 1
-                    print('No shuffling, move on')
-                    print()
+                    # print('No shuffling, move on')
                     break
                 # Otherwise, look into whether it is advantageous
                 # to move the assembly
                 else:
-                    print('Shuffle!')
                     # Optimization variables for group G+1
                     opt_gm1 = peak2[peak2[:, 3] == group_mfr[g - 1], -1]
                     # Evaluate the cumulative "spread" - the degree
                     # to which the max temp asm in G and the min temp
                     # asm in G-1 differ from their group averages
                     min2avg_gm1 = np.min(opt_gm1) / np.average(opt_gm1)
-                    print(f'Min/Avg (Group {g+1}) = {min2avg_gm1}')
+                    # print(f'Min/Avg (Group {g+1}) = {min2avg_gm1}')
                     # Note: because max2avg_g > 1 and min2avg_gm1 < 1,
                     # the following is the same as:
                     # abs(max2avg_g -1) + abs(min2avg_gm1 - 1)
                     cumulative_old = max2avg_g - min2avg_gm1
-                    print(f'Cumulative = {cumulative_old}')
+                    # print(f'Cumulative = {cumulative_old}')
                     # Try pushing the min T assembly down one group
                     tmp = peak2.copy()
                     row = np.where(tmp == np.max(opt_g))[0][0]
@@ -1245,21 +1279,34 @@ class Orificing(object):
                     new_opt_g = tmp[tmp[:, 3] == group_mfr[g], -1]
                     new_opt_gm1 = tmp[tmp[:, 3] == group_mfr[g - 1], -1]
                     new_max2avg_g = np.max(new_opt_g) / np.average(new_opt_g)
-                    new_min2avg_gm1 = np.min(new_opt_gm1) / np.average(new_opt_gm1)
-                    print(f'New Max/Avg (Group {g}) = {new_max2avg_g}')
-                    print(f'New Min/Avg (Group {g+1}) = {new_min2avg_gm1}')
+                    new_min2avg_gm1 = (np.min(new_opt_gm1) /
+                                       np.average(new_opt_gm1))
+                    # print(f'New Max/Avg (Group {g}) = {new_max2avg_g}')
+                    # print(f'New Min/Avg (Group {g+1}) = {new_min2avg_gm1}')
                     cumulative_new = new_max2avg_g - new_min2avg_gm1
-                    print(f'New cumulative = {cumulative_new}')
+                    # print(f'New cumulative = {cumulative_new}')
+
                     # If the new spread is less than the old spread,
                     # moving the asm improved overall agreement
                     # between the two groups.
-                    if 0 < cumulative_old - cumulative_new > improvement_tol:
+                    if 0 < cumulative_old - cumulative_new > improve_tol:
                         # Formalize change by adopting "temporary"
                         # peak array as the working array.
-                        print('MOVE. THAT. ASSEMBLAYYYYYY!')
-                        print()
                         peak2 = tmp
+                        if verbose:
+                            msg = self._make_update_msg(
+                                int(tmp[row, 0]),
+                                g + 1,
+                                g,
+                                max2avg_g,
+                                min2avg_gm1,
+                                new_max2avg_g,
+                                new_min2avg_gm1)
+                            self.log('info', msg)
+
+                        # Then go to the next assembly in the group
                         continue
+
                     # Otherwise: don't move the assembly, and
                     # don't look at any more in this group.
                     else:
@@ -1267,6 +1314,29 @@ class Orificing(object):
 
         # Finally: update Orificing object attributes
         self.group_data[:, 2] = peak2[:, 1]
+
+    @staticmethod
+    def _make_update_msg(asm, go, gn, r1o, r2o, r1n, r2n, dec=4):
+        """x"""
+        _ffmt = '{' + f':.{dec}f' + '}'
+        indent = '    '
+        msg = f'Moved Assembly {asm + 1} from Group {go} to Group {gn}'
+        msg += '\n'
+        if r1o < 1:
+            ratio1 = "Min/Avg"
+            ratio2 = "Max/Avg"
+        else:
+            ratio1 = "Max/Avg"
+            ratio2 = "Min/Avg"
+        r1o = _ffmt.format(r1o)
+        r2o = _ffmt.format(r2o)
+        r1n = _ffmt.format(r1n)
+        r2n = _ffmt.format(r2n)
+        msg += indent + f'OLD: Group {go} {ratio1} = {r1o}; '
+        msg += f'Group {gn} {ratio2} = {r2o}\n'
+        msg += indent + f'NEW: Group {go} {ratio1} = {r1n}; '
+        msg += f'Group {gn} {ratio2} = {r2n}\n'
+        return msg
 
     ####################################################################
     # WRITE RESULTS TO CSV

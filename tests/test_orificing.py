@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-29
+date: 2022-01-19
 author: matz
 Unit tests for orificing optimization execution
 """
@@ -186,3 +186,145 @@ def test_orificing_peak_coolant(testdir, wdir_setup):
     reldiff = np.abs(diff / (avg - 623.15))
     assert np.all(reldiff < 0.005)
     assert abs(avg - 817.5) < 0.1
+
+
+def test_regrouping(testdir, wdir_setup, caplog):
+    """Test that regrouping method properly identifies assembly too hot
+    for Group 2 and moves it to Group 1, showing improvement"""
+    datapath = os.path.join(testdir, 'test_data', 'orifice_regrouping')
+    infile = 'input_orifice_regrouping.txt'
+    inpath = os.path.join(testdir, 'test_inputs', infile)
+    outpath = os.path.join(testdir, 'test_results', 'orifice_regrouping')
+    path_to_tmp_infile = wdir_setup(inpath, outpath)
+    dassh.utils._symlink(os.path.join(datapath, '_parametric'),
+                         os.path.join(outpath, '_parametric'))
+    dassh.utils._symlink(os.path.join(datapath, 'pin_power.csv'),
+                         os.path.join(outpath, 'pin_power.csv'))
+
+    # Set up DASSH Orificing object and all of the attributes it needs to
+    # be able to regroup.
+    dassh_logger = dassh.logged_class.init_root_logger(outpath, 'dassh')
+    dassh_input = dassh.DASSH_Input(path_to_tmp_infile)
+    orifice_obj = dassh.orificing.Orificing(dassh_input, dassh_logger)
+    with dassh.logged_class.LoggingContext(40):
+        orifice_obj.group_by_power()
+    orifice_obj._parametric = {}
+    with dassh.logged_class.LoggingContext(40):
+        orifice_obj.run_parametric()  # With recycled results
+
+    # Check initial grouping
+    initial_grouping = np.ones(19, dtype=int)
+    initial_grouping[1:7] = 0
+    assert np.allclose(orifice_obj.group_data[:, 2], initial_grouping)
+
+    # Don't need to run an iteration: use data stored in the datapath
+    # Import "iteration 1" data
+    i1_datapath = os.path.join(datapath, 'iter1_data_regrouping.csv')
+    iter1_data = np.loadtxt(i1_datapath, delimiter=',')
+
+    # Do a regrouping on it. This should result in moving Assembly 1
+    # from Group 2 to Group 1
+    orifice_obj.regroup(iter1_data, verbose=True)
+    print(orifice_obj.group_data[:, 2])
+
+    # Check result
+    ans = initial_grouping.copy()
+    ans[0] = 0
+    assert np.allclose(orifice_obj.group_data[:, 2], ans)
+
+    # Check logs
+    msg = 'Moved Assembly 1 from Group 2 to Group 1'
+    assert msg in caplog.text
+
+
+def test_regrouping_tolerance(testdir, wdir_setup, caplog):
+    """Test that regrouping method does not regroup asm when their
+    temperatures fall within the tolerance relative to the group"""
+    datapath = os.path.join(testdir, 'test_data', 'orifice_regrouping')
+    infile = 'input_orifice_regrouping.txt'
+    inpath = os.path.join(testdir, 'test_inputs', infile)
+    outpath = os.path.join(testdir, 'test_results', 'orifice_regrouping')
+    path_to_tmp_infile = wdir_setup(inpath, outpath)
+    dassh.utils._symlink(os.path.join(datapath, '_parametric'),
+                         os.path.join(outpath, '_parametric'))
+    dassh.utils._symlink(os.path.join(datapath, 'pin_power.csv'),
+                         os.path.join(outpath, 'pin_power.csv'))
+
+    # Set up DASSH Orificing object and all of the attributes it needs to
+    # be able to regroup.
+    dassh_logger = dassh.logged_class.init_root_logger(outpath, 'dassh')
+    dassh_input = dassh.DASSH_Input(path_to_tmp_infile)
+    orifice_obj = dassh.orificing.Orificing(dassh_input, dassh_logger)
+    with dassh.logged_class.LoggingContext(40):
+        orifice_obj.group_by_power()
+    orifice_obj._parametric = {}
+    with dassh.logged_class.LoggingContext(40):
+        orifice_obj.run_parametric()  # With recycled results
+
+    # Check initial grouping
+    initial_grouping = np.ones(19, dtype=int)
+    initial_grouping[1:7] = 0
+    assert np.allclose(orifice_obj.group_data[:, 2], initial_grouping)
+
+    # Don't need to run an iteration: use data stored in the datapath
+    # Import "iteration 1" data
+    i1_datapath = os.path.join(datapath, 'iter1_data_no_regrouping.csv')
+    iter1_data = np.loadtxt(i1_datapath, delimiter=',')
+
+    # Do a regrouping on it. No values should change because the
+    # max/avg ratio in Group 2 is within the given tolerance (~1.049)
+    orifice_obj.regroup(iter1_data, verbose=True)
+    assert np.allclose(orifice_obj.group_data[:, 2], initial_grouping)
+
+
+def test_regrouping_multiple_asm(testdir, wdir_setup, caplog):
+    """Test that regrouping method properly regroups multiple
+    assemblies if necessary"""
+    datapath = os.path.join(testdir, 'test_data', 'orifice_regrouping')
+    infile = 'input_orifice_regrouping.txt'
+    inpath = os.path.join(testdir, 'test_inputs', infile)
+    outpath = os.path.join(testdir, 'test_results', 'orifice_regrouping')
+    path_to_tmp_infile = wdir_setup(inpath, outpath)
+    dassh.utils._symlink(os.path.join(datapath, '_parametric'),
+                         os.path.join(outpath, '_parametric'))
+    dassh.utils._symlink(os.path.join(datapath, 'pin_power.csv'),
+                         os.path.join(outpath, 'pin_power.csv'))
+
+    # Set up DASSH Orificing object and all of the attributes it needs to
+    # be able to regroup.
+    dassh_logger = dassh.logged_class.init_root_logger(outpath, 'dassh')
+    dassh_input = dassh.DASSH_Input(path_to_tmp_infile)
+    orifice_obj = dassh.orificing.Orificing(dassh_input, dassh_logger)
+
+    with dassh.logged_class.LoggingContext(40):
+        orifice_obj.group_by_power()
+    orifice_obj._parametric = {}
+    with dassh.logged_class.LoggingContext(40):
+        orifice_obj.run_parametric()  # With recycled results
+
+    # Check initial grouping
+    initial_grouping = np.ones(19, dtype=int)
+    initial_grouping[1:7] = 0
+    assert np.allclose(orifice_obj.group_data[:, 2], initial_grouping)
+
+    # Don't need to run an iteration: use data stored in the datapath
+    # Import "iteration 1" data
+    i1_datapath = os.path.join(datapath, 'iter1_data_regrouping.csv')
+    iter1_data = np.loadtxt(i1_datapath, delimiter=',')
+    # Make it so that another assembly in Group 2 has hecka high temps
+    iter1_data[-1, -1] = 1100.0
+
+    # Do a regrouping on it. This should result in moving Assemblies
+    # 1 and 19 from Group 2 to Group 1
+    orifice_obj.regroup(iter1_data, verbose=True)
+
+    # Check result
+    ans = initial_grouping.copy()
+    ans[[0, 18]] = 0
+    assert np.allclose(orifice_obj.group_data[:, 2], ans)
+
+    # Check logs
+    msg = 'Moved Assembly 1 from Group 2 to Group 1'
+    assert msg in caplog.text
+    msg = 'Moved Assembly 19 from Group 2 to Group 1'
+    assert msg in caplog.text

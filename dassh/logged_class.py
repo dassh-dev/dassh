@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-12-06
+date: 2022-01-19
 author: matz (inherited from Dr. A. Nelson)
 Log messages, warnings, and errors produced by each class in DASSH
 """
@@ -180,12 +180,12 @@ class DuplicateFilter:
 
 
 class LoggingContext(object):
-    """Temporarily change the logging configuration and revert it
-    back after doing something
+    """Temporarily change the DASSH logging configuration to do
+    something, then revert it back
 
     Usage
     -----
-    with LoggingContext(logger, level=logging.DEBUG):
+    with LoggingContext(level=logging.DEBUG):
         # do something
 
     Notes
@@ -195,8 +195,9 @@ class LoggingContext(object):
     using-context-manager-for-selective.html
 
     """
-    def __init__(self, logger, level=None):
-        self.logger = logger
+    def __init__(self, level=None):
+        # self.logger = logger
+        self.logger = logging.getLogger('dassh')
         self.level = level
 
     def __enter__(self):
@@ -205,9 +206,9 @@ class LoggingContext(object):
             self.logger.handlers[1].setLevel(self.level)
 
     def __exit__(self, et, ev, tb):
+        # implicit return of None => don't swallow exceptions
         if self.level is not None:
             self.logger.handlers[1].setLevel(self.old_level)
-        # implicit return of None => don't swallow exceptions
 
 
 class CloseLogStreams(object):
