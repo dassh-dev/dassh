@@ -72,7 +72,7 @@ def check_dependencies():
         import pytest
         if sys.version_info < (3, 7):
             assert version.parse(pytest.__version__) == version.parse('5.4')
-    except ImportError:
+    except (ImportError, AssertionError):
         install_requires.append('pytest; python_version >= "3.7"')
         install_requires.append('pytest == 5.4; python_version < "3.7"')
     try:
