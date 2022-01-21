@@ -20,6 +20,7 @@ Main DASSH calculation procedure
 
 To do
 -----
+# IMPLEMENTED FIX FOR THIS - Need to observe on VTR problem tomorrow
 - Assemblies not included in the orificing calculation are currently
     given flow rate based on the "DELTA_TEMP" condition, which means
     that they can have different FR for each timestep depending on
@@ -28,15 +29,11 @@ To do
 - Parallel execution (on kookie) has super scattered logging. Should
     execute with logger context as error only - no sweep updates, but
     that's probably okay.
-- Need unit tests that check results for simple problem.
-    1. 37-assembly example with low-fidelity model; peak coolant temp?
-    2. 7-assembly example for fuel pin variable
 
 """
 ########################################################################
 import copy
 import os
-import sys
 import numpy as np
 import dassh
 from dassh.logged_class import LoggedClass
@@ -85,40 +82,33 @@ class Orificing(LoggedClass):
         else:  # Here for safety; shouldn't be raised b/c input limits
             msg = 'Do not understand optimiation variable; given '
             msg += f'"{self.orifice_input[x]}"'
-            # self._logger.log(40, msg)
-            # sys.exit()
             self.log('error', msg)
 
     def optimize(self):
         """Perform that orificing optimzation"""
         # Initial setup
         msg = "DASSH orificing optimization calculation"
-        # self._logger.log(20, msg)
         self.log('info', msg)
         k = 'value_to_optimize'
         msg = f'Value to minimize: "{self.orifice_input[k]}"'
-        # self._logger.log(20, msg)
         self.log('info', msg)
         k = 'n_groups'
         msg = f"Requested number of groups: {self.orifice_input[k]}"
-        # self._logger.log(20, msg)
         self.log('info', msg)
 
         msg = "Grouping assemblies"
-        # self._logger.log(20, msg)
         self.log('info', msg)
         with dassh.logged_class.LogStreamContext(40):
             self.group_by_power()
 
         msg = "Performing single-assembly parametric calculations"
-        # self._logger.log(20, msg)
         self.log('info', msg)
         self._parametric = {}
         with dassh.logged_class.LogStreamContext(40):
             self.run_parametric()
 
         # msg = "Performing perfect-orificing calculation"
-        # self._logger.log(20, msg)
+        # self.log('info', msg)
         # data_perfect = self.run_dassh_perfect()
 
         # Iterate to converge to coolant flow distribution among groups
@@ -137,7 +127,6 @@ class Orificing(LoggedClass):
             if np.any(self._dp_limit):
                 msg = ("Breaking optimization iteration due to "
                        "incurred pressure drop limit")
-                # self._logger.log(30, msg)
                 self.log('warning', msg)
                 break
 
@@ -153,7 +142,6 @@ class Orificing(LoggedClass):
                 self.regroup(data_prev, verbose=True)
         # Distribute flow among groups to meet bulk coolant temp
         msg = f"Iter {iter}: Distributing coolant flow among groups"
-        # self._logger.log(20, msg)
         self.log('info', msg)
         m, tlim = self.distribute(data_prev, t_out)
         tmp, nx = np.unique(self.group_data[:, 2], return_counts=True)
@@ -167,7 +155,6 @@ class Orificing(LoggedClass):
 
         # Run DASSH iteration calculation
         msg = f"Iter {iter}: Running DASSH with orificed assemblies"
-        # self._logger.log(20, msg)
         self.log('info', msg)
         iter_data = self.run_dassh_orifice(iter, m)
         summary_data = self._summarize_group_data(iter_data)
@@ -534,6 +521,20 @@ class Orificing(LoggedClass):
         for i in range(self.group_data.shape[0]):
             inp.data['Assignment']['ByPosition'][asm_id[i]][2] = \
                 {'flowrate': m_asm[i]}
+        # Next, go over nongrouped assemblies and give them flow
+        # rates based on average power across all timesteps (saved
+        # in self._ng_power)
+        if hasattr(self, '_ng_power'):
+            coolant = inp.materials[inp.data['Core']['coolant_material']]
+            for i in range(self._ng_power.shape[0]):
+                asm_id = int(self._ng_power[i, 0])
+                mfr = dassh.utils.Q_equals_mCdT(
+                    self._ng_power[i, 1],
+                    inp.data['Core']['coolant_inlet_temp'],
+                    coolant,
+                    t_out=self.orifice_input['bulk_coolant_temp'])
+                inp.data['Assignment']['ByPosition'][asm_id][2] = \
+                    {'flowrate': mfr}
         return inp
 
     def _find_precalculated_power_dist(self, wdpath):
@@ -677,9 +678,14 @@ class Orificing(LoggedClass):
         of __main__.run_dassh(), but it extracts power distribution
         info instead of doing the temperature sweep
 
+        NEW (2022-01-20): This function also collects total power
+        for the assemblies that are not grouped so that they can
+        be assigned a constant flow rate across all timesteps
+
         """
         self._power = []
         self._lin_power = []
+        self._ng_power = []
 
         # For each timestep, collect assembly power and power
         # parameter (either integral power or peak linear power)
@@ -706,21 +712,32 @@ class Orificing(LoggedClass):
             _power = []
             _lin_power = []
             _id = []
+            _ng_power = []
+            _ng_id = []
             for a in dassh_rx.assemblies:
                 if a.name in self.orifice_input['assemblies_to_group']:
                     _id.append(a.id)
                     _power.append(a.total_power)
                     _lin_power.append(
                         a.power.calculate_avg_peak_linear_power())
-
+                else:  # Keep ungrouped asm power to calculate const FR
+                    _ng_id.append(a.id)
+                    _ng_power.append(a.total_power)
             self._power.append(np.array((_id, _power)).T)
             self._lin_power.append(np.array((_id, _lin_power)).T)
+            self._ng_power.append(np.array((_ng_id, _ng_power)).T)
 
         # Take average for each assembly
         tmp = np.average([x[:, 1] for x in self._power], axis=0)
         self._power = np.array((self._power[0][:, 0], tmp)).T
         tmp = np.average([x[:, 1] for x in self._lin_power], axis=0)
         self._lin_power = np.array((self._lin_power[0][:, 0], tmp)).T
+        # Take average for ungrouped assemblies, if any
+        if np.any([y for y in self._ng_power if y.size > 0]):
+            tmp = np.average([x[:, 1] for x in self._ng_power], axis=0)
+            self._ng_power = np.array((self._ng_power[0][:, 0], tmp)).T
+        else:  # all are grouped, don't need this.
+            del self._ng_power
 
         # Save one of the above as the power to use in grouping
         if group_by == 'linear_power':
@@ -731,8 +748,6 @@ class Orificing(LoggedClass):
             msg = ('Argument "group_by" must be "power" or '
                    + f'"linear_power"; input {group_by} not '
                    + 'recognized')
-            # self._logger.log(40, msg)
-            # sys.exit()
             self.log('error', msg)
 
     def _group(self, params):
@@ -792,8 +807,6 @@ class Orificing(LoggedClass):
             msg = ('Grouping not converged; please adjust '
                    + '"group_cutoff" and "group_cutoff_delta" '
                    + 'parameters')
-            # self._logger.log(40, msg)
-            # sys.exit()
             self.log('error', msg)
 
         # Attach grouping to group parameter data and return
@@ -968,14 +981,11 @@ class Orificing(LoggedClass):
         # print(f'Convergence (want less than {tol}): ', convergence)
         # Check conservation of mass - this should never fail
         if not abs(np.sum(m) - m_total) < 1e-6:
-            # self._logger.log(40, "Error: Mass flow rate not conserved")
-            # sys.exit(1)
             self.log('error', "Error: Mass flow rate not conserved")
         # Report whether the pressure drop mass flow rate limit was met
         if np.any(self._dp_limit):  # if dp_warning:
             msg = ("Warning: Peak mass flow rate restricted to "
                    + "accommodate user-specified pressure drop limit")
-            # self._logger.log(30, msg)
             self.log('warning', msg)
         # If multiple groups hit the pressure drop limit, the problem
         # is poorly posed (i.e. the limit is too tight to achieve adequate
@@ -983,15 +993,11 @@ class Orificing(LoggedClass):
         # to do about it if it does.
         if np.sum(self._dp_limit) > 1:
             msg = "Error: Multiple groups constrained by pressure drop limit"
-            # self._logger.log(40, msg)
-            # sys.exit(1)
             self.log('error', msg)
         # Raise error if we did not achieve requested number of groups
         if np.unique(m).shape[0] != self.orifice_input['n_groups']:
             msg = ("Error: Flow allocation did not achieve "
                    + "requested number of orifice groups")
-            # self._logger.log(40, msg)
-            # sys.exit(1)
             self.log('error', msg)
         # Return results
         return m, max(group_max)

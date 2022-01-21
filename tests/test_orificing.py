@@ -22,7 +22,73 @@ Unit tests for orificing optimization execution
 import os
 import numpy as np
 import subprocess
+import pytest
 import dassh
+
+
+def test_initial_grouping(testdir):
+    """Test that grouping algorithm properly assigns asm to groups"""
+    infile = 'input_orifice_grouping.txt'
+    dassh_input = dassh.DASSH_Input(
+        os.path.join(testdir, 'test_inputs', infile),
+        empty4c=True)
+    orificing_obj = dassh.Orificing(dassh_input)
+
+    # Manually specify the power to group by
+    power = np.array([
+        [0, 510000],
+        [1, 750000],
+        [2, 745000],
+        [3, 730000],
+        [4, 725000],
+        [5, 735000],
+        [6, 740000],
+        [7, 508000],
+        [8, 508000],
+        [9, 506000],
+        [10, 504000],
+        [11, 502000],
+        [12, 500000],
+        [13, 498000],
+        [14, 498000],
+        [15, 500000],
+        [16, 502000],
+        [17, 504000],
+        [18, 506000]
+    ])
+    ans = np.zeros((power.shape[0], 3))
+    ans[:, :2] = power[np.argsort(power[:, 1])][::-1]
+    ans[6:, 2] = 1
+    result = orificing_obj._group(power)
+    assert np.allclose(result, ans)
+
+
+def test_grouping_fail(testdir, caplog):
+    """Test that proper error message is raised when grouping
+    algorithm cannot converge"""
+    infile = 'input_orifice_grouping.txt'
+    dassh_input = dassh.DASSH_Input(
+        os.path.join(testdir, 'test_inputs', infile),
+        empty4c=True)
+    orificing_obj = dassh.Orificing(dassh_input)
+
+    # Manually specify the power to group by - give it something
+    # crazy that there's no way it can put into just two groups
+    power = np.zeros((19, 2))
+    power[:, 0] = np.arange(19)
+    power[:, 1] = [1e3, 1e3, 1e3, 1e3, 1e3, 1e3,
+                   1e4, 1e4, 1e4, 1e4, 1e4, 1e4,
+                   1e5, 1e5, 1e5, 1e5, 1e5, 1e5,
+                   1e6]
+
+    # Try the grouping - it won't converge and will hit the
+    # iteration limit
+    with pytest.raises(SystemExit):
+        orificing_obj._group(power)
+
+    # Check the logs for the error message you expect
+    msg = 'Grouping not converged; please adjust "group_cutoff"'  # ...
+    assert msg in caplog.text
 
 
 def test_orificing_fuel_single_timestep(testdir, wdir_setup):
