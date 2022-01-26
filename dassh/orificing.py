@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-29
+date: 2022-01-26
 author: matz
 Main DASSH calculation procedure
 
@@ -558,7 +558,6 @@ class Orificing(object):
         if linked > 0 and linked == expected:
             return True
         else:
-            assert 0
             return False
 
     def _get_dassh_results(self, wdpath):
