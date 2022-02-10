@@ -1174,7 +1174,7 @@ class Orificing(LoggedClass):
                     # Evaluate the cumulative "spread" - the degree to
                     # which the min temp assembly in G and the max temp
                     # assembly in G+1 differ from their group averages
-                    max2avg_gp1 = np.min(opt_gp1) / np.average(opt_gp1)
+                    max2avg_gp1 = np.max(opt_gp1) / np.average(opt_gp1)
                     # print(f'Max/Avg (Group {g+1}) = {max2avg_gp1}')
                     # Note: because max2avg_gp1 > 1 and min2avg_g < 1,
                     # the following is the same as:
