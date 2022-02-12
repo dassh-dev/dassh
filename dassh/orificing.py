@@ -14,21 +14,17 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-01-20
+date: 2022-02-11
 author: matz
-Main DASSH calculation procedure
+DASSH orificing optimization
 
 To do
 -----
-# IMPLEMENTED FIX FOR THIS - Need to observe on VTR problem tomorrow
-- Assemblies not included in the orificing calculation are currently
-    given flow rate based on the "DELTA_TEMP" condition, which means
-    that they can have different FR for each timestep depending on
-    their power; should calculate an average power level at the outset
-    during power setup and assign as fixed value.
 - Parallel execution (on kookie) has super scattered logging. Should
     execute with logger context as error only - no sweep updates, but
     that's probably okay.
+- Enable parallelism for the generation of Reactor objects in the
+    initial assembly grouping step.
 
 """
 ########################################################################
@@ -49,8 +45,6 @@ class Orificing(LoggedClass):
         Contains inputs to describe model and control optimization
 
     """
-    # root_logger : DASSH logger
-    #    Given from __main__
     _VARPOW_FILES = ('VARPOW.out',
                      'varpow_MatPower.out',
                      'varpow_MonoExp.out')
@@ -267,16 +261,40 @@ class Orificing(LoggedClass):
         asm_ids = []
         asm_names = []
         for i in range(len(self.orifice_input['assemblies_to_group'])):
+            power_profiles = {'pin': [], 'duct': [], 'cool': [], 'avg': []}
             name = self.orifice_input['assemblies_to_group'][i]
-            asm_list = [a for a in rx.assemblies if a.name == name]
-            asm_ids += [[a.id, i] for a in asm_list]
-            n_asm = len(asm_list)
             asm_names.append(name)
-            asm_obj.append(asm_list[0])
-            asm_power.append(0.0)
-            for a in asm_list:
-                asm_power[-1] += a.total_power
-            asm_power[-1] /= n_asm
+            for a in rx.assemblies:
+                if a.name == name:
+                    # Add the object to the list if you haven't yet
+                    if len(asm_obj) == 0 or asm_obj[-1].name != a.name:
+                        asm_obj.append(a)
+                    # Pull its power profiles to average them later
+                    asm_ids.append([a.id, i])
+                    power_profiles['pin'].append(a.power.pin_power)
+                    power_profiles['duct'].append(a.power.duct_power)
+                    power_profiles['cool'].append(a.power.coolant_power)
+                    power_profiles['avg'].append(a.power.avg_power)
+
+            # Average the power profiles
+            avg_power_profiles = {}
+            for k in power_profiles.keys():
+                if power_profiles[k][0] is not None:
+                    tmp = np.array(power_profiles[k])
+                    avg_power_profiles[k] = np.average(tmp, axis=0)
+                else:
+                    avg_power_profiles[k] = None
+
+            # Assign average power profiles to assembly object
+            assert asm_obj[-1].name == name
+            asm_obj[-1].power.pin_power = avg_power_profiles['pin']
+            asm_obj[-1].power.duct_power = avg_power_profiles['duct']
+            asm_obj[-1].power.coolant_power = avg_power_profiles['cool']
+            asm_obj[-1].power.avg_power = avg_power_profiles['avg']
+            asm_obj[-1].total_power = \
+                asm_obj[-1].power.calculate_total_power()
+            asm_power.append(asm_obj[-1].total_power)
+
         asm_ids = np.array(asm_ids, dtype=int)
         self._parametric['asm_ids'] = asm_ids[asm_ids[:, 0].argsort()]
         self._parametric['asm_names'] = asm_names
@@ -338,6 +356,14 @@ class Orificing(LoggedClass):
                                 {'flowrate': _data[j, 2]}
                             break
                     r1a = dassh.Reactor(inp_1asm, calc_power=False)
+                    r1a.assemblies[0].power.pin_power = \
+                        asm_obj[i].power.pin_power
+                    r1a.assemblies[0].power.duct_power = \
+                        asm_obj[i].power.duct_power
+                    r1a.assemblies[0].power.coolant_power = \
+                        asm_obj[i].power.coolant_power
+                    r1a.assemblies[0].power.avg_power = \
+                        asm_obj[i].power.avg_power
                     r1a.temperature_sweep()
                     _data[j, 3] = r1a.assemblies[0].pressure_drop
                     if self._opt_keys[1] is not None:
