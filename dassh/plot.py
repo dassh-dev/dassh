@@ -1718,8 +1718,13 @@ class CoreHexPlot(CorePlot):
 
     def make_power(self, dassh_reactor, plot_data):
         """Generate the total assembly power hex plot"""
-        data = np.array([sum(list(a._power_delivered.values())) / 1e6
-                         for a in dassh_reactor.assemblies])
+        data = []
+        for a in dassh_reactor.assemblies:
+            p = sum(list(a._power_delivered.values()))
+            if p == 0.0 and a.total_power > 0.0:
+                p = a.total_power
+            data.append(p / 1e6)
+        data = np.array(data)
         cbl = plot_data['cbar_label']
         if cbl is None:
             cbl = 'Power (MW)'
