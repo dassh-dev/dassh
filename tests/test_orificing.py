@@ -23,7 +23,7 @@ import os
 import numpy as np
 import pytest
 import dassh
-from dassh.__main__ import main as dassh_main
+from .conftest import execute_dassh
 
 
 def test_initial_grouping(testdir):
@@ -105,7 +105,7 @@ def test_orificing_fuel_single_timestep(testdir, wdir_setup):
                              os.path.join(outpath, dir))
 
     # Run DASSH
-    dassh_main(args=[path_to_tmp_infile])
+    execute_dassh([path_to_tmp_infile])
 
     # Import results
     resfile = os.path.join(outpath, 'orificing_result_assembly.csv')
@@ -160,7 +160,7 @@ def test_orificing_dp_limit_abort(testdir, wdir_setup):
                              os.path.join(outpath, dir))
 
     # Run DASSH
-    dassh_main(args=[path_to_tmp_infile])
+    execute_dassh([path_to_tmp_infile])
 
     # Check message in log file
     msg = ('Breaking optimization iteration due to '
@@ -170,7 +170,7 @@ def test_orificing_dp_limit_abort(testdir, wdir_setup):
     assert msg in log
 
 
-def test_orificing_dp_limit_error(testdir, wdir_setup, caplog):
+def test_orificing_dp_limit_error(testdir, wdir_setup):
     """Ensure optimization aborts if pressure drop limit incurred in
     multiple groups (this means that the pressure drop limit is too
     strict)"""
@@ -195,11 +195,13 @@ def test_orificing_dp_limit_error(testdir, wdir_setup, caplog):
 
     # Run DASSH
     with pytest.raises(SystemExit):
-        dassh_main(args=[path_to_tmp_infile])
+        execute_dassh([path_to_tmp_infile])
 
     # Check message in log file
     msg = 'Multiple groups constrained by pressure drop limit'
-    assert msg in caplog.text
+    with open(os.path.join(outpath, 'dassh.log'), 'r') as f:
+        log = f.read()
+    assert msg in log
 
 
 def test_orificing_peak_coolant(testdir, wdir_setup):
@@ -216,7 +218,7 @@ def test_orificing_peak_coolant(testdir, wdir_setup):
                          os.path.join(outpath, 'cccc'))
 
     # Run DASSH
-    dassh_main(args=[path_to_tmp_infile])
+    execute_dassh([path_to_tmp_infile])
 
     # Import results
     resfile = os.path.join(outpath, 'orificing_result_assembly.csv')
@@ -266,7 +268,7 @@ def test_regrouping1(testdir, wdir_setup, caplog):
                          os.path.join(outpath, 'pin_power.csv'))
 
     # Run DASSH
-    dassh_main(args=[path_to_tmp_infile])
+    execute_dassh([path_to_tmp_infile])
 
     # Check for outcomes in iteration data
     iter1_datapath = os.path.join(outpath, '_iter1', 'data.csv')
@@ -307,7 +309,7 @@ def test_regrouping_tolerance(testdir, wdir_setup, caplog):
         os.path.join(outpath, '_iter1', 'data.csv'))
 
     # Run DASSH
-    dassh_main(args=[path_to_tmp_infile])
+    execute_dassh([path_to_tmp_infile])
 
     # Check for outcomes in iteration data
     iter1_datapath = os.path.join(outpath, '_iter1', 'data.csv')
@@ -354,7 +356,7 @@ def test_regrouping_multiple_asm(testdir, wdir_setup, caplog):
         delimiter=',')
 
     # Run DASSH
-    dassh_main(args=[path_to_tmp_infile])
+    execute_dassh([path_to_tmp_infile])
 
     # Check for outcomes in iteration data
     iter1_datapath = os.path.join(outpath, '_iter1', 'data.csv')
