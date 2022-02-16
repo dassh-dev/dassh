@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-01-11
+date: 2022-02-15
 author: matz
 Test the DASSH read_input module and DASSH_input object
 """
