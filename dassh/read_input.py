@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-02-15
+date: 2022-02-16
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -25,6 +25,7 @@ import re
 import copy
 import logging
 import numpy as np
+import configobj
 from configobj import ConfigObj, flatten_errors
 from validate import Validator
 import matplotlib as mpl
@@ -497,6 +498,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         # required sections are present
         self.get_input(str_infile)
         self.check_configobj_sections()
+        self.check_for_extra_kw()
 
         # Process Assignment text input; add to self.data
         self.data['Assignment'] = \
@@ -668,6 +670,18 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         """Get template config file for single- or multi-time input."""
         tmp_path = os.path.join(_ROOT, 'input_template.txt')
         return tmp_path
+
+    def check_for_extra_kw(self):
+        """If the user added anything funky, make sure it's known"""
+        extra_args = configobj.get_extra_values(self.data)
+        for x in extra_args:
+            msg = 'Warning: unrecognized input. '
+            section = '"//"'.join(x[0])
+            if section == '':
+                msg += f'section: "{x[1]}"'
+            else:
+                msg += f'section: "{section}"; keyword: "{x[1]}"'
+            self.log('warning', msg)
 
     ####################################################################
     # INPUT FILE VALIDATION

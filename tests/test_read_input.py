@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-02-15
+date: 2022-02-16
 author: matz
 Test the DASSH read_input module and DASSH_input object
 """
@@ -649,7 +649,7 @@ def test_fail_duct_ftf_gt_assembly_pitch(testdir, caplog):
     assert msg in caplog.text
 
 
-def test_fcgap_kw_backward_compatability(testdir, caplog):
+def test_fcgap_kw_backward_compatability(testdir):
     """Test DASSH input reader properly processes input that uses
     old fuel-clad gap thickness keyword"""
     inp = dassh.DASSH_Input(
@@ -662,3 +662,16 @@ def test_fcgap_kw_backward_compatability(testdir, caplog):
     with pytest.raises(KeyError):
         print(fm_data['fcgap_thickness'])
     assert fm_data['gap_thickness'] == 0.00025
+
+
+def test_unrecognized_inputs(testdir, caplog):
+    """Check DASSH recognition of unrecognized inputs"""
+    dassh.DASSH_Input(
+        os.path.join(
+            testdir,
+            'test_inputs',
+            'input_unrecognized_args.txt'))
+    m1 = 'Warning: unrecognized input. section: "Unrecognized_Section"'
+    assert m1 in caplog.text
+    m2 = 'Warning: unrecognized input. section: "{}"; keyword: "{}"'
+    assert m2.format('Power"//"ARC', 'wrong_arg') in caplog.text
