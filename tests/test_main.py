@@ -14,16 +14,17 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-29
+date: 2022-02-16
 author: matz
 Test container for general execution
 """
 ########################################################################
 import os
 import numpy as np
-import dassh
-import subprocess
+# import subprocess
 import pytest
+import dassh
+from dassh.__main__ import main as dassh_main
 
 
 def test_1conservation_simple_1(testdir, wdir_setup):
@@ -32,10 +33,7 @@ def test_1conservation_simple_1(testdir, wdir_setup):
     inpath = os.path.join(testdir, 'test_inputs', 'input_conservation-1.txt')
     outpath = os.path.join(testdir, 'test_results', 'conservation-1')
     path_to_tmp_infile = wdir_setup(inpath, outpath)
-    return_code = subprocess.call(['dassh',
-                                   path_to_tmp_infile,
-                                   '--save_reactor'])
-    assert return_code == 0
+    dassh_main(args=[path_to_tmp_infile, '--save_reactor'])
 
     # Check that energy was conserved
     r = dassh.reactor.load(os.path.join(outpath, 'dassh_reactor.pkl'))
@@ -67,10 +65,7 @@ def test_conv_approx_interior(testdir, wdir_setup):
                               f'input_conv_approx_{x}.txt')
         outpath = os.path.join(testdir, 'test_results', 'conv_approx', x)
         path_to_tmp_infile = wdir_setup(inpath, outpath)
-        return_code = subprocess.call(['dassh',
-                                       path_to_tmp_infile,
-                                       '--save_reactor'])
-        assert return_code == 0
+        dassh_main(args=[path_to_tmp_infile, '--save_reactor'])
         r_obj[x] = dassh.reactor.load(
             os.path.join(outpath, 'dassh_reactor.pkl'))
 
@@ -104,9 +99,8 @@ def test_conv_approx_byp(testdir, wdir_setup):
         outpath = os.path.join(testdir, 'test_results',
                                'input_conv_approx_byp', x)
         path_to_tmp_infile = wdir_setup(inpath, outpath)
-        return_code = subprocess.call(['dassh', path_to_tmp_infile,
-                                       '--save_reactor'])
-        assert return_code == 0
+        dassh_main(args=[path_to_tmp_infile, '--save_reactor'])
+
         # temp_int[x] = np.loadtxt(
         #     os.path.join(outpath, 'temp_coolant_int.csv'),
         #     delimiter=',')
@@ -155,10 +149,7 @@ def test_ebal_with_ur(testdir, wdir_setup):
     inpath = os.path.join(testdir, 'test_inputs', 'input_ebal_w_unrodded.txt')
     outpath = os.path.join(testdir, 'test_results', 'ebal_w_unrodded')
     path_to_tmp_infile = wdir_setup(inpath, outpath)
-    return_code = subprocess.call(['dassh',
-                                   path_to_tmp_infile,
-                                   '--save_reactor'])
-    assert return_code == 0
+    dassh_main(args=[path_to_tmp_infile, '--save_reactor'])
 
     # Check that energy was conserved
     r = dassh.reactor.load(os.path.join(outpath, 'dassh_reactor.pkl'))

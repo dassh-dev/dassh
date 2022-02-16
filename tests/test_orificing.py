@@ -14,16 +14,16 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-02-11
+date: 2022-02-16
 author: matz
 Unit tests for orificing optimization execution
 """
 ########################################################################
 import os
 import numpy as np
-import subprocess
 import pytest
 import dassh
+from dassh.__main__ import main as dassh_main
 
 
 def test_initial_grouping(testdir):
@@ -105,8 +105,7 @@ def test_orificing_fuel_single_timestep(testdir, wdir_setup):
                              os.path.join(outpath, dir))
 
     # Run DASSH
-    return_code = subprocess.call(['dassh', path_to_tmp_infile])
-    assert return_code == 0
+    dassh_main(args=[path_to_tmp_infile])
 
     # Import results
     resfile = os.path.join(outpath, 'orificing_result_assembly.csv')
@@ -161,8 +160,7 @@ def test_orificing_dp_limit_abort(testdir, wdir_setup):
                              os.path.join(outpath, dir))
 
     # Run DASSH
-    return_code = subprocess.call(['dassh', path_to_tmp_infile])
-    assert return_code == 0
+    dassh_main(args=[path_to_tmp_infile])
 
     # Check message in log file
     msg = ('Breaking optimization iteration due to '
@@ -172,7 +170,7 @@ def test_orificing_dp_limit_abort(testdir, wdir_setup):
     assert msg in log
 
 
-def test_orificing_dp_limit_error(testdir, wdir_setup):
+def test_orificing_dp_limit_error(testdir, wdir_setup, caplog):
     """Ensure optimization aborts if pressure drop limit incurred in
     multiple groups (this means that the pressure drop limit is too
     strict)"""
@@ -196,14 +194,12 @@ def test_orificing_dp_limit_error(testdir, wdir_setup):
                              os.path.join(outpath, dir))
 
     # Run DASSH
-    return_code = subprocess.call(['dassh', path_to_tmp_infile])
-    assert return_code == 1
+    with pytest.raises(SystemExit):
+        dassh_main(args=[path_to_tmp_infile])
 
     # Check message in log file
     msg = 'Multiple groups constrained by pressure drop limit'
-    with open(os.path.join(outpath, 'dassh.log'), 'r') as f:
-        log = f.read()
-    assert msg in log
+    assert msg in caplog.text
 
 
 def test_orificing_peak_coolant(testdir, wdir_setup):
@@ -220,8 +216,7 @@ def test_orificing_peak_coolant(testdir, wdir_setup):
                          os.path.join(outpath, 'cccc'))
 
     # Run DASSH
-    return_code = subprocess.call(['dassh', path_to_tmp_infile])
-    assert return_code == 0
+    dassh_main(args=[path_to_tmp_infile])
 
     # Import results
     resfile = os.path.join(outpath, 'orificing_result_assembly.csv')
@@ -271,8 +266,7 @@ def test_regrouping1(testdir, wdir_setup, caplog):
                          os.path.join(outpath, 'pin_power.csv'))
 
     # Run DASSH
-    return_code = subprocess.call(['dassh', path_to_tmp_infile])
-    assert return_code == 0
+    dassh_main(args=[path_to_tmp_infile])
 
     # Check for outcomes in iteration data
     iter1_datapath = os.path.join(outpath, '_iter1', 'data.csv')
@@ -313,8 +307,7 @@ def test_regrouping_tolerance(testdir, wdir_setup, caplog):
         os.path.join(outpath, '_iter1', 'data.csv'))
 
     # Run DASSH
-    return_code = subprocess.call(['dassh', path_to_tmp_infile])
-    assert return_code == 0
+    dassh_main(args=[path_to_tmp_infile])
 
     # Check for outcomes in iteration data
     iter1_datapath = os.path.join(outpath, '_iter1', 'data.csv')
@@ -361,8 +354,7 @@ def test_regrouping_multiple_asm(testdir, wdir_setup, caplog):
         delimiter=',')
 
     # Run DASSH
-    return_code = subprocess.call(['dassh', path_to_tmp_infile])
-    assert return_code == 0
+    dassh_main(args=[path_to_tmp_infile])
 
     # Check for outcomes in iteration data
     iter1_datapath = os.path.join(outpath, '_iter1', 'data.csv')
