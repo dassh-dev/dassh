@@ -647,3 +647,18 @@ def test_fail_duct_ftf_gt_assembly_pitch(testdir, caplog):
     msg = ('Duct FTF values must be less than assembly pitch specified '
            'in "Core" section: 4.7244')
     assert msg in caplog.text
+
+
+def test_fcgap_kw_backward_compatability(testdir, caplog):
+    """Test DASSH input reader properly processes input that uses
+    old fuel-clad gap thickness keyword"""
+    inp = dassh.DASSH_Input(
+        os.path.join(
+            testdir,
+            'test_inputs',
+            'input_single_tp_old_fcgap.txt'),
+        empty4c=True)
+    fm_data = inp.data['Assembly']['driver']['FuelModel']
+    with pytest.raises(KeyError):
+        print(fm_data['fcgap_thickness'])
+    assert fm_data['gap_thickness'] == 0.00025

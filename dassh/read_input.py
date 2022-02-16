@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-01-11
+date: 2022-02-15
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -1011,6 +1011,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                     'pu_frac': ['0.0'],
                     'zr_frac': ['0.0'],
                     'porosity': ['0.0'],
+                    'fcgap_thickness': 0.0,
                     'gap_thickness': 0.0,
                     'clad_material': None,
                     'gap_material': None,
@@ -1047,6 +1048,16 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                     self.log('error', f'{pre}{msg}; key={k}')
 
             fm = self.data['Assembly'][asm]['FuelModel']
+
+            # Move fcgap_thickness into gap_thickness if the user specified
+            # the former but not the latter. The latter is the standard input
+            # so this is just to keep the old input argument live
+            if fm['gap_thickness'] == 0.0:
+                if fm['fcgap_thickness'] > 0.0:
+                    self.data['Assembly'][asm][
+                        'FuelModel']['gap_thickness'] = fm['fcgap_thickness']
+            del self.data['Assembly'][asm]['FuelModel']['fcgap_thickness']
+
             # Check that fractional radii are all increasing
             msg = ('Radius frations must arranged in increasing order; '
                    'if not annular fuel, the first value should be 0.0')
@@ -1092,6 +1103,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         and agree with other components of the Assembly input."""
         # All assemblies will have at least default PinModel entry;
         _DEFAULT = {'r_frac': ['0.0'],
+                    'fcgap_thickness': 0.0,
                     'gap_thickness': 0.0,
                     'clad_material': None,
                     'gap_material': None,
@@ -1121,6 +1133,15 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                 self.log('error', f'{pre}{msg}; key=r_frac')
 
             pin_model = self.data['Assembly'][asm]['PinModel']
+
+            # Move fcgap_thickness into gap_thickness if the user specified
+            # the former but not the latter. The latter is the standard input
+            # so this is just to keep the old input argument live
+            if pin_model['gap_thickness'] == 0.0:
+                if pin_model['fcgap_thickness'] > 0.0:
+                    self.data['Assembly'][asm]['PinModel']['gap_thickness'] = \
+                        pin_model['fcgap_thickness']
+            del self.data['Assembly'][asm]['PinModel']['fcgap_thickness']
 
             # Must have entries in 'pin_material'; these are checked for
             # validity in a different method
