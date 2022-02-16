@@ -1,0 +1,80 @@
+########################################################################
+# Milos Atz
+# Edited 2022-01-18
+# DASSH input file for orifice regrouping test case
+########################################################################
+
+
+[Setup]
+    log_progress          = 250
+    calc_energy_balance   = True
+    conv_approx           = True
+    conv_approx_dz_cutoff = 0.01
+    param_update_tol      = 0.001
+    [[Dump]]
+        coolant  = True
+        average  = True
+        duct     = False
+        gap      = False
+        gap_fine = False
+        maximum  = True
+        pins     = True
+        interval = 0.01
+
+
+[Orificing]
+    assemblies_to_group = fuel
+    n_groups = 2
+    value_to_optimize = peak fuel temp
+    bulk_coolant_temp = 773.15
+    convergence_tol = 0.002
+    iteration_limit = 2
+    regroup_option_tol = 0.05
+    regroup_improvement_tol = 0.05
+    recycle_results = True
+
+
+[Power]
+    user_power = 'pin_power.csv'
+
+
+[Core]
+    gap_model          = no_flow
+    coolant_material   = sodium
+    coolant_inlet_temp = 623.15
+    length             = 1.000
+    assembly_pitch     = 0.058
+    # bypass_fraction    = 0.005
+
+
+[Assembly]
+    [[fuel]]
+        num_rings       = 6
+        pin_pitch       = 0.0056
+        pin_diameter    = 0.0044
+        clad_thickness  = 0.0003
+        wire_pitch      = 0.1524
+        wire_diameter   = 0.0011
+        duct_ftf        = 0.0561, 0.0575
+        duct_material   = ss316
+        corr_mixing     = CTD
+        corr_friction   = CTD
+        corr_flowsplit  = CTD
+        corr_nusselt    = DB
+        shape_factor    = 1.0
+        htc_params_duct = 0.025, 0.8, 0.8, 7.0
+        [[[FuelModel]]]
+            clad_material   = ss316                       # [1]
+            gap_material    = sodium                      # [1]
+            fcgap_thickness = 0.000254                    # [1]
+            r_frac   =   0.0, 0.33333, 0.66667
+            pu_frac  = 0.000,   0.000,   0.000
+            zr_frac  = 0.001,   0.001,   0.001	          # [3]
+            porosity = 0.000,   0.000,   0.000
+
+
+[Assignment]
+    [[ByPosition]]
+        fuel =  1,  1,  1, FLOWRATE=10.0
+        fuel =  2,  1,  6, FLOWRATE=10.0
+        fuel =  3,  1, 12, FLOWRATE=10.0

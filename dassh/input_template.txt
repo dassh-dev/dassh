@@ -128,5 +128,7 @@
     bulk_coolant_temp = float(default=None)
     iteration_limit = integer(min=1, default=10)
     convergence_tol = float(min=1e-6, default=1e-3)
+    regroup_option_tol = float(min=0.0, max=1.0, default=None)
+    regroup_improvement_tol = float(min=0.0, max=1.0, default=0.05)
     pressure_drop_limit = float(min=0.0, default=None)
     recycle_results = boolean(default=False)

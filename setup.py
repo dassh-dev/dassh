@@ -14,10 +14,11 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-29
+date: 2022-01-20
 author: Milos Atz
 """
 ########################################################################
+import sys
 from setuptools import setup
 from setuptools._vendor.packaging import version
 
@@ -47,9 +48,13 @@ def check_dependencies():
     # tested what are the minimal versions that will work
     try:
         import numpy
-        assert version.parse(numpy.__version__) >= version.parse('1.18')
+        if sys.version_info < (3, 7):
+            assert version.parse(numpy.__version__) == version.parse('1.16.1')
+        else:
+            assert version.parse(numpy.__version__) >= version.parse('1.18')
     except (ImportError, AssertionError):
-        install_requires.append('numpy>=1.18')
+        install_requires.append('numpy == 1.16.1; python_version < "3.7"')
+        install_requires.append('numpy >= 1.18; python_version >= "3.7"')
     try:
         import matplotlib
         assert version.parse(matplotlib.__version__) >= version.parse('3.2')
@@ -65,8 +70,11 @@ def check_dependencies():
         install_requires.append('pandas')
     try:
         import pytest
-    except ImportError:
-        install_requires.append('pytest')
+        if sys.version_info < (3, 7):
+            assert version.parse(pytest.__version__) == version.parse('5.4')
+    except (ImportError, AssertionError):
+        install_requires.append('pytest; python_version >= "3.7"')
+        install_requires.append('pytest == 5.4; python_version < "3.7"')
     try:
         import dill
     except ImportError:
@@ -79,6 +87,16 @@ def check_dependencies():
 
 if __name__ == "__main__":
     install_requires = check_dependencies()
+    # install_requires = [
+    #     'numpy == 1.16.1; python_version < "3.7"',
+    #     'numpy >= 1.18; python_version >= "3.7"',
+    #     'matplotlib>=3.2',
+    #     'configobj',
+    #     'pandas',
+    #     'pytest == 5.4; python_version < "3.7"',
+    #     'pytest; python_version >= "3.7"',
+    #     'dill'
+    # ]
     setup(name=DISTNAME,
           author=MAINTAINER,
           author_email=MAINTAINER_EMAIL,
