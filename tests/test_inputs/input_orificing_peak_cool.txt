@@ -20,6 +20,7 @@
     value_to_optimize = peak coolant temp
     bulk_coolant_temp = 773.15
     convergence_tol = 0.002
+    iteration_limit = 4
 
 
 ########################################################################
@@ -80,6 +81,13 @@
         htc_params_duct = 0.025, 0.8, 0.8, 7.0
         wire_direction  = counterclockwise
         shape_factor = 1.1
+        #[[[FuelModel]]]
+        #    gap_thickness = 0.0
+        #    clad_material   = HT9_se2anl
+        #    r_frac   =  0.0, 0.33333, 0.66667
+        #    pu_frac  = 0.20,    0.20,    0.20
+        #    zr_frac  = 0.10,    0.10,    0.10
+        #    porosity = 0.25,    0.25,    0.25
 
     [[fuel2]]
         num_rings       = 9
@@ -93,6 +101,13 @@
         htc_params_duct = 0.025, 0.8, 0.8, 7.0
         wire_direction  = counterclockwise
         shape_factor = 1.1
+        #[[[FuelModel]]]
+        #    gap_thickness = 0.0
+        #    clad_material   = HT9_se2anl
+        #    r_frac   =  0.0, 0.33333, 0.66667
+        #    pu_frac  = 0.20,    0.20,    0.20
+        #    zr_frac  = 0.10,    0.10,    0.10
+        #    porosity = 0.25,    0.25,    0.25
 
     [[reflector]]
         num_rings       = 6

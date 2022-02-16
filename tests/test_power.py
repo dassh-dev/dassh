@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-29
+date: 2022-01-19
 author: matz
 Test power assignment from binary files to reactor components
 """
@@ -406,7 +406,7 @@ def test_user_power_axial_region_error_betw_types(testdir, caplog):
             os.path.join(
                 testdir, 'test_data', 'user_power_ax_reg_test_fail-1.csv'))
     msg = ('Error in user-specified power distribution '
-           '(assembly ID: 0); all pins, duct cells, and coolant'
+           '(assembly ID: 1); all pins, duct cells, and coolant'
            'items must have identical axial region boundaries.')
     assert msg in caplog.text
 
@@ -430,15 +430,14 @@ def test_user_power_axial_region_error_gap(testdir, caplog):
         dassh.power._from_file(
             os.path.join(
                 testdir, 'test_data', 'user_power_ax_reg_test_fail-3.csv'))
-    msg = ('Error in axial bound entries of user-specified power distribution'
-           'for assembly 0 duct; no gaps or overlaps allowed between upper/ '
-           'lower bounds of successive regions')
+    msg = ('Error in axial bound entries of user-specified power '
+           'distribution for assembly 1 duct; no gaps or overlaps '
+           'allowed between upper/lower bounds of successive regions')
     assert msg in caplog.text
 
 
 def test_user_power_bad_core_length(testdir, caplog):
     """Test that DASSH catches user power with improper axial reg specs"""
-    dir = os.path.join(testdir, 'test_data', 'test_bad_user_power_input')
     inp = dassh.DASSH_Input(
         os.path.join(testdir, 'test_inputs', 'x_input_bad_user_power.txt')
     )
@@ -450,7 +449,7 @@ def test_user_power_bad_core_length(testdir, caplog):
         os.path.join(testdir, 'test_data', 'user_power_ax_reg_test_fail-4.csv')
     ]
     with pytest.raises(SystemExit):
-        dassh.Reactor(inp, path=dir)
+        dassh.Reactor(inp)
     assert msg in caplog.text
 
     # Core lower bound > core length
@@ -459,9 +458,8 @@ def test_user_power_bad_core_length(testdir, caplog):
     inp.data['Power']['user_power'] = [
         os.path.join(testdir, 'test_data', 'user_power_ax_reg_test_fail-5.csv')
     ]
-    dir = os.path.join(testdir, 'test_data', 'test_bad_user_power_input')
     with pytest.raises(SystemExit):
-        dassh.Reactor(inp, path=dir)
+        dassh.Reactor(inp)
     print(caplog.text)
     assert msg in caplog.text
 
@@ -469,26 +467,24 @@ def test_user_power_bad_core_length(testdir, caplog):
 def test_user_power_bad_indexing_naive(testdir, caplog):
     """Test that DASSH catches error for user power with bad indexing of
     pins, duct, coolant through naive check"""
-    dir = os.path.join(testdir, 'test_data', 'test_bad_user_power_input')
     inp = dassh.DASSH_Input(
         os.path.join(testdir, 'test_inputs', 'x_input_bad_user_power.txt')
     )
 
-    msg = ('Error in user-specified power distribution: Assembly 1 pins '
-           'indexing; distribution; in axial region 0.0 < z < 1.0, need 7 '
+    msg = ('Error in user-specified power distribution: Assembly 1 '
+           'pins indexing; in axial region 0.0 < z < 1.0, need 7 '
            'items, but found 6.')
     inp.data['Power']['user_power'] = [
         os.path.join(testdir, 'test_data', 'user_power_idx_test_fail-1.csv')
     ]
     with pytest.raises(SystemExit):
-        dassh.Reactor(inp, path=dir)
+        dassh.Reactor(inp)
     assert msg in caplog.text
 
 
 def test_user_power_bad_indexing(testdir, caplog):
     """Test that DASSH catches error for user power with bad indexing of
     pins, duct, coolant through not-naive check"""
-    dir = os.path.join(testdir, 'test_data', 'test_bad_user_power_input')
     inp = dassh.DASSH_Input(
         os.path.join(testdir, 'test_inputs', 'x_input_bad_user_power.txt')
     )
@@ -497,7 +493,28 @@ def test_user_power_bad_indexing(testdir, caplog):
         os.path.join(testdir, 'test_data', 'user_power_idx_test_fail-2.csv')
     ]
     with pytest.raises(SystemExit):
-        dassh.Reactor(inp, path=dir)
+        dassh.Reactor(inp)
+    assert msg in caplog.text
+
+
+def test_user_power_bad_asm_indexing(testdir, caplog):
+    """Make sure the assembly indexing uses base-1
+    index not Python index"""
+    inp = dassh.DASSH_Input(
+        os.path.join(
+            testdir,
+            'test_inputs',
+            'x_input_bad_user_power-2.txt'))
+    inp.data['Power']['user_power'] = [
+        os.path.join(
+            testdir,
+            'test_data',
+            'user_power_asm_idx_fail.csv')]
+    # Can create Reactor and import power with no errors
+    dassh.Reactor(inp)
+    # Confirm warning was raised
+    msg = ('WARNING: Detected base-0 assembly indexing, but require '
+           'base-1 indexing. Modifying..')
     assert msg in caplog.text
 
 

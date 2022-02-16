@@ -100,6 +100,7 @@
                 htc_params = float_list(default=None)
                 convection_factor = float(min=0.000001, max=1.0, default=1.0)
         [[[FuelModel]]]
+            fcgap_thickness = float(min=0.0, default=0.0)
             gap_thickness = float(min=0.0, default=0.0)
             clad_material = string(default=None)
             gap_material = string(default=None)
@@ -109,6 +110,7 @@
             zr_frac = force_list(default=list(0.0))
             porosity = force_list(default=list(0.0))
         [[[PinModel]]]
+            fcgap_thickness = float(min=0.0, default=0.0)
             gap_material = string(default=None)
             gap_thickness = float(min=0.0, default=0.0)
             clad_material = string(default=None)
@@ -126,5 +128,7 @@
     bulk_coolant_temp = float(default=None)
     iteration_limit = integer(min=1, default=10)
     convergence_tol = float(min=1e-6, default=1e-3)
+    regroup_option_tol = float(min=0.0, max=1.0, default=None)
+    regroup_improvement_tol = float(min=0.0, max=1.0, default=0.05)
     pressure_drop_limit = float(min=0.0, default=None)
     recycle_results = boolean(default=False)

@@ -862,13 +862,14 @@ class PressureDropTable(LoggedClass, DASSH_Table):
     region, starting from the bottom
 """
 
-    def __init__(self, n_reg, col_width=9, col0_width=4, sep='  '):
+    def __init__(self, n_reg, col_width=10, col0_width=4, sep='  '):
         """Instantiate flow parameters output table"""
         # Decimal places for rounding, where necessary
         self.dp = col_width - 6
         # Float formatting option
         self._ffmt = '{' + f':.{self.dp}e' + '}'
         self._ffmt5 = '{' + f':.{5}f' + '}'
+        self._ffmt4e = '{' + f':.{4}E' + '}'
 
         # Inherit from DASSH_Table
         DASSH_Table.__init__(self, n_reg + 3, col_width, col0_width, sep)
@@ -893,12 +894,12 @@ class PressureDropTable(LoggedClass, DASSH_Table):
             params = [a.name, _fmt_pos(a.loc)]
 
             # Include total pressure drop
-            params.append(self._ffmt5.format(a.pressure_drop / 1e6))
+            params.append(self._ffmt4e.format(a.pressure_drop / 1e6))
 
             # Fill up the row with blanks; replace as applicable
             params += ['' for ri in range(n_reg)]
             for ri in range(len(a.region)):
-                params[ri + 3] = self._ffmt5.format(
+                params[ri + 3] = self._ffmt4e.format(
                     a.region[ri].pressure_drop / 1e6)
             # self.add_row(_fmt_idx(a.id), params)
             self.add_row(_fmt_idx(i), params)

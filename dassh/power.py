@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-10-22
+date: 2022-01-18
 author: matz
 Generate power distributions in assembly components based on neutron
 flux; object to assign to individual assemblies
@@ -1043,6 +1043,9 @@ def _from_file(fpath):
     with open(fpath, 'r', encoding='utf-8-sig') as f:
         pp = np.loadtxt(f, delimiter=',')
 
+    # Confirm assembly indexing in array
+    pp = _check_asm_indexing(pp)
+
     # Axial region boundaries in m; need cm
     # Power dist coeffs are in W/m; need W/cm
     pp[:, 2] *= 100.0  # m --> cm
@@ -1097,10 +1100,20 @@ def _from_file(fpath):
     return assembly_power_params
 
 
+def _check_asm_indexing(arr):
+    """Check whether assemblies are counted in base-1 indexing"""
+    msg = ('WARNING: Detected base-0 assembly indexing, but require '
+           'base-1 indexing. Modifying...')
+    if np.min(arr[:, 0]) == 0:
+        module_logger.log(40, msg)
+        arr[:, 0] += 1
+    return arr
+
+
 def _check_component_indexing(mat_arr):
     """Naive check on pin/duct/subchannel indexing on user-input power"""
     msg = ('Error in user-specified power distribution: Assembly {0} {1} '
-           'indexing; distribution; in axial region {2} < z < {3}, need {4} '
+           'indexing; in axial region {2} < z < {3}, need {4} '
            'items, but found {5}.')
     N_axial_regions = len(np.unique(mat_arr[:, 2]))
     N_idx = np.max(mat_arr[:, 4])
@@ -1188,9 +1201,9 @@ def _check_axial_reg_no_gaps_between_regions(mat_arr):
         from one assembly
 
     """
-    msg = ('Error in axial bound entries of user-specified power distribution'
-           'for assembly {0} {1}; no gaps or overlaps allowed between upper/ '
-           'lower bounds of successive regions')
+    msg = ('Error in axial bound entries of user-specified power '
+           'distribution for assembly {0} {1}; no gaps or overlaps '
+           'allowed between upper/lower bounds of successive regions')
     msg = msg.format(int(mat_arr[0, 0]),
                      _user_power_mat_ids[int(mat_arr[0, 1]) - 1])
     zlo = np.unique(mat_arr[:, 2])  # returns sorted values

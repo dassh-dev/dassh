@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-12-06
+date: 2022-01-20
 author: matz
 Main DASSH calculation procedure
 """
@@ -75,12 +75,11 @@ def main(args=None):
             'verbose': args.verbose,
             'no_power_calc': args.no_power_calc
         }
-        run_dassh(dassh_input, dassh_logger, arg_dict)
+        run_dassh(dassh_input, arg_dict)
 
     # Orificing optimization with DASSH
     else:
-        orifice_obj = dassh.orificing.Orificing(
-            dassh_input, dassh_logger)
+        orifice_obj = dassh.orificing.Orificing(dassh_input)
         orifice_obj.optimize()
 
     # Finish the calculation
@@ -94,24 +93,25 @@ def main(args=None):
     dassh.logged_class.shutdown_logger('dassh')
 
 
-def check_version(dassh_inp, dassh_log, save_reactor):
+def check_version(dassh_inp, save_reactor):
     """Check for DASSH limitations depending on Python version;
     tentatively deprecated."""
+    dassh_logger = logging.getLogger('dassh')
     version = '.'.join([str(sys.version_info.major),
                         str(sys.version_info.minor),
                         str(sys.version_info.micro)])
     if dassh_inp.data['Plot'] and sys.version_info < (3, 7):
-        dassh_log.log(
+        dassh_logger.log(
             30,
             'WARNING: DASSH plotting capability requires '
             f'Python 3.7+; detected {version}')
     if save_reactor and sys.version_info < (3, 7):
-        dassh_log.log(
+        dassh_logger.log(
             30,
             'WARNING: --save_reactor capability requires '
             f'Python 3.7+; detected {version}')
-    if dassh_log.data['Orificing'] and sys.version_info < (3, 7):
-        dassh_log.log(
+    if dassh_logger.data['Orificing'] and sys.version_info < (3, 7):
+        dassh_logger.log(
             40,
             'ERROR: DASSH orificing optimization requires '
             f'Python 3.7+; detected {version}')
@@ -120,10 +120,11 @@ def check_version(dassh_inp, dassh_log, save_reactor):
         pass
 
 
-def run_dassh(dassh_input, dassh_logger, rx_args):
+def run_dassh(dassh_input, rx_args):
     """Run DASSH without orificing optimization"""
     # For each timestep in the DASSH input, create the necessary DASSH
     # DASSH objects, run DASSH, and process the results
+    dassh_logger = logging.getLogger('dassh')
     need_subdir = False
     if dassh_input.timepoints > 1:
         need_subdir = True
@@ -149,14 +150,13 @@ def run_dassh(dassh_input, dassh_logger, rx_args):
                 pool.apply_async(
                     _run_dassh,
                     args=(dassh_input,
-                          dassh_logger,
                           rx_args,
                           i,
                           working_dir, )
                 )
             )
         else:
-            _run_dassh(dassh_input, dassh_logger, rx_args, i, working_dir)
+            _run_dassh(dassh_input, rx_args, i, working_dir)
 
     # Clean up from parallel execution, if applicable
     if dassh_input.data['Setup']['parallel']:
@@ -167,15 +167,13 @@ def run_dassh(dassh_input, dassh_logger, rx_args):
         pool.join()
 
 
-def _run_dassh(dassh_inp, dassh_log, args, timestep, wdir, link=None):
+def _run_dassh(dassh_inp, args, timestep, wdir, link=None):
     """Run DASSH for a single timestep
 
     Parameters
     ----------
     dassh_inp : DASSH_Input object
         Base DASSH input class
-    dassh_log : LoggedClass object
-        Keep logging while in this function
     args : dict
         Various args for instantiating DASSH objects
     timestep : int
@@ -188,6 +186,7 @@ def _run_dassh(dassh_inp, dassh_log, args, timestep, wdir, link=None):
         (default = None; run VARPOW as usual)
 
     """
+    dassh_logger = logging.getLogger('dassh')
     # Try to link VARPOW output from another source. If it doesn't
     # exist or work, just rerun VARPOW.
     if link is not None:
@@ -215,29 +214,30 @@ def _run_dassh(dassh_inp, dassh_log, args, timestep, wdir, link=None):
                             timestep=timestep,
                             write_output=True)
     # Perform the sweep
-    dassh_log.log(_log_info, 'Performing temperature sweep...')
+    dassh_logger.log(_log_info, 'Performing temperature sweep...')
     reactor.temperature_sweep(verbose=args['verbose'])
 
     # Post-processing: write output, save reactor if desired
-    dassh_log.log(_log_info, 'Temperature sweep complete')
+    dassh_logger.log(_log_info, 'Temperature sweep complete')
     if args['save_reactor'] or dassh_inp.data['Plot']:
         if sys.version_info < (3, 7):
-            handlers = dassh_log.handlers[:]
+            handlers = dassh_logger.handlers[:]
             for handler in handlers:
                 handler.close()
-                dassh_log.removeHandler(handler)
+                dassh_logger.removeHandler(handler)
         reactor.save()
         if sys.version_info < (3, 7):
-            dassh_log = dassh.logged_class.init_root_logger(
-                dassh_inp.path, 'dassh', 'a+')
-    dassh_log.log(_log_info, 'Output written')
+            dassh_logger = dassh.logged_class.init_root_logger(
+                os.path.split(dassh_logger._root_logfile_path)[0],
+                'dassh', 'a+')
+    dassh_logger.log(_log_info, 'Output written')
 
     # Post-processing: generate figures, if desired
     if ('Plot' in dassh_inp.data.keys()
             and len(dassh_inp.data['Plot']) > 0):
-        dassh_log.log(_log_info, 'Generating figures')
+        dassh_logger.log(_log_info, 'Generating figures')
         dassh.plot.plot_all(dassh_inp, reactor)
-    return dassh_log
+    return dassh_logger
 
 
 def plot():

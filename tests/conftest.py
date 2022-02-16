@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-01-05
+date: 2022-02-16
 author: matz
 Pytest fixtures and related test utilities for the whole shebang
 """
@@ -27,6 +27,17 @@ import subprocess
 import numpy as np
 import pytest
 import dassh
+from dassh.__main__ import main as dassh_main
+
+
+def execute_dassh(args):
+    """Execute DASSH (separate process if Python < 3.6)"""
+    if sys.version_info < (3, 7):
+        return_code = subprocess.call(["dassh"] + list(args))
+        if return_code == 1:
+            sys.exit(1)
+    else:
+        dassh_main(args)
 
 
 @pytest.fixture(scope='session')
