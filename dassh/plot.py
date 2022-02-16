@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-12-08
+date: 2021-02-15
 author: matz
 Methods to plot DASSH objects (such as hexagonal fuel assemblies and
 the pins and subchannels that comprise them).
@@ -117,7 +117,7 @@ def make_SubchannelPlot(dassh_reactor, plot_data):
             if ascp._skip_plotting_simple_model(asm, zi):
                 continue
             asm_zdata = _data['z_data'][zi][
-                _data['z_data'][zi][:, 0] == asm_id]
+                np.isclose(_data['z_data'][zi][:, 0], asm_id)]
             ascp.plot(asm_zdata[0, 3:],
                       lbnd=_data['cbar_lbnd'],
                       ubnd=_data['cbar_ubnd'],
@@ -162,9 +162,8 @@ def make_PinPlot(dassh_reactor, plot_data):
         for zi in _data['z_data'].keys():
             if pp._skip_plotting_simple_model(asm, zi):
                 continue
-        for zi in _data['z_data'].keys():
             asm_zdata = _data['z_data'][zi][
-                _data['z_data'][zi][:, 0] == asm_id]
+                np.isclose(_data['z_data'][zi][:, 0], asm_id)]
             for value in plot_data['value']:
                 pp.plot(asm_zdata[:, _pin_cols[value]],
                         lbnd=_data['cbar_lbnd'],
@@ -1666,6 +1665,7 @@ class CoreHexPlot(CorePlot):
         max_data_label_str_len = max([len(x) for x in data_fmt])
         fmt = '{:^' + str(max_data_label_str_len) + 's}'
         data_fmt = [fmt.format(s) for s in data_fmt]
+        mpl_text = []
         for i in range(len(data)):
             if i not in ignore and data[i] > nv:
                 txt = ax.annotate(data_fmt[i],
@@ -1674,8 +1674,14 @@ class CoreHexPlot(CorePlot):
                                   ha='center',
                                   va='center',
                                   weight='bold')
-                fontsize = self._auto_fit_fontsize(
+                mpl_text.append(txt)
+                tmp_fs = self._auto_fit_fontsize(
                     txt, txtwidth, None, fig=fig, ax=ax)
+                if tmp_fs < fontsize:
+                    fontsize = tmp_fs
+        # Set all text equal to minimum fontsize
+        for txt in mpl_text:
+            txt.set_fontsize(fontsize)
 
     def _auto_fit_fontsize(self, text, width, height, fig=None, ax=None):
         """Auto-decrease the fontsize of a text object.

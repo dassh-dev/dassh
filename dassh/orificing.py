@@ -54,7 +54,7 @@ class Orificing(LoggedClass):
         self._base_input = dassh_input
         self.orifice_input = dassh_input.data['Orificing']
         coolant_name = dassh_input.data['Core']['coolant_material']
-        self.coolant = dassh_input.materials[coolant_name]
+        self.coolant = dassh_input.materials[coolant_name.lower()]
         self.t_in = dassh_input.data['Core']['coolant_inlet_temp']
         self._dp_limit = np.zeros(self.orifice_input['n_groups'])
         self._recycle = dassh_input.data['Orificing']['recycle_results']
