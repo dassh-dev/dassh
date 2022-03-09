@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-02-11
+date: 2022-03-09
 author: matz
 DASSH orificing optimization
 
@@ -912,6 +912,9 @@ class Orificing(LoggedClass):
                 tmp = self._parametric['data'][i]
                 tmp = tmp[tmp[:, 2].argsort()]
                 xy.append(tmp[:, (2, -1)])
+            # Compare previous interpolated estimate with results to
+            # get a corrective factor.
+            ratio = self._calc_corrective_ratio(xy, res_prev)
         else:
             # If only using the parametric results with no previous sweep
             # data, the parametric results will indicate that all groups
@@ -925,6 +928,8 @@ class Orificing(LoggedClass):
                 xyi[:, 0] *= 1e6  # Parametric data is MW/(kg/s)
                 xyi[:, 1] = self._parametric['data'][i][:, -1]
                 xy.append(xyi[xyi[:, 0].argsort()])
+            # No previous results, so no corrective ratio to apply
+            ratio = 1.0
 
         # Total mass flow rate to achieve bulk coolant temperature
         # If first iteration, estimate based on total power
@@ -943,8 +948,7 @@ class Orificing(LoggedClass):
             # If T_previous < T_target, m_new < m_previous
             dt_prev = t_out_prev - self.t_in
             dt_trgt = self.orifice_input['bulk_coolant_temp'] - self.t_in
-            ratio = dt_prev / dt_trgt
-            m_total *= ratio
+            m_total *= dt_prev / dt_trgt
 
         # Determine m_lim based on pressure drop limit
         # for each asm type being orificed
@@ -997,7 +1001,7 @@ class Orificing(LoggedClass):
             # Estimate optimization variable based on new flow rates;
             # Get max values per group and an "average" value weighted
             # by flow rates and number of assemblies in the group
-            optvar = self._estimate_optvar(m, xy, res_prev)
+            optvar = self._estimate_optvar(m, xy, res_prev, ratio)
             group_max = np.array([
                 np.max(optvar[self.group_data[:, -1] == g])
                 for g in range(self.orifice_input['n_groups'])
@@ -1037,7 +1041,7 @@ class Orificing(LoggedClass):
         # Return results
         return m, max(group_max)
 
-    def _estimate_optvar(self, mfr, xy, res_prev=None):
+    def _estimate_optvar(self, mfr, xy, res_prev=None, ratio=None):
         """Estimate the variable-to-optimize based on the single-assembly
         parametric data and the latest DASSH results
 
@@ -1050,15 +1054,25 @@ class Orificing(LoggedClass):
             List of numpy.ndarray containing the x (flow rate) and y
             (optimization variable) values from the parametric sweep
             data for each assembly type being grouped
-        res_prev : numpy.ndarray (optional)
+        res_prev (optional) : numpy.ndarray
             Data from the previous DASSH iteration; used to correct
             estimate with scalar ratio for each assembly
             (default = 0)
+        ratio (optional) : float or numpy.ndarray
+            Corrective ratio between the previous interpolated estimate
+            for peak temperature and the result obtained by DASSH (if
+            float, will equal 1.0).
 
         Returns
         -------
         numpy.ndarray
             Estimate for the optimization variable for each assembly
+
+        Notes
+        -----
+        In the "distribute" method, this function is called with
+        "ratio" as an argument. In the "regroup" method, it is
+        called without it.
 
         """
         if res_prev is not None:
@@ -1067,27 +1081,14 @@ class Orificing(LoggedClass):
             x_interp = mfr
             # Calculate a corrective ratio to improve estimate of
             # dependent variable based on data from previous sweep
-            y_data = res_prev[:, self._opt_col]
-            interpolated_pts = []
-            for i in range(len(xy)):
-                interpolated_pts.append(
-                    np.interp(res_prev[:, 3], xy[i][:, 0], xy[i][:, 1]))
-            interpolated_pts = np.array(interpolated_pts)
-            ratio = y_data / interpolated_pts
-            # Take maximum over all cycles for each assembly
-            ratio = np.array([
-                np.max(ratio[:, res_prev[:, 1] == i], axis=1)
-                for i in np.unique(res_prev[:, 1])
-            ])
-            # Choose the appropriate ratio for the right asm type
-            ratio = ratio[np.arange(ratio.shape[0]),
-                          self._parametric['asm_ids'][:, 1]]
+            if ratio is None:
+                ratio = self._calc_corrective_ratio(xy, res_prev)
         else:
             # If no previous sweep data, do the interpolation using
             # power-to-flow ratio as the independent variable
             x_interp = self._power[:, 1] / mfr
-            # No data from previous sweep - no improvement of guess
-            ratio = 1.0
+            if ratio is None:
+                ratio = 1.0
 
         # Interpolate for the new flow rate
         new = []
@@ -1097,6 +1098,26 @@ class Orificing(LoggedClass):
         new = new[np.arange(new.shape[0]),
                   self._parametric['asm_ids'][:, 1]]
         return new * ratio
+
+    def _calc_corrective_ratio(self, xy, res_prev):
+        """If previous results are available, calculate the ratio
+        between interpolated estimate and the previous result as a
+        corrective factor to apply to peak temperature estimation"""
+        # Calculate a corrective ratio to improve estimate of
+        # dependent variable based on data from previous sweep
+        y_data = res_prev[:, self._opt_col]
+        interpolated_pts = []
+        for i in range(len(xy)):
+            interpolated_pts.append(
+                np.interp(res_prev[:, 3], xy[i][:, 0], xy[i][:, 1]))
+        interpolated_pts = np.array(interpolated_pts)
+        r = y_data / interpolated_pts
+        # Take maximum over all cycles for each assembly
+        r = np.array([np.max(r[:, res_prev[:, 1] == i], axis=1)
+                      for i in np.unique(res_prev[:, 1])])
+        # Choose the appropriate ratio for the right asm type
+        r = r[np.arange(r.shape[0]), self._parametric['asm_ids'][:, 1]]
+        return r
 
     ####################################################################
     # REGROUPING
