@@ -130,9 +130,18 @@ class Orificing(LoggedClass):
     def _do_iter(self, iter, data_prev=None, t_out=None):
         """Update coolant flow distributions between orifice groups
         and run DASSH sweeps for each timestep"""
-        if iter == 2 and data_prev is not None:
-            if self.orifice_input['regroup_option_tol'] is not None:
-                self.log('info', 'Regrouping...')
+        # if iter == 2 and data_prev is not None:
+        #     if self.orifice_input['regroup_option_tol'] is not None:
+        #         self.log('info', 'Regrouping...')
+        #         self.regroup(data_prev, verbose=True)
+        # if iter >= 2 and data_prev is not None:
+        #     if self.orifice_input['regroup_option_tol'] is not None:
+        #         self.log('info', 'Regrouping...')
+        #         self.regroup(data_prev, verbose=True)
+        if self.orifice_input['regroup'] != 'never' and iter >= 2:
+            if ((self.orifice_input['regroup'] == 'once' and iter == 2)
+                    or self.orifice_input['regroup'] == 'every'):
+                self.log('info', 'Checking grouping...')
                 self.regroup(data_prev, verbose=True)
         # Distribute flow among groups to meet bulk coolant temp
         msg = f"Iter {iter}: Distributing coolant flow among groups"
