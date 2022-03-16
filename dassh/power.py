@@ -750,18 +750,24 @@ class AssemblyPower(object):
         self.z_finemesh = np.array([np.around(zfi, 10)
                                    for zfi in z_finemesh])
         self.n_region = len(self.z_finemesh) - 1
+
         # Axial mesh points that bound the rod bundle axial region
         self.rod_zbnds = np.array(rod_bundle_zbnds)  # cm
         if np.abs(self.rod_zbnds[0] == 0.0):
             self.rod_zbnds[0] = -1.0
         if np.abs(self.rod_zbnds[1] - self.z_finemesh[-1]) < 1e-12:
             self.rod_zbnds[1] = 99999
+
+        # Step counter
+        self._step = 0
+
         # Check power profiles for None values
         for k in power_profiles.keys():
             if power_profiles[k] is not None:
                 power_profiles[k] *= scale
         if avg_power_profile is not None:
             avg_power_profile *= scale
+
         # Assign power profiles as attributes
         self.avg_power = avg_power_profile
         self.pin_power = power_profiles.get('pins')
@@ -824,14 +830,15 @@ class AssemblyPower(object):
             return p_lin
 
         else:
-            zm = self.transform_z(kf, z)
-            z_exp = np.power(zm, np.arange(self.n_terms))
-            if self.pin_power is not None:
-                p_lin['pins'] = np.dot(self.pin_power[kf], z_exp) * 100
-            if self.coolant_power is not None:
-                p_lin['cool'] = np.dot(self.coolant_power[kf], z_exp) * 100
-            if self.duct_power is not None:
-                p_lin['duct'] = np.dot(self.duct_power[kf], z_exp) * 100
+            # zm = self.transform_z(kf, z)
+            # z_exp = np.power(zm, np.arange(self.n_terms))
+            # if self.pin_power is not None:
+            #     p_lin['pins'] = np.dot(self.pin_power[kf], z_exp) * 100
+            # if self.coolant_power is not None:
+            #     p_lin['cool'] = np.dot(self.coolant_power[kf], z_exp) * 100
+            # if self.duct_power is not None:
+            #     p_lin['duct'] = np.dot(self.duct_power[kf], z_exp) * 100
+            p_lin = self._calculate_pdist(kf, z)
 
         # At extremely low power, can get some negative values
         # (~ -1e-6 W/m); want to filter these out as zeros.
@@ -845,6 +852,105 @@ class AssemblyPower(object):
             except TypeError:
                 continue
         return p_lin
+
+    def get_power_sweep(self, step=None, z=None):
+        """Calculate the linear power in all components at the
+        requested axial position
+
+        Parameters
+        ----------
+        step (optional) : int
+            DASSH axial step
+        z (optional) : float
+            Axial position (m) in the core
+
+        Returns
+        -------
+        dict
+            Dictionary containing the linear power values for each
+            component in the assembly
+            keys: {'pins', 'cool', 'duct'}
+
+        Notes
+        -----
+        This method is meant to be called within the sweep. It will
+        pull normalized, precalculated power for all components and
+        do so faster than "get_power".
+
+        """
+        if step is not None:
+            z = self._z_abs[step]
+            z_mod = self._z_mod[step]
+            kf = self._kfint[step]
+        elif z is not None:
+            z = z * 100  # m -> cm
+            z_mod = None
+            kf = self.get_kfint(z)  # z given in meters
+        else:
+            self.step += 1
+            z = self._z_abs[self.step]
+            z_mod = self._z_mod[self.step]
+            kf = self._kfint[self.step]
+
+        # For some unit conversions, the core length given to DASSH may
+        # be longer than that stored in the GEODST finemesh. Compensate
+        # by just preserving the last region as long as necessary
+        if kf == self.n_region:  # n_regions but python indexing
+            kf -= 1
+
+        # When z = rod_zbnds[0] (lower boundary), we're still sweeping
+        # through non-bundle space, return average power
+        # When z = rod_zbnds[1] (upper boundary), we're still sweeping
+        # through rod bundle space, so return bundle power
+        if z <= self.rod_zbnds[0] or z > self.rod_zbnds[1]:
+            p_lin = {'pins': None, 'cool': None, 'duct': None,
+                     'refl': self.avg_power[kf] * 100}
+        else:
+            p_lin = self._calculate_pdist(kf, z, z_mod, self.renorm[kf])
+        return p_lin
+
+    def _calculate_pdist(self, k, z_abs, z_mod=None, renorm=1.0):
+        """Calculate pin, duct, and coolant power profiles from stored
+        monomial distributions in a given axial mesh
+
+        Parameters
+        ----------
+        k : integer
+            Power distribution axial mesh
+        z_abs : float
+            Absolute axial position (cm)
+        z_mod (optional) : float
+            Relative axial position within power distribution axial
+            mesh [-0.5, 0.5] (default=None)
+        renorm (optional) : float
+            Renormalization factor to apply to power distribution to
+            preserve total power during the sweep (default = 1.0)
+
+        Returns
+        -------
+        dict
+            Dictionary containing linear powers for each thing
+            keys: {'pins', 'cool', 'duct', 'refl'}
+
+        """
+        pp = {'pins': None, 'cool': None, 'duct': None, 'refl': None}
+        if z_mod is None:
+            z_mod = self.transform_z(k, z_abs)
+        z_exp = np.power(z_mod, np.arange(self.n_terms))
+        if self.pin_power is not None:
+            pp['pins'] = np.dot(self.pin_power[k], z_exp) * 100 * renorm
+        if self.coolant_power is not None:
+            pp['cool'] = np.dot(self.coolant_power[k], z_exp) * 100 * renorm
+        if self.duct_power is not None:
+            pp['duct'] = np.dot(self.duct_power[k], z_exp) * 100 * renorm
+        # At extremely low power, can get some negative values
+        # (~ -1e-6 W/m); want to filter these out as zeros.
+        for k in pp.keys():
+            try:
+                pp[k][pp[k] < 0.0] = 0.0
+            except TypeError:
+                continue
+        return pp
 
     def transform_z(self, k_fint, z_abs):
         """Transform z-position in the core to the relative z-position
@@ -908,6 +1014,90 @@ class AssemblyPower(object):
             return 0
         else:
             return bisect.bisect_left(self.z_finemesh, z_abs) - 1
+
+    def presweep_setup(self, z_midpoints, dz):
+        """Calculate total power with midpoint rule to determine
+        renormalization necessary to give correct value.
+
+        Parameters
+        ---------
+        z_midpoints : numpy.ndarray
+            Array of axial midpoints of all DASSH meshes (m)
+        dz : numpy.ndarray
+            Array of DASSH axial step sizes (m)
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        In terms of integrating power, the DASSH axial sweep is
+        effectively doing the midpoint rule. This means that the
+        resulting total power delivered will not be exactly equal
+        to the correct result, and the extent to which it differs
+        depends on the axial step size. This method precalculates
+        all the power values to determine the total power in each
+        DIF3D mesh. With that, renormalizaton factors can be
+        determined so that the midpoint rule results in the
+        correct value.
+
+        """
+        # Skip this if you don't need to do any renormalizations
+        # because no distributions were given
+        if (self.pin_power_renorm is None
+                and self.coolant_power_renorm is None
+                and self.duct_power_renorm is None):
+            return
+
+        # GET KFINT FOR EVERY AXIAL STEP
+        # This is an "array" version of "get_kfint" method
+        z_abs = np.around(z_midpoints * 100, 12)  # m --> cm
+        dz_abs = dz * 100
+        kfint = np.zeros(z_abs.shape, dtype=int)
+        kfint[np.nonzero(z_abs)] = \
+            np.searchsorted(self.z_finemesh, z_abs, side='left') - 1
+        kfint[np.where(z_abs) == 0] = 0
+        self._kfint = kfint
+
+        # TRANSFORM ALL Z POINTS TO DIF3D MESH SPACE
+        # This is an "array" version of "transform_z" method
+        z_lo = self.z_finemesh[kfint]
+        z_hi = self.z_finemesh[kfint + 1]
+        tmp_lo = self.z_finemesh[kfint - 1]
+        tmp_hi = self.z_finemesh[kfint]
+        tmp_idx_m1 = (kfint == len(self.z_finemesh) - 1)
+        z_lo[tmp_idx_m1] = tmp_lo[tmp_idx_m1]
+        z_hi[tmp_idx_m1] = tmp_hi[tmp_idx_m1]
+        dz = z_hi - z_lo
+        const = -0.5 - (z_lo / dz)
+        z_mod = (z_abs / dz + const)
+        self._z_mod = z_mod
+        self._z_abs = z_abs
+
+        # For every DIF3D mesh, calculate the expected power (W) and
+        # the actual power that will result from calculating the pin,
+        # duct, and coolant power in every mesh at every step.
+        dz_finemesh = self.z_finemesh[1:] - self.z_finemesh[:-1]
+        total = np.zeros(self.n_region)
+        for kf in range(self.n_region):
+            dz_in_region = dz_abs[kfint == kf]
+            z_mod_in_region = z_mod[kfint == kf]
+            z_mod_in_region = np.expand_dims(z_mod_in_region, 1)
+            z_exp = np.power(z_mod_in_region, np.arange(self.n_terms))
+            tmp = np.zeros(dz_in_region.shape)
+            if self.pin_power is not None:
+                p_pins = np.dot(self.pin_power[kf], z_exp.T)
+                tmp += np.sum(p_pins, axis=0)
+            if self.coolant_power is not None:
+                p_cool = np.dot(self.coolant_power[kf], z_exp.T)
+                tmp += np.sum(p_cool, axis=0)
+            if self.duct_power is not None:
+                p_duct = np.dot(self.duct_power[kf], z_exp.T)
+                tmp += np.sum(p_duct, axis=0)
+            total[kf] = np.sum(tmp * dz_in_region)
+        renorm = (self.avg_power * dz_finemesh) / total
+        self._renorm = renorm
 
     def estimate_total_power(self, zpts=250):
         """Estimate the total power (W) produced by the assembly using
