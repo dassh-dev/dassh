@@ -887,10 +887,10 @@ class AssemblyPower(object):
             z_mod = None
             kf = self.get_kfint(z)  # z given in meters
         else:
-            self.step += 1
-            z = self._z_abs[self.step]
-            z_mod = self._z_mod[self.step]
-            kf = self._kfint[self.step]
+            z = self._z_abs[self._step]
+            z_mod = self._z_mod[self._step]
+            kf = self._kfint[self._step]
+            self._step += 1
 
         # For some unit conversions, the core length given to DASSH may
         # be longer than that stored in the GEODST finemesh. Compensate
@@ -906,7 +906,7 @@ class AssemblyPower(object):
             p_lin = {'pins': None, 'cool': None, 'duct': None,
                      'refl': self.avg_power[kf] * 100}
         else:
-            p_lin = self._calculate_pdist(kf, z, z_mod, self.renorm[kf])
+            p_lin = self._calculate_pdist(kf, z, z_mod, self._renorm[kf])
         return p_lin
 
     def _calculate_pdist(self, k, z_abs, z_mod=None, renorm=1.0):
@@ -1045,9 +1045,8 @@ class AssemblyPower(object):
         """
         # Skip this if you don't need to do any renormalizations
         # because no distributions were given
-        if (self.pin_power_renorm is None
-                and self.coolant_power_renorm is None
-                and self.duct_power_renorm is None):
+        if all(v is None for v in
+               (self.pin_power, self.coolant_power, self.duct_power)):
             return
 
         # GET KFINT FOR EVERY AXIAL STEP
@@ -1057,7 +1056,8 @@ class AssemblyPower(object):
         kfint = np.zeros(z_abs.shape, dtype=int)
         kfint[np.nonzero(z_abs)] = \
             np.searchsorted(self.z_finemesh, z_abs, side='left') - 1
-        kfint[np.where(z_abs) == 0] = 0
+        kfint[np.where(z_abs == 0)] = 0
+        kfint[np.where(kfint == self.n_region)] -= 1
         self._kfint = kfint
 
         # TRANSFORM ALL Z POINTS TO DIF3D MESH SPACE

@@ -176,7 +176,7 @@ class Reactor(LoggedClass):
             self.log('warning', msg)
 
         # Finish presweep setup for axial power distributions
-        z_midpoints = self.z[1:] - self.dz
+        z_midpoints = self.z[1:] - self.dz * 0.5
         for a in self.assemblies:
             a.power.presweep_setup(z_midpoints, self.dz)
 
@@ -654,7 +654,6 @@ class Reactor(LoggedClass):
                                                   asm_power[i][3],
                                                   bundle_bnd,
                                                   scale=power_scalar)
-            asm.power.
             # Check assembly power against core and assembly specs
             m = dassh.power._check_core_len(asm.power, self.core_length)
             if m[0] is False:
