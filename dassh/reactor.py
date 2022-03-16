@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-29
+date: 2022-03-16
 author: matz
 Object to hold and control DASSH components and execute simulations
 """

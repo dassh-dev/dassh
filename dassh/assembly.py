@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-01-05
+date: 2022-03-16
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -494,10 +494,8 @@ class Assembly(LoggedClass):
         # Calculate power at this axial level (j), calculate
         # temperatures and pin powers (if applicable)
         # power_j = self.power.get_power(z)
-        power_j = self.power.get_power(z - 0.5 * dz)
-        # self._power_delivered += dz * np.sum([np.sum(x) for x in
-        #                                      power_j.values()
-        #                                      if x is not None])
+        # power_j = self.power.get_power(z - 0.5 * dz)
+        power_j = self.power.get_power_sweep()
         for k in power_j.keys():
             if power_j[k] is not None:
                 self._power_delivered[k] += dz * np.sum(power_j[k])
