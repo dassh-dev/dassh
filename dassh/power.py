@@ -773,6 +773,7 @@ class AssemblyPower(object):
         self.pin_power = power_profiles.get('pins')
         self.duct_power = power_profiles.get('duct')
         self.coolant_power = power_profiles.get('cool')
+        self._renorm = np.ones(self.n_region)
         self.n_terms = 0
         for profile in [self.pin_power, self.duct_power, self.coolant_power]:
             if profile is not None:
@@ -1043,12 +1044,6 @@ class AssemblyPower(object):
         correct value.
 
         """
-        # Skip this if you don't need to do any renormalizations
-        # because no distributions were given
-        if all(v is None for v in
-               (self.pin_power, self.coolant_power, self.duct_power)):
-            return
-
         # GET KFINT FOR EVERY AXIAL STEP
         # This is an "array" version of "get_kfint" method
         z_abs = np.around(z_midpoints * 100, 12)  # m --> cm
@@ -1075,6 +1070,12 @@ class AssemblyPower(object):
         self._z_mod = z_mod
         self._z_abs = z_abs
 
+        # Skip this if you don't need to do any renormalizations
+        # because no distributions were given
+        if all(v is None for v in
+               (self.pin_power, self.coolant_power, self.duct_power)):
+            return
+
         # For every DIF3D mesh, calculate the expected power (W) and
         # the actual power that will result from calculating the pin,
         # duct, and coolant power in every mesh at every step.
@@ -1096,7 +1097,14 @@ class AssemblyPower(object):
                 p_duct = np.dot(self.duct_power[kf], z_exp.T)
                 tmp += np.sum(p_duct, axis=0)
             total[kf] = np.sum(tmp * dz_in_region)
-        renorm = (self.avg_power * dz_finemesh) / total
+
+        # Calculate renormalization factors and correct bad values
+        renorm = self.avg_power * dz_finemesh
+        renorm = np.divide(renorm, total,
+                           out=np.ones_like(renorm),
+                           where=total != 0)
+        # renorm[np.where(np.isinf(renorm))] = 1.0
+        # renorm[np.where(np.isnan(renorm))] = 1.0
         self._renorm = renorm
 
     def estimate_total_power(self, zpts=250):

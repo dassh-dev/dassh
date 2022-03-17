@@ -909,6 +909,8 @@ class Reactor(LoggedClass):
         self.core.coolant_gap_temp *= 0.0
         self.core.coolant_gap_temp += self.inlet_temp
         for i in range(len(self.assemblies)):
+            self.assemblies[i].power._step = 0
+            self.assemblies[i]._z = 0
             for j in range(len(self.assemblies[i].region)):
                 for k in self.assemblies[i].region[j].temp.keys():
                     self.assemblies[i].region[j].temp[k] *= 0.0
@@ -1272,8 +1274,9 @@ class Reactor(LoggedClass):
                 asm.active_region._map['gap2duct'])
             gap_temp = gap_temp / gap_htc
         # Perform the calculation, write the results to CSV
-        asm.calculate(z, dz, gap_temp, gap_htc,
-                      self._is_adiabatic, self._options['ebal'])
+        asm.calculate(dz, gap_temp, gap_htc,
+                      adiabatic=self._is_adiabatic,
+                      ebal=self._options['ebal'])
         if dump_step:
             asm.write(self._options['dump']['files'], gap_temp)
         return asm

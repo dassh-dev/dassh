@@ -462,14 +462,12 @@ class Assembly(LoggedClass):
             self.active_region._calc_duct_temp(
                 temp_gap, htc_gap, adiabatic)
 
-    def calculate(self, z, dz, t_gap, h_gap, adiabatic=False, ebal=False):
+    def calculate(self, dz, t_gap, h_gap, z=None, adiabatic=False, ebal=False):
         """Calculate coolant and temperatures at axial level j+1 based
         on coolant and duct wall temperatures at axial level j
 
         Parameters
         ----------
-        z : float
-            Axial mesh cell centerpoint
         dz : float
             Axial step size (m)
         t_gap : numpy.ndarray
@@ -480,6 +478,8 @@ class Assembly(LoggedClass):
             coolant and outer duct wall based on core-average inter-
             assembly gap coolant temperature; len = 2 (edge and corner
             meshes)
+        z (optional) : float
+            Axial mesh cell centerpoint (default=None)
         adiabatic : boolean (optional)
             Indicate whether outer duct has adiabatic BC (default False)
         ebal : boolean (optional)
@@ -490,12 +490,16 @@ class Assembly(LoggedClass):
         None
 
         """
-        self._z = z
+        if z is not None:
+            self._z = z
+            z_mp = z - 0.5 * dz
+            power_j = self.power.get_power_sweep(z=z_mp)
+        else:
+            self._z += dz
+            power_j = self.power.get_power_sweep()
+
         # Calculate power at this axial level (j), calculate
         # temperatures and pin powers (if applicable)
-        # power_j = self.power.get_power(z)
-        # power_j = self.power.get_power(z - 0.5 * dz)
-        power_j = self.power.get_power_sweep()
         for k in power_j.keys():
             if power_j[k] is not None:
                 self._power_delivered[k] += dz * np.sum(power_j[k])
@@ -512,23 +516,6 @@ class Assembly(LoggedClass):
             self.active_region.calculate_pin_temperatures(
                 dz, power_j['pins'])
             self._update_peak_pin_temps()
-
-    # def check_region_update_OLD(self, z):
-    #     """Take an axial step and update the active axial region,
-    #     if necessary; accumulate that region's pressure drop"""
-    #     active_region_id = self._identify_active_region(z)
-    #     old_region_id = self.active_region_idx
-    #     self._z = z
-    #     # If necessary, activate new region
-    #     if old_region_id != active_region_id:
-    #         # Update to new region index
-    #         self._active_region_idx = active_region_id
-    #         # Update total pressure drop from old region
-    #         self._pressure_drop += \
-    #             self.region[old_region_id].pressure_drop
-    #         # Activate new region: now that index is updated,
-    #         # "active_region" property returns new region
-    #         self.active_region.activate(self.region[old_region_id])
 
     def check_region_update(self, z):
         """Check whether an axial step takes place in a new region
