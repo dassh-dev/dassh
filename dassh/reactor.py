@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-29
+date: 2022-03-16
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -174,6 +174,11 @@ class Reactor(LoggedClass):
             self.log('warning', msg)
             msg = ('Consider checking input for flow maldistribution.')
             self.log('warning', msg)
+
+        # Finish presweep setup for axial power distributions
+        z_midpoints = self.z[1:] - self.dz * 0.5
+        for a in self.assemblies:
+            a.power.presweep_setup(z_midpoints, self.dz)
 
         # Raise warning if est. coolant temp will exceed extreme limit
         self._melt_warning(dassh_input, T_max=1500)
@@ -904,6 +909,8 @@ class Reactor(LoggedClass):
         self.core.coolant_gap_temp *= 0.0
         self.core.coolant_gap_temp += self.inlet_temp
         for i in range(len(self.assemblies)):
+            self.assemblies[i].power._step = 0
+            self.assemblies[i]._z = 0
             for j in range(len(self.assemblies[i].region)):
                 for k in self.assemblies[i].region[j].temp.keys():
                     self.assemblies[i].region[j].temp[k] *= 0.0
@@ -1267,8 +1274,9 @@ class Reactor(LoggedClass):
                 asm.active_region._map['gap2duct'])
             gap_temp = gap_temp / gap_htc
         # Perform the calculation, write the results to CSV
-        asm.calculate(z, dz, gap_temp, gap_htc,
-                      self._is_adiabatic, self._options['ebal'])
+        asm.calculate(dz, gap_temp, gap_htc,
+                      adiabatic=self._is_adiabatic,
+                      ebal=self._options['ebal'])
         if dump_step:
             asm.write(self._options['dump']['files'], gap_temp)
         return asm
