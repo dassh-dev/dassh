@@ -583,6 +583,14 @@ def test_duct_heating_ebal_adiabatic(testdir):
     asm = r.assemblies[0]
     dt = asm.avg_coolant_temp - r.inlet_temp
     q_cool = asm.flow_rate * r.materials['sodium_fixed'].heat_capacity * dt
+    print(dt)
+    print(asm.flow_rate)
+    print(r.materials['sodium_fixed'].heat_capacity)
+    print(asm._power_delivered)
+    print(asm.power._renorm)
+    print(asm.power.n_region)
+    print(asm.power.z_finemesh)
+    print(asm.power.avg_power)
     assert np.abs(q_cool - asm._power_delivered['duct']) < 2e-9
 
 
