@@ -272,268 +272,6 @@ def test_zpts_axial_boundaries(small_reactor):
 
 
 ########################################################################
-# DATA IO
-########################################################################
-
-
-def test_make_tables(small_reactor):
-    """If it doesn't fail, I guess it made the tables"""
-    n_asm = len(small_reactor.asm_templates)
-    summary = dassh.table.GeometrySummaryTable(n_asm)
-    summary.make(small_reactor)
-
-    power = dassh.table.PositionAssignmentTable()
-    power.make(small_reactor)
-
-    flow = dassh.table.CoolantFlowTable()
-    flow.make(small_reactor)
-
-    print(summary)
-    print(power)
-    print(flow)
-
-
-def test_write_tables(small_reactor):
-    """Check that I can write a file with tables"""
-
-    # Need to pre-load some pin data for it to find
-    peak_temp_dat = {'cool': (808.7726474073048, 2.10),
-                     'duct': (779.2171478384015, 2.20)}
-    peak_pin_dat = {
-        'clad_od': [816.3348397888126, 5, [1.0, 1.0, 1.4, 5.0,
-                                           805.8597966218155,
-                                           816.3348397888126,
-                                           833.7015229405092,
-                                           851.0682060922057,
-                                           851.0682060922057,
-                                           1088.6630086661442]],
-        'clad_mw': [833.7015229405092, 6, [1.0, 1.0, 1.4, 5.0,
-                                           805.8597966218155,
-                                           816.3348397888126,
-                                           833.7015229405092,
-                                           851.0682060922057,
-                                           851.0682060922057,
-                                           1088.6630086661442]],
-        'clad_id': [851.0682060922057, 7, [1.0, 1.0, 1.4, 5.0,
-                                           805.8597966218155,
-                                           816.3348397888126,
-                                           833.7015229405092,
-                                           851.0682060922057,
-                                           851.0682060922057,
-                                           1088.6630086661442]],
-        'fuel_od': [851.0682060922057, 8, [1.0, 1.0, 1.4, 5.0,
-                                           805.8597966218155,
-                                           816.3348397888126,
-                                           833.7015229405092,
-                                           851.0682060922057,
-                                           851.0682060922057,
-                                           1088.6630086661442]],
-        'fuel_cl': [1089.4486858368866, 9, [1.0, 1.0, 1.4, 16.0,
-                                            805.5514188743829,
-                                            816.0700357501505,
-                                            833.5089602073863,
-                                            850.9478846646219,
-                                            850.9478846646219,
-                                            1089.4486858368866]]}
-    for i in range(len(small_reactor.assemblies)):
-        small_reactor.assemblies[i]._peak['cool'] = \
-            peak_temp_dat['cool']
-        small_reactor.assemblies[i]._peak['duct'] = \
-            peak_temp_dat['duct']
-        if 'pin' in small_reactor.assemblies[i]._peak.keys():
-            small_reactor.assemblies[i]._peak['pin'] = \
-                peak_pin_dat
-    small_reactor.write_summary()
-    small_reactor.write_output_summary()
-    path_to_output = os.path.join(small_reactor.path, 'dassh.out')
-    with open(path_to_output, 'r') as f:
-        out = f.read()
-
-    # Teardown before failure, just in case
-    os.remove(path_to_output)
-
-    tables = ["ASSEMBLY GEOMETRY SUMMARY",
-              "ASSEMBLY POWER AND ASSIGNED FLOW RATE",
-              "SUBCHANNEL FLOW CHARACTERISTICS",
-              "PRESSURE DROP (MPa) ACROSS ASSEMBLIES",
-              "COOLANT TEMPERATURE SUMMARY",
-              "DUCT TEMPERATURE SUMMARY",
-              "PEAK CLAD MW TEMPERATURES",
-              "PEAK FUEL CL TEMPERATURES"
-              ]
-
-    for t in tables:
-        tag = out.find(t)
-        assert tag != -1, f'Table {t} not found!'
-
-
-def test_save_load(small_reactor):
-    """Test that I can save and load DASSH Reactor objects"""
-    if sys.version_info <= (3, 7):  # Requires Python 3.7 or greater
-        pytest.skip('skipping Reactor r/w test; need >= Python 3.7')
-
-    # Confirm that you can save without error
-    small_reactor.save()
-    # Confirm that you can load without error - this indirectly checks
-    # that the path exists
-    rpath = os.path.join(small_reactor.path, 'dassh_reactor.pkl')
-    dassh.reactor.load(rpath)
-
-
-def test_write_assembly_subchannel_tables(testdir):
-    """Test that the small table is written properly"""
-    wdir = os.path.join(testdir, 'test_results', 'test_single_asm')
-    filepath = os.path.join(wdir, 'temp_coolant_subchannel_a=1.csv')
-    if os.path.exists(filepath):
-        os.remove(filepath)
-
-    assert not os.path.exists(filepath)
-
-    # Mock up the input for the DetailedSubchannelTables
-    # Three of these axial regions are in the pin bundle region;
-    # One (z=3.0) is the low-fidelity model
-    z_pts = [1.5, 2.0, 2.5, 3.0, 3.75]
-    r = dassh.reactor.load(os.path.join(wdir, 'dassh_reactor.pkl'))
-    r._options['AssemblyTables'] = {
-        'test_this_thing':
-            {'type': 'coolant_subchannel',
-             'assemblies': [1],
-             'axial_positions': z_pts}}
-
-    # Get this for later
-    n_sc = r.assemblies[0].rodded.subchannel.n_sc['coolant']['total']
-    xy_sc = r.assemblies[0].rodded.subchannel.xy[:n_sc]
-
-    # Check that the path exists
-    r.write_assembly_data_tables()
-    assert os.path.exists(filepath)
-
-    # Check that the file has in it what we think it should
-    out = np.genfromtxt(filepath, delimiter=',', dtype=str)
-    assert out.shape == (n_sc + 2, 8)
-    header_cells = np.array([
-        [  '---',   '---',   'z (m)'],
-        ['x (m)', 'y (m)', 'average']],
-        dtype=str)
-    assert np.array_equal(out[:2, :3], header_cells)
-    assert np.allclose(out[0, 3:].astype(float), np.array(z_pts))
-    assert np.array_equal(out[2:, :2].astype(float), xy_sc)
-
-    # Check that temperature positions are filled if they should be
-    n_col_full = 3  # Three cols have pin bundle results
-    n_col_empty = 2  # Last 2 col simple model
-    n_pos = (out.shape[0] - 1) * n_col_full + n_col_empty
-    n_pos_result = np.count_nonzero(out[1:, 3:].astype(float))
-    assert n_pos_result == n_pos
-
-    # Check that average temperature for last axial position (end of
-    # simulation) is correct compared to what's in Rx object
-    print(out[-1, 1])
-    print(r.assemblies[0].avg_coolant_temp)
-    diff = float(out[1, -1]) - r.assemblies[0].avg_coolant_temp
-    assert np.abs(diff) < 1e-9
-
-
-def test_write_assembly_duct_tables(testdir):
-    """Test that the small table is written properly"""
-    inpath = os.path.join(testdir, 'test_inputs', 'input_single_asm_lf.txt')
-    outpath = os.path.join(testdir, 'test_results', 'test_single_asm_lf')
-    filepath = os.path.join(outpath, 'temp_duct_mw_a=1.csv')
-    if os.path.exists(filepath):
-        os.remove(filepath)
-    assert not os.path.exists(filepath)
-
-    # Run to produce results
-    inp = dassh.DASSH_Input(inpath)
-    inp.data['Assembly']['fuel']['use_low_fidelity_model'] = False
-    r = dassh.Reactor(inp, path=outpath, write_output=True)
-    r.temperature_sweep()
-    r.save()
-    assert os.path.exists(filepath)
-
-    # Get this for later
-    n_dsc = r.assemblies[0].rodded.subchannel.n_sc['duct']['total']
-    xy_dsc = r.assemblies[0].rodded.subchannel.xy[-n_dsc:]
-
-    # Check that the file has in it what we think it should
-    out = np.genfromtxt(filepath, delimiter=',', dtype=str)
-    assert out.shape == (n_dsc + 2, 7)
-    header_cells = np.array([
-        [  '---',   '---',   'z (m)'],
-        ['x (m)', 'y (m)', 'average']],
-        dtype=str)
-    assert np.array_equal(out[:2, :3], header_cells)
-    assert np.array_equal(out[2:, :2].astype(float), xy_dsc)
-
-    # Check duct element types
-    ans = []
-    for i in range(6):
-        ans += ['edge'] * 9 + ['corner']
-    assert np.array_equal(out[2:, 2], ans)
-
-    # Check that temperature positions are filled if they should be
-    n_col_full = 1  # Three cols have pin bundle results
-    n_col_empty = 3  # Last 2 col simple model
-    n_pos = (out.shape[0] - 1) * n_col_full + 7 * n_col_empty
-    n_pos_result = np.count_nonzero(out[1:, 3:].astype(float))
-    assert n_pos_result == n_pos
-    for row in range(out.shape[0]):  # All corners have temps
-        if out[row, 2] == 'corner':
-            assert np.count_nonzero(out[row, 3:]) == 4
-
-    # Check that average temperature for last axial position (end of
-    # simulation) is correct compared to what's in Rx object
-    print(out[-1, 1])
-    print(r.assemblies[0].avg_coolant_temp)
-    diff = float(out[1, -1]) - r.assemblies[0].avg_duct_mw_temp
-    assert np.abs(diff) < 1e-9
-
-
-def test_write_assembly_pin_tables(testdir):
-    """Test that the small table is written properly"""
-    name = 'single_asm_pin_table'
-    inpath = os.path.join(testdir, 'test_inputs', f'input_{name}.txt')
-    outpath = os.path.join(testdir, 'test_results', f'test_{name}')
-    filepath = os.path.join(outpath, 'temp_fuel_cl_a=1.csv')
-    if os.path.exists(filepath):
-        os.remove(filepath)
-    assert not os.path.exists(filepath)
-
-    # Run to produce results
-    inp = dassh.DASSH_Input(inpath)
-    r = dassh.Reactor(inp, path=outpath, write_output=True)
-    r.temperature_sweep()
-    r.save()
-    assert os.path.exists(filepath)
-
-    # Get this for later
-    n_pin = r.assemblies[0].rodded.n_pin
-    xy_pin = r.assemblies[0].rodded.pin_lattice.xy
-
-    # Check that the file has in it what we think it should
-    out = np.genfromtxt(filepath, delimiter=',', dtype=str)
-    assert out.shape == (n_pin + 2, 4)
-    header_cells = np.array([
-        [  '---', 'z (m)'],
-        ['x (m)', 'y (m) \\ avg']],
-        dtype=str)
-    assert np.array_equal(out[:2, :2], header_cells)
-    assert np.array_equal(out[2:, :2].astype(float), xy_pin)
-
-    # All columns should be full
-    n_col_full = 2  # Three cols have pin bundle results
-    n_pos = (out.shape[0] - 1) * n_col_full
-    n_pos_result = np.count_nonzero(out[1:, 2:].astype(float))
-    assert n_pos_result == n_pos
-
-    # Check that average temperature for last axial position (end of
-    # simulation) is correct compared to what's in Rx object
-    last_fuel_cl_temps = r.assemblies[0].rodded.pin_temps[:, -1]
-    diff = out[2:, -1].astype(float) - last_fuel_cl_temps
-    assert np.max(np.abs(diff)) < 1e-9
-
-
-########################################################################
 # TEMPERATURE SWEEP
 ########################################################################
 
@@ -932,3 +670,271 @@ def test_interasm_ebal(testdir):
         e_in = np.sum(ebal_in)
         e_out = np.sum(r.core.ebal['asm'][i])
         assert np.abs(e_in + e_out) < 1e-8
+
+
+########################################################################
+# DATA IO
+########################################################################
+
+
+def test_make_tables(small_reactor):
+    """If it doesn't fail, I guess it made the tables"""
+    n_asm = len(small_reactor.asm_templates)
+    summary = dassh.table.GeometrySummaryTable(n_asm)
+    summary.make(small_reactor)
+
+    power = dassh.table.PositionAssignmentTable()
+    power.make(small_reactor)
+
+    flow = dassh.table.CoolantFlowTable()
+    flow.make(small_reactor)
+
+    print(summary)
+    print(power)
+    print(flow)
+
+
+def test_write_tables(small_reactor):
+    """Check that I can write a file with tables"""
+
+    # Need to pre-load some pin data for it to find
+    peak_temp_dat = {'cool': (808.7726474073048, 2.10),
+                     'duct': (779.2171478384015, 2.20)}
+    peak_pin_dat = {
+        'clad_od': [816.3348397888126, 5, [1.0, 1.0, 1.4, 5.0,
+                                           805.8597966218155,
+                                           816.3348397888126,
+                                           833.7015229405092,
+                                           851.0682060922057,
+                                           851.0682060922057,
+                                           1088.6630086661442]],
+        'clad_mw': [833.7015229405092, 6, [1.0, 1.0, 1.4, 5.0,
+                                           805.8597966218155,
+                                           816.3348397888126,
+                                           833.7015229405092,
+                                           851.0682060922057,
+                                           851.0682060922057,
+                                           1088.6630086661442]],
+        'clad_id': [851.0682060922057, 7, [1.0, 1.0, 1.4, 5.0,
+                                           805.8597966218155,
+                                           816.3348397888126,
+                                           833.7015229405092,
+                                           851.0682060922057,
+                                           851.0682060922057,
+                                           1088.6630086661442]],
+        'fuel_od': [851.0682060922057, 8, [1.0, 1.0, 1.4, 5.0,
+                                           805.8597966218155,
+                                           816.3348397888126,
+                                           833.7015229405092,
+                                           851.0682060922057,
+                                           851.0682060922057,
+                                           1088.6630086661442]],
+        'fuel_cl': [1089.4486858368866, 9, [1.0, 1.0, 1.4, 16.0,
+                                            805.5514188743829,
+                                            816.0700357501505,
+                                            833.5089602073863,
+                                            850.9478846646219,
+                                            850.9478846646219,
+                                            1089.4486858368866]]}
+    for i in range(len(small_reactor.assemblies)):
+        small_reactor.assemblies[i]._peak['cool'] = \
+            peak_temp_dat['cool']
+        small_reactor.assemblies[i]._peak['duct'] = \
+            peak_temp_dat['duct']
+        if 'pin' in small_reactor.assemblies[i]._peak.keys():
+            small_reactor.assemblies[i]._peak['pin'] = \
+                peak_pin_dat
+    small_reactor.write_summary()
+    small_reactor.write_output_summary()
+    path_to_output = os.path.join(small_reactor.path, 'dassh.out')
+    with open(path_to_output, 'r') as f:
+        out = f.read()
+
+    # Teardown before failure, just in case
+    os.remove(path_to_output)
+
+    tables = ["ASSEMBLY GEOMETRY SUMMARY",
+              "ASSEMBLY POWER AND ASSIGNED FLOW RATE",
+              "SUBCHANNEL FLOW CHARACTERISTICS",
+              "PRESSURE DROP (MPa) ACROSS ASSEMBLIES",
+              "COOLANT TEMPERATURE SUMMARY",
+              "DUCT TEMPERATURE SUMMARY",
+              "PEAK CLAD MW TEMPERATURES",
+              "PEAK FUEL CL TEMPERATURES"
+              ]
+
+    for t in tables:
+        tag = out.find(t)
+        assert tag != -1, f'Table {t} not found!'
+
+
+def test_save_load(small_reactor):
+    """Test that I can save and load DASSH Reactor objects"""
+    if sys.version_info <= (3, 7):  # Requires Python 3.7 or greater
+        pytest.skip('skipping Reactor r/w test; need >= Python 3.7')
+
+    # Confirm that you can save without error
+    small_reactor.save()
+    # Confirm that you can load without error - this indirectly checks
+    # that the path exists
+    rpath = os.path.join(small_reactor.path, 'dassh_reactor.pkl')
+    dassh.reactor.load(rpath)
+
+
+def test_write_assembly_subchannel_tables(testdir):
+    """Test that the small table is written properly
+
+    Note: this test has to run after XX and will skip if it can't
+    find the necessary files"""
+    wdir = os.path.join(testdir, 'test_results', 'test_single_asm')
+    if not os.path.exists(os.path.join(wdir, 'dassh_reactor.pkl')):
+        pytest.skip('Cannot find ' + os.path.join(wdir, 'dassh_reactor.pkl'))
+
+    filepath = os.path.join(wdir, 'temp_coolant_subchannel_a=1.csv')
+    if os.path.exists(filepath):
+        os.remove(filepath)
+
+    assert not os.path.exists(filepath)
+
+    # Mock up the input for the DetailedSubchannelTables
+    # Three of these axial regions are in the pin bundle region;
+    # One (z=3.0) is the low-fidelity model
+    z_pts = [1.5, 2.0, 2.5, 3.0, 3.75]
+    r = dassh.reactor.load(os.path.join(wdir, 'dassh_reactor.pkl'))
+    r._options['AssemblyTables'] = {
+        'test_this_thing':
+            {'type': 'coolant_subchannel',
+             'assemblies': [1],
+             'axial_positions': z_pts}}
+
+    # Get this for later
+    n_sc = r.assemblies[0].rodded.subchannel.n_sc['coolant']['total']
+    xy_sc = r.assemblies[0].rodded.subchannel.xy[:n_sc]
+
+    # Check that the path exists
+    r.write_assembly_data_tables()
+    assert os.path.exists(filepath)
+
+    # Check that the file has in it what we think it should
+    out = np.genfromtxt(filepath, delimiter=',', dtype=str)
+    assert out.shape == (n_sc + 2, 8)
+    header_cells = np.array([
+        [  '---',   '---',   'z (m)'],
+        ['x (m)', 'y (m)', 'average']],
+        dtype=str)
+    assert np.array_equal(out[:2, :3], header_cells)
+    assert np.allclose(out[0, 3:].astype(float), np.array(z_pts))
+    assert np.array_equal(out[2:, :2].astype(float), xy_sc)
+
+    # Check that temperature positions are filled if they should be
+    n_col_full = 3  # Three cols have pin bundle results
+    n_col_empty = 2  # Last 2 col simple model
+    n_pos = (out.shape[0] - 1) * n_col_full + n_col_empty
+    n_pos_result = np.count_nonzero(out[1:, 3:].astype(float))
+    assert n_pos_result == n_pos
+
+    # Check that average temperature for last axial position (end of
+    # simulation) is correct compared to what's in Rx object
+    print(out[-1, 1])
+    print(r.assemblies[0].avg_coolant_temp)
+    diff = float(out[1, -1]) - r.assemblies[0].avg_coolant_temp
+    assert np.abs(diff) < 1e-9
+
+
+def test_write_assembly_duct_tables(testdir):
+    """Test that the small table is written properly"""
+    inpath = os.path.join(testdir, 'test_inputs', 'input_single_asm_lf.txt')
+    outpath = os.path.join(testdir, 'test_results', 'test_single_asm_lf')
+    filepath = os.path.join(outpath, 'temp_duct_mw_a=1.csv')
+    if os.path.exists(filepath):
+        os.remove(filepath)
+    assert not os.path.exists(filepath)
+
+    # Run to produce results
+    inp = dassh.DASSH_Input(inpath)
+    inp.data['Assembly']['fuel']['use_low_fidelity_model'] = False
+    r = dassh.Reactor(inp, path=outpath, write_output=True)
+    r.temperature_sweep()
+    r.save()
+    assert os.path.exists(filepath)
+
+    # Get this for later
+    n_dsc = r.assemblies[0].rodded.subchannel.n_sc['duct']['total']
+    xy_dsc = r.assemblies[0].rodded.subchannel.xy[-n_dsc:]
+
+    # Check that the file has in it what we think it should
+    out = np.genfromtxt(filepath, delimiter=',', dtype=str)
+    assert out.shape == (n_dsc + 2, 7)
+    header_cells = np.array([
+        [  '---',   '---',   'z (m)'],
+        ['x (m)', 'y (m)', 'average']],
+        dtype=str)
+    assert np.array_equal(out[:2, :3], header_cells)
+    assert np.array_equal(out[2:, :2].astype(float), xy_dsc)
+
+    # Check duct element types
+    ans = []
+    for i in range(6):
+        ans += ['edge'] * 9 + ['corner']
+    assert np.array_equal(out[2:, 2], ans)
+
+    # Check that temperature positions are filled if they should be
+    n_col_full = 1  # Three cols have pin bundle results
+    n_col_empty = 3  # Last 2 col simple model
+    n_pos = (out.shape[0] - 1) * n_col_full + 7 * n_col_empty
+    n_pos_result = np.count_nonzero(out[1:, 3:].astype(float))
+    assert n_pos_result == n_pos
+    for row in range(out.shape[0]):  # All corners have temps
+        if out[row, 2] == 'corner':
+            assert np.count_nonzero(out[row, 3:]) == 4
+
+    # Check that average temperature for last axial position (end of
+    # simulation) is correct compared to what's in Rx object
+    print(out[-1, 1])
+    print(r.assemblies[0].avg_coolant_temp)
+    diff = float(out[1, -1]) - r.assemblies[0].avg_duct_mw_temp
+    assert np.abs(diff) < 1e-9
+
+
+def test_write_assembly_pin_tables(testdir):
+    """Test that the small table is written properly"""
+    name = 'single_asm_pin_table'
+    inpath = os.path.join(testdir, 'test_inputs', f'input_{name}.txt')
+    outpath = os.path.join(testdir, 'test_results', f'test_{name}')
+    filepath = os.path.join(outpath, 'temp_fuel_cl_a=1.csv')
+    if os.path.exists(filepath):
+        os.remove(filepath)
+    assert not os.path.exists(filepath)
+
+    # Run to produce results
+    inp = dassh.DASSH_Input(inpath)
+    r = dassh.Reactor(inp, path=outpath, write_output=True)
+    r.temperature_sweep()
+    r.save()
+    assert os.path.exists(filepath)
+
+    # Get this for later
+    n_pin = r.assemblies[0].rodded.n_pin
+    xy_pin = r.assemblies[0].rodded.pin_lattice.xy
+
+    # Check that the file has in it what we think it should
+    out = np.genfromtxt(filepath, delimiter=',', dtype=str)
+    assert out.shape == (n_pin + 2, 4)
+    header_cells = np.array([
+        [  '---', 'z (m)'],
+        ['x (m)', 'y (m) \\ avg']],
+        dtype=str)
+    assert np.array_equal(out[:2, :2], header_cells)
+    assert np.array_equal(out[2:, :2].astype(float), xy_pin)
+
+    # All columns should be full
+    n_col_full = 2  # Three cols have pin bundle results
+    n_pos = (out.shape[0] - 1) * n_col_full
+    n_pos_result = np.count_nonzero(out[1:, 2:].astype(float))
+    assert n_pos_result == n_pos
+
+    # Check that average temperature for last axial position (end of
+    # simulation) is correct compared to what's in Rx object
+    last_fuel_cl_temps = r.assemblies[0].rodded.pin_temps[:, -1]
+    diff = out[2:, -1].astype(float) - last_fuel_cl_temps
+    assert np.max(np.abs(diff)) < 1e-9
