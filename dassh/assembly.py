@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-03-16
+date: 2022-03-23
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -235,8 +235,8 @@ class Assembly(LoggedClass):
         self._write['coolant_int'] = np.zeros((1, ncols['coolant_int']))
         self._write['duct_mw'] = np.zeros((1, ncols['duct_mw']))
         self._write['coolant_byp'] = np.zeros((1, ncols['coolant_byp']))
-        self._write['maximum'] = np.zeros((1, 8))
-        self._write['average'] = np.zeros((1, 11))
+        self._write['maximum'] = np.zeros((1, ncols['maximum']))
+        self._write['average'] = np.zeros((1, ncols['average']))
         # self._write['coolant_gap'] = np.zeros((1, 10))
         self._write['coolant_gap'] = np.zeros((1, ncols['coolant_gap']))
 
