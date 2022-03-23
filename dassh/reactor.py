@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-03-16
+date: 2022-03-23
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -203,6 +203,10 @@ class Reactor(LoggedClass):
         self._options['se2geo'] = inp.data['Setup']['se2geo']
         self._options['param_update_tol'] = \
             inp.data['Setup']['param_update_tol']
+
+        if 'AssemblyTables' in inp.data['Setup'].keys():
+            self._options['AssemblyTables'] = \
+                inp.data['Setup']['AssemblyTables']
 
         if 'write_output' in kwargs.keys():  # always True in __main__
             self._options['write_output'] = kwargs['write_output']
@@ -986,13 +990,13 @@ class Reactor(LoggedClass):
         self._options['dump']['cols']['maximum'] = 7
         self._options['dump']['cols']['coolant_int'] = 3 + max(
             [a.rodded.subchannel.n_sc['coolant']['total']
-             for a in self.assemblies if a.has_rodded])
+             if a.has_rodded else 1 for a in self.assemblies])
         self._options['dump']['cols']['duct_mw'] = 4 + max(
             [a.rodded.subchannel.n_sc['duct']['total']
              if a.has_rodded else 6 for a in self.assemblies])
         self._options['dump']['cols']['coolant_byp'] = 4 + max(
             [a.rodded.subchannel.n_sc['bypass']['total']
-             for a in self.assemblies if a.has_rodded])
+             if a.has_rodded else 0 for a in self.assemblies])
         self._options['dump']['cols']['coolant_gap'] = \
             self._options['dump']['cols']['duct_mw'] - 1
         # 1 + len(self.core.coolant_gap_temp)
@@ -1070,6 +1074,10 @@ class Reactor(LoggedClass):
         # write the summary output
         if self._options['write_output']:
             self.write_output_summary()
+
+        # write detailed assembly subchannel output, if requested
+        if 'AssemblyTables' in self._options.keys():
+            self.write_assembly_data_tables()
 
     def _print_log_msg(self, step):
         """Format the message to log to the screen"""
@@ -1361,6 +1369,306 @@ class Reactor(LoggedClass):
         # Append to file
         with open(os.path.join(self.path, 'dassh.out'), 'a') as f:
             f.write(out)
+
+    def write_assembly_data_tables(self):
+        """x"""
+        asm_tables = self._options['AssemblyTables']
+        for k in asm_tables.keys():
+            datatype = asm_tables[k]['type']
+            if datatype == 'coolant_subchannel':
+                self._write_asm_subchannel_table(
+                    asm_tables[k]['assemblies'],
+                    asm_tables[k]['axial_positions'])
+            elif datatype == 'duct_mw':
+                self._write_asm_duct_table(
+                    asm_tables[k]['assemblies'],
+                    asm_tables[k]['axial_positions'])
+            elif datatype in ('coolant_pin', 'clad_od', 'clad_mw',
+                              'clad_id', 'fuel_od', 'fuel_cl'):
+                self._write_asm_pin_table(
+                    asm_tables[k]['assemblies'],
+                    asm_tables[k]['axial_positions'],
+                    datatype)
+            else:
+                msg = ('AssemblyTables capability for data type '
+                       f'"{datatype}" not yet implemented')
+                self.log('warning', msg)
+                continue
+
+    def _write_asm_subchannel_table(self, list_asm_id, list_ax_pos):
+        """Postprocess CSV tables containing subchannel coolant
+        temperatures for requested assemblies
+
+        Notes
+        -----
+        Table structure:
+            ---,      ---,    z (m),       z1,       z2, ...
+          x (m),    y (m),  average,   T_avg1,   T_avg2, ...
+             x1,       y1, interior,      T11,      T12, ...
+             x2,       y2, interior,      T21,      T22, ...
+            ...
+           xn-1,     yn-1,     edge,   Tn-1/1,   Tn-1/2, ...
+             xn,       yn,   corner,      Tn1,      Tn2, ...
+
+        """
+        # Base-1 --> Base-0 index
+        list_asm_id_b0 = [id - 1 for id in list_asm_id]
+
+        # Load data for postprocessing
+        f = os.path.join(self.path, 'temp_coolant_int.csv')
+        sc_temps = dassh.plot._load_data(f, list_ax_pos, list_asm_id_b0)
+        f = os.path.join(self.path, 'temp_average.csv')
+        sc_temps_avg = dassh.plot._load_data(f, list_ax_pos, list_asm_id_b0)
+
+        # Initialize array for each assembly being dumped
+        n_z = len(list_ax_pos)
+        list_ax_pos = sorted(list_ax_pos)
+        out_data = []
+        sc_types = []
+        for a in list_asm_id_b0:
+            asm_obj = self.assemblies[a]
+            if asm_obj.has_rodded:
+                n_sc = asm_obj.rodded.subchannel.n_sc['coolant']['total']
+                tmp = np.zeros((n_sc + 2, n_z + 3))
+                tmp[2:, [0, 1]] = asm_obj.rodded.subchannel.xy[:n_sc]
+                sc_types.append(
+                    [['interior', 'edge', 'corner'][i]
+                     for i in asm_obj.rodded.subchannel.type[:n_sc]])
+            else:
+                n_sc = 1
+                tmp = np.zeros((n_sc + 2, n_z + 3))
+                sc_types.append([])
+            tmp[0, 3:] = sorted(list_ax_pos)
+            out_data.append(tmp)
+
+        # Fill the arrays with values
+        for i in range(len(list_ax_pos)):
+            sc_z = sc_temps[list_ax_pos[i]]
+            sc_z_avg = sc_temps_avg[list_ax_pos[i]]
+            for a in range(len(list_asm_id_b0)):
+                asm_id = list_asm_id_b0[a]
+                row = np.where(sc_z[:, 0].astype(int) == asm_id)[0][0]
+                out_data[a][1, i + 3] = sc_z_avg[row, 3]
+                ncol = out_data[a].shape[0] - 2
+                tmp = sc_z[row, 3:(3 + ncol)]
+                # Don't write subchannel data for low-fidelity regions
+                if np.count_nonzero(tmp) == 1:
+                    continue
+                else:
+                    out_data[a][2:, i + 3] = tmp
+
+        # Convert the arrays to strings and add the labels
+        for i in range(len(out_data)):
+            out_data[i] = out_data[i].astype(str)
+            out_data[i][0, 0] = '---'
+            out_data[i][0, 1] = '---'
+            out_data[i][1, 0] = 'x (m)'
+            out_data[i][1, 1] = 'y (m)'
+            out_data[i][0, 2] = 'z (m)'
+            out_data[i][1, 2] = 'average'
+            if len(sc_types[i]) > 0:
+                out_data[i][2:, 2] = sc_types[i]
+
+        # Save the arrays
+        for i in range(len(list_asm_id_b0)):
+            fname = f'temp_coolant_subchannel_a={list_asm_id[i]}.csv'
+            fname = os.path.join(self.path, fname)
+            np.savetxt(fname, out_data[i], fmt='%s', delimiter=',')
+
+    def _write_asm_duct_table(self, list_asm_id, list_ax_pos):
+        """Postprocess CSV tables containing duct temperatures
+        for requested assemblies
+
+        Notes
+        -----
+        Table structure:
+            ---,      ---,    z (m),       z1,       z2, ...
+          x (m),    y (m),  average,   T_avg1,   T_avg2, ...
+             x1,       y1,     edge,      T11,      T12, ...
+             x2,       y2,     edge,      T21,      T22, ...
+            ...
+           xn-1,     yn-1,     edge,   Tn-1/1,   Tn-1/2, ...
+             xn,       yn,   corner,      Tn1,      Tn2, ...
+
+        """
+        # Base-1 --> Base-0 index
+        list_asm_id_b0 = [id - 1 for id in list_asm_id]
+
+        # Load data for postprocessing
+        f = os.path.join(self.path, 'temp_duct_mw.csv')
+        temps = dassh.plot._load_data(f, list_ax_pos, list_asm_id_b0)
+        f = os.path.join(self.path, 'temp_average.csv')
+        temps_avg = dassh.plot._load_data(f, list_ax_pos, list_asm_id_b0)
+
+        # Initialize array for each assembly being dumped
+        n_z = len(list_ax_pos)
+        list_ax_pos = sorted(list_ax_pos)
+        out_data = []
+        duct_types = []
+        duct_idx = []
+        for a in list_asm_id_b0:
+            asm_obj = self.assemblies[a]
+            if asm_obj.has_rodded:
+                out_data_tmp = []
+                n_sc = asm_obj.rodded.subchannel.n_sc['coolant']['total']
+                n_dsc = asm_obj.rodded.subchannel.n_sc['duct']['total']
+                for d in range(asm_obj.rodded.n_duct):
+                    tmp = np.zeros((n_dsc + 2, n_z + 3))
+                    i0 = n_sc + 2 * d * n_dsc
+                    i1 = n_sc + (2 * d + 1) * n_dsc
+                    tmp[2:, [0, 1]] = asm_obj.rodded.subchannel.xy[i0:i1]
+                    out_data_tmp.append(tmp)
+                duct_types.append(
+                    [['edge', 'corner'][i]
+                     for i in asm_obj.rodded._duct_idx])
+                duct_idx.append(asm_obj.rodded._duct_idx)
+                out_data.append(out_data_tmp)
+            else:
+                duct_types.append([])
+                duct_idx.append(np.ones(6))
+                out_data.append([np.zeros((6 + 2, n_z + 3))])
+
+        for i in range(len(out_data)):
+            for j in range(len(out_data[i])):
+                out_data[i][j][0, 3:] = sorted(list_ax_pos)
+
+        # Fill the arrays with values
+        for i in range(len(list_ax_pos)):
+            tz = temps[list_ax_pos[i]]
+            tz_avg = temps_avg[list_ax_pos[i]]
+            for a in range(len(list_asm_id_b0)):
+                asm_id = list_asm_id_b0[a]
+                ncol = out_data[a][0].shape[0] - 2
+                tz_asm = tz[tz[:, 0].astype(int) == asm_id]
+                tz_asm_avg = tz_avg[tz_avg[:, 0].astype(int) == asm_id]
+                for row in range(tz_asm.shape[0]):
+                    duct_id = int(tz_asm[row, 3])
+                    tmp = tz_asm[row, 4:(4 + ncol)]
+                    # If assembly has both pin bundle and low-fidelity
+                    # regions, write the low-fidelity duct corners to
+                    # the corner positions from the pin bundle data.
+                    if np.count_nonzero(tmp) != len(duct_idx[a]):
+                        assert np.count_nonzero(tmp) == 6, tmp
+                        tmp = tmp[np.nonzero(tmp)]
+                        tmp2 = duct_idx[a].copy()
+                        tmp2 = tmp2.astype(float).reshape(6, -1)
+                        tmp2[:, -1] = tmp
+                        tmp = tmp2.reshape(tmp2.size,)
+                    out_data[a][duct_id][2:, i + 3] = tmp
+                    # Write the average if the duct is either the first
+                    # or the last duct (the two tracked in temp_average)
+                    if duct_id == 0:
+                        out_data[a][duct_id][1, i + 3] = tz_asm_avg[row, 6]
+                    elif duct_id == len(out_data[a]):
+                        out_data[a][duct_id][1, i + 3] = tz_asm_avg[row, 7]
+                    else:
+                        pass
+
+        # Convert the arrays to strings and add the labels
+        for i in range(len(out_data)):
+            for j in range(len(out_data[i])):
+                out_data[i][j] = out_data[i][j].astype(str)
+                out_data[i][j][0, 0] = '---'
+                out_data[i][j][0, 1] = '---'
+                out_data[i][j][1, 0] = 'x (m)'
+                out_data[i][j][1, 1] = 'y (m)'
+                out_data[i][j][0, 2] = 'z (m)'
+                out_data[i][j][1, 2] = 'average'
+                if len(duct_types[i]) > 0:
+                    out_data[i][j][2:, 2] = duct_types[i]
+
+        # Save the arrays
+        for i in range(len(list_asm_id_b0)):
+            fname = f'temp_duct_mw_a={list_asm_id[i]}'
+            if len(out_data[i]) > 1:
+                for d in range(len(out_data[i])):
+                    fname += f'_duct={d + 1}.csv'
+                    fname = os.path.join(self.path, fname)
+                    np.savetxt(fname, out_data[i][d], fmt='%s', delimiter=',')
+            else:
+                fname = os.path.join(self.path, fname + '.csv')
+                np.savetxt(fname, out_data[i][0], fmt='%s', delimiter=',')
+
+    def _write_asm_pin_table(self, list_asm_id, list_ax_pos, datatype):
+        """Postprocess CSV tables containing pin temperatures
+        for requested assemblies
+
+        Notes
+        -----
+        Table structure:
+            ---,    z (m),       z1,       z2, ...
+          x (m),    y (m),   T_avg1,   T_avg2, ...
+             x1,       y1,      T11,      T12, ...
+             x2,       y2,      T21,      T22, ...
+            ...
+           xn-1,     yn-1,   Tn-1/1,   Tn-1/2, ...
+             xn,       yn,      Tn1,      Tn2, ...
+
+        All assemblies included in the input should have been
+        screened to have FuelModel/PinModel inputs
+
+        """
+        if datatype == 'coolant_pin':
+            data_col_in_csv = dassh.plot._pin_cols['coolant']
+        else:
+            data_col_in_csv = dassh.plot._pin_cols[datatype]
+
+        # Base-1 --> Base-0 index
+        list_asm_id_b0 = [id - 1 for id in list_asm_id]
+
+        # Load data for postprocessing
+        f = os.path.join(self.path, 'temp_pin.csv')
+        print(list_ax_pos)
+        temps = dassh.plot._load_data(f, list_ax_pos, list_asm_id_b0)
+
+        # Initialize array for each assembly being dumped
+        n_z = len(list_ax_pos)
+        list_ax_pos = sorted(list_ax_pos)
+        out_data = []
+        asm_to_keep = []
+        for a in list_asm_id_b0:
+            asm_obj = self.assemblies[a]
+            if asm_obj.has_rodded and hasattr(asm_obj.rodded, 'pin_model'):
+                asm_to_keep.append(a)
+                tmp = np.zeros((asm_obj.rodded.n_pin + 2, n_z + 2))
+                tmp[2:, [0, 1]] = asm_obj.rodded.pin_lattice.xy
+            else:
+                msg = ('WARNING: Tried to make pin temperature '
+                       f'AssemblyTable for assembly {a} but '
+                       'no pin bundle region or pin/fuel model '
+                       'was found; skipping.')
+                self.log('warning', msg)
+                continue
+            tmp[0, 2:] = sorted(list_ax_pos)
+            out_data.append(tmp)
+
+        list_asm_id_b0 = asm_to_keep
+        list_asm_id = [a + 1 for a in list_asm_id_b0]
+
+        # Fill the arrays with values
+        for i in range(len(list_ax_pos)):
+            t_z = temps[list_ax_pos[i]]
+            for a in range(len(list_asm_id_b0)):
+                asm_id = list_asm_id_b0[a]
+                t_z_asm = t_z[t_z[:, 0].astype(int) == asm_id]
+                tmp = t_z_asm[:, data_col_in_csv]
+                out_data[a][2:, i + 2] = tmp
+                out_data[a][1, i + 2] = np.average(tmp)
+
+        # Convert the arrays to strings and add the labels
+        for i in range(len(out_data)):
+            out_data[i] = out_data[i].astype(str)
+            out_data[i][0, 0] = '---'
+            out_data[i][1, 0] = 'x (m)'
+            out_data[i][1, 1] = 'y (m) \\ avg'
+            out_data[i][0, 1] = 'z (m)'
+
+        # Save the arrays
+        for i in range(len(list_asm_id_b0)):
+            fname = f'temp_{datatype}_a={list_asm_id[i]}.csv'
+            fname = os.path.join(self.path, fname)
+            np.savetxt(fname, out_data[i], fmt='%s', delimiter=',')
+
 
 ########################################################################
 

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-02-16
+date: 2022-03-22
 author: matz
 Test the DASSH read_input module and DASSH_input object
 """
@@ -675,3 +675,42 @@ def test_unrecognized_inputs(testdir, caplog):
     assert m1 in caplog.text
     m2 = 'Warning: unrecognized input. section: "{}"; keyword: "{}"'
     assert m2.format('Power"//"ARC', 'wrong_arg') in caplog.text
+
+
+def test_detailed_subchannel_table_inputs(testdir, caplog):
+    """Test processing and input checking on detailed subchannel
+    table input"""
+    inp = dassh.DASSH_Input(
+        os.path.join(
+            testdir,
+            'test_inputs',
+            'input_single_asm.txt'))
+    # Check all the expected warnings
+    m = ('WARNING: Failed to convert Setup // AssemblyTables // Detailed'
+         'SubchannelTable input assembly "cool" to integer; skipping.')
+    assert m in caplog.text
+    m = ('WARNING: Requested DetailedSubchannelTable AssemblyTable '
+         'for assembly 2 which is not modeled; skipping.')
+    assert m in caplog.text
+    m = ('WARNING: Failed to convert Setup // AssemblyTables // Detailed'
+         'SubchannelTable input axial position "hello" to float; skipping.')
+    assert m in caplog.text
+    m = ('WARNING: Setup // AssemblyTables // DetailedSubchannelTable '
+         'input axial position "150.0" is greater than specified core '
+         'length; skipping.')
+    assert m in caplog.text
+    m = ('WARNING: Setup // AssemblyTables // DetailedSubchannelTable '
+         'input axial position must be greater than 0, but was given: '
+         '"-1.0"; skipping.')
+    assert m in caplog.text
+    m = ('WARNING: Setup // AssemblyTables // SkipMe! input requires '
+         'values for all three parameters: "type", "assemblies", '
+         'and "axial_positions". Skipping.')
+    assert m in caplog.text
+
+    # Check the resulting input
+    tmp = inp.data['Setup']['AssemblyTables']['DetailedSubchannelTable']
+    ans_z = [2.540, 3.048]
+    assert len(tmp['assemblies']) == 1
+    assert tmp['assemblies'][0] == 1
+    assert all(x in ans_z for x in tmp['axial_positions'])

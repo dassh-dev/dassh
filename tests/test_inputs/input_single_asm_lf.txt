@@ -1,6 +1,6 @@
 ########################################################################
 # author: Milos Atz
-# date: 2021-11-01
+# date: 2022-03-22
 # comment: DASSH input example (single FASTER assembly)
 ########################################################################
 # SETUP: Problem setup, user options, etc
@@ -10,6 +10,11 @@
         temperature    = Fahrenheit
         length         = in
         mass_flow_rate = kg/s
+    [[AssemblyTables]]
+        [[[DuctTest]]]
+            type = duct_mw
+            assemblies = 1
+            axial_positions = 25.0, 100.0, 125.0, 147.63779999999
 
 
 ########################################################################
@@ -78,6 +83,7 @@
                 z_lo       = 115.0
                 z_hi       = 147.63780
                 vf_coolant = 0.25
+
 
 ########################################################################
 # ASSIGN assemblies to positions in the core; assign fixed
