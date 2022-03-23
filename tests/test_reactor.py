@@ -855,7 +855,6 @@ def test_write_assembly_duct_tables(testdir):
     inp.data['Assembly']['fuel']['use_low_fidelity_model'] = False
     r = dassh.Reactor(inp, path=outpath, write_output=True)
     r.temperature_sweep()
-    r.save()
     assert os.path.exists(filepath)
 
     # Get this for later
@@ -910,7 +909,6 @@ def test_write_assembly_pin_tables(testdir):
     inp = dassh.DASSH_Input(inpath)
     r = dassh.Reactor(inp, path=outpath, write_output=True)
     r.temperature_sweep()
-    r.save()
     assert os.path.exists(filepath)
 
     # Get this for later
