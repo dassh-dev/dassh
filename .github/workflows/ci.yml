@@ -38,7 +38,7 @@ jobs:
       
       - name: Package tests
         shell: bash
-        run: pytest --cov=./dassh tests/test_read_input.py
+        run: pytest --cov=./dassh tests/test_read_input.py --cov-report xml:coverage_${{ matrix.python-version }}.xml
 
       - name: Upload coverage to Codecov
         uses: codecov/codecov-action@v2
@@ -47,6 +47,7 @@ jobs:
           flags: unittests
           name: codecov-umbrella
           verbose: true
+          files: coverage_${{ matrix.python-version }}.xml
           # path_to_write_report: ./coverage/codecov_report.txt
           # token: ${{ secrets.CODECOV_TOKEN }}
           # directory: ./coverage/reports/
