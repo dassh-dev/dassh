@@ -1,0 +1,49 @@
+name: CI
+
+on:
+# Triggers the workflow on push or pull request events but only for the master/develop branches
+  push:
+    branches:
+      - master
+      - develop
+  pull_request:
+    branches:
+      - master
+      - develop
+
+  # Allows us to run this workflow manually
+  workflow_dispatch:
+
+# A workflow run is made up of one or more jobs that can run sequentially or in parallel
+jobs:
+  # This workflow contains a single job called "build"
+  main:
+    # The type of runner that the job will run on
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        python-version: [3.8, 3.7, 3.6]
+   
+    name: "Python ${{ matrix.python-version }}"
+    steps:
+      - uses: actions/checkout@v2
+      
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+          
+      - name: Package setup and testing
+        shell: bash
+        run: |
+          pip install .
+          pytest --cov=./dassh tests/
+
+  finish:
+    needs: main
+    runs-on: ubuntu-latest
+    steps:
+      - name: CodeCov
+        shell: bash
+        run: codecov
