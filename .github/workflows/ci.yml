@@ -20,7 +20,7 @@ jobs:
 
     strategy:
       matrix:
-        python-version: [3.8, 3.7, 3.6]
+        python-version: [3.8] #, 3.7, 3.6]
    
     name: "Python ${{ matrix.python-version }}"
     steps:
@@ -41,10 +41,24 @@ jobs:
         shell: bash
         run: pytest --cov=./dassh tests/
 
-  finish:
-    needs: main
-    runs-on: ubuntu-latest
-    steps:
-      - name: CodeCov
-        shell: bash
-        run: codecov
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v2
+        with:
+          # token: ${{ secrets.CODECOV_TOKEN }}
+          directory: ./coverage/reports/
+          # env_vars: OS,PYTHON
+          fail_ci_if_error: true
+          files: ./coverage1.xml, ./coverage2.xml, ./coverage3.xml
+          flags: unittests
+          name: codecov-umbrella
+          path_to_write_report: ./coverage/codecov_report.txt
+          verbose: true
+ 
+  #finish:
+  #  needs: main
+  #  runs-on: ubuntu-latest
+  #  steps:
+  #    - name: CodeCov
+  #      shell: bash
+  #      run: codecov
+    
