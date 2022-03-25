@@ -46,9 +46,9 @@ jobs:
           # token: ${{ secrets.CODECOV_TOKEN }}
           # directory: ./coverage/reports/
           # env_vars: OS,PYTHON
-          dry_run: true
+          # dry_run: true
           fail_ci_if_error: true
-          files: .coverage
+          files: ./coverage1.xml, ./coverage2.xml, ./coverage3.xml
           flags: unittests
           name: codecov-umbrella
           # path_to_write_report: ./coverage/codecov_report.txt
