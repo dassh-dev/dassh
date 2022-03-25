@@ -24,6 +24,11 @@
         temperature = string(default='kelvin')
         length = string(default='m')
         mass_flow_rate = string(default='kg/s')
+    [[AssemblyTables]]
+        [[[__many__]]]
+            type = option('coolant_subchannel', 'duct_mw', 'coolant_bypass', 'coolant_pin', 'clad_od', 'clad_mw', 'clad_id', 'fuel_od', 'fuel_cl', default=None)
+            assemblies = force_list(default=None)
+            axial_positions = force_list(default=None)
 
 
 [Materials]
@@ -128,7 +133,8 @@
     bulk_coolant_temp = float(default=None)
     iteration_limit = integer(min=1, default=10)
     convergence_tol = float(min=1e-6, default=1e-3)
-    regroup_option_tol = float(min=0.0, max=1.0, default=None)
+    regroup = option('every', 'once', 'never', default='never')
+    regroup_option_tol = float(min=0.0, max=1.0, default=0.05)
     regroup_improvement_tol = float(min=0.0, max=1.0, default=0.05)
     pressure_drop_limit = float(min=0.0, default=None)
     recycle_results = boolean(default=False)

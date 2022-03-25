@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-01-19
+date: 2022-03-16
 author: matz
 Test power assignment from binary files to reactor components
 """
@@ -272,6 +272,57 @@ def test_single_asm_vac_total_power(testdir):
     print('Result:', total / 1e6)
     assert np.abs(total - 6.001e6) / 6.001e6 < 0.002
 
+
+def test_assemblypower_renorm(simple_asm):
+    """x"""
+    asm_power = simple_asm.power
+    ans = asm_power.calculate_total_power()
+
+    # simple_asm_pin_only lower/upper bound: 0.0, 3.862
+    z = np.linspace(0.0, 3.862, 100)
+    z = np.append(z, asm_power.z_finemesh[1:] / 100.0)
+    z = np.sort(z)
+    dz = z[1:] - z[:-1]
+    zm = z[1:] - dz * 0.5
+    asm_power.presweep_setup(zm, dz)
+    # Numerical integration via sweep
+    p1 = np.zeros(zm.shape)
+    p2 = np.zeros(zm.shape)
+    for i in range(dz.shape[0]):
+        x = asm_power.get_power(zm[i])
+        for k in x.keys():
+            if x[k] is not None:
+                p1[i] += np.sum(x[k])
+        x = asm_power.get_power_sweep(step=i)
+        for k in x.keys():
+            if x[k] is not None:
+                p2[i] += np.sum(x[k])
+    p1_tot = np.sum(p1 * dz)
+    p2_tot = np.sum(p2 * dz)
+    print('ans:     ', ans)
+    print('p1 total:', p1_tot)
+    print('p2 total:', p2_tot)
+    assert ans != pytest.approx(p1_tot)
+    assert ans == pytest.approx(p2_tot)
+
+    # Change the step sizes, repeat, should get same result
+    z = np.linspace(0.0, 3.862, 50)
+    z = np.append(z, asm_power.z_finemesh[1:] / 100.0)
+    z = np.sort(z)
+    dz = z[1:] - z[:-1]
+    zm = z[1:] - dz * 0.5
+    asm_power.presweep_setup(zm, dz)
+
+    # Numerical integration via sweep
+    p3 = np.zeros(zm.shape)
+    for i in range(dz.shape[0]):
+        x = asm_power.get_power_sweep(step=i)
+        for k in x.keys():
+            if x[k] is not None:
+                p3[i] += np.sum(x[k])
+    p3_tot = np.sum(p3 * dz)
+    print('p3 total:', p3_tot)
+    assert ans == pytest.approx(p3_tot)
 
 ########################################################################
 # Test user-specified power

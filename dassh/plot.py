@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-02-15
+date: 2022-03-23
 author: matz
 Methods to plot DASSH objects (such as hexagonal fuel assemblies and
 the pins and subchannels that comprise them).
@@ -2478,7 +2478,7 @@ def _load_data(file, z_user, asmlist=None):
     # Need a single list of all z-values to pull in
     with open(file, 'r') as f:
         z_data = np.unique(np.loadtxt(f, delimiter=',', usecols=(1)))
-    z_to_load, interp_dict = _interp_z(z_data, z_user)
+    z_to_load, interp_dict, z_user = _interp_z(z_data, z_user)
 
     # Read in numpy array selectively
     with open(file, 'r') as f:
@@ -2507,18 +2507,20 @@ def _interp_z(z_available, z_requested):
     """Get the z-values to pull and the interpolation between them"""
     _interp = {}
     z_to_load = []
-    for z in z_requested:
+    for i in range(len(z_requested)):
+        z = z_requested[i]
         if z in z_available:
             z_to_load.append(z)
         elif z > max(z_available):
             if z - max(z_available) < 1e-3:
                 z_to_load.append(max(z_available))
+                z_requested[i] = max(z_available)
             else:
                 msg = (f'Requested z-point ({z} m) greater '
                        'than maximum z-point available in '
                        f'data file ({max(z_available)} m)')
                 module_logger.error(msg)
-            sys.exit(1)
+                sys.exit(1)
         else:
             idx = np.argmin(np.abs(z_available - z))
             if z_available[idx] > z:
@@ -2530,7 +2532,7 @@ def _interp_z(z_available, z_requested):
             z_to_load += [z1, z2]
             x = (z2 - z) / (z2 - z1)
             _interp[z] = [z1, x, z2, 1 - x]
-    return z_to_load, _interp
+    return z_to_load, _interp, z_requested
 
 
 def _filter_lines(f, zlist, asmlist=None):

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-02-16
+date: 2022-03-23
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -538,6 +538,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         self.check_units()
         self.check_axial_plane_req()
         self.check_dump()
+        self.check_setup_assembly_tables()
         # Materials (optional)
         self.check_user_spec_materials()
         self.load_materials()
@@ -1509,6 +1510,177 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                 else:
                     pass
 
+    def check_setup_assembly_tables(self):
+        """Check user inputs for detailed table setup"""
+        pin_data_types = ('coolant_pin', 'clad_od', 'clad_mw',
+                          'clad_id', 'fuel_od', 'fuel_cl')
+        # Shortcut to dictionary that we're testing
+        tmp = self.data['Setup']['AssemblyTables']
+
+        # If all input fields are default None, skip
+        if not any(tmp.values()):
+            del self.data['Setup']['AssemblyTables']
+            return
+
+        # Otherwise, do checks for each table type
+        for k in tmp.keys():
+
+            # Check if inputs exist. If not, skip and remove
+            if not any(tmp[k].values()):
+                del self.data['Setup']['AssemblyTables'][k]
+                continue
+            # If one input field is default None, raise error - need both
+            elif not all(tmp[k].values()):
+                msg = (f'WARNING: Setup // AssemblyTables // {k} input '
+                       'requires values for all three parameters: '
+                       '"type", "assemblies", and "axial_positions". '
+                       'Skipping.')
+                del self.data['Setup']['AssemblyTables'][k]
+                self.log('warning', msg)
+                continue
+            # Otherwise, do the rest of the checks
+            else:
+                pass
+
+            # Check that all requested assemblies exist in assignment
+            asm_to_keep = []
+            for a in tmp[k]['assemblies']:
+                try:
+                    a = float(a)
+                    assert a.is_integer()
+                except:
+                    msg = ('WARNING: Failed to convert Setup // '
+                           f'AssemblyTables // {k} input assembly '
+                           f'"{a}" to integer; skipping.')
+                    self.log('warning', msg)
+                    continue
+                a = int(a)
+                msg = (f'WARNING: Requested {k} AssemblyTable for '
+                       f'assembly {a} which is not modeled; skipping.')
+                if a > len(self.data['Assignment']['ByPosition']):
+                    self.log('warning', msg)
+                    continue
+                elif len(self.data['Assignment']['ByPosition'][a - 1]) == 0:
+                    self.log('warning', msg)
+                    continue
+                else:
+                    asm_to_keep.append(a)
+            if len(asm_to_keep) == 0:
+                msg = ('WARNING: Did not recieve any acceptable input '
+                       f'for Setup // AssemblyTables // {k} assemblies; '
+                       'skipping.')
+                self.log('warning', msg)
+                del self.data['Setup']['AssemblyTables'][k]
+                continue
+            else:
+                tmp[k]['assemblies'] = asm_to_keep
+
+            # Check that axial positions are within domain
+            z_to_keep = []
+            for z in tmp[k]['axial_positions']:
+                try:
+                    z = float(z)
+                except:
+                    msg = ('WARNING: Failed to convert Setup // '
+                           f'AssemblyTables // {k} input axial '
+                           f'position "{z}" to float; skipping.')
+                    self.log('warning', msg)
+                    continue
+                if z > self.data['Core']['length']:
+                    msg = (f'WARNING: Setup // AssemblyTables // {k} '
+                           f'input axial position "{z}" is greater '
+                           'than specified core length; skipping.')
+                    self.log('warning', msg)
+                elif z < 0:
+                    msg = (f'WARNING: Setup // AssemblyTables // {k} '
+                           'input axial position must be greater than '
+                           f'0, but was given: "{z}"; skipping.')
+                    self.log('warning', msg)
+                else:
+                    z_to_keep.append(z)
+            if len(z_to_keep) == 0:
+                msg = ('WARNING: Did not recieve any acceptable input for '
+                       f'Setup // AssemblyTables // {k} axial_positions '
+                       '; skipping.')
+                self.log('warning', msg)
+                del self.data['Setup']['AssemblyTables'][k]
+                continue
+            else:
+                tmp[k]['axial_positions'] = z_to_keep
+
+            # If pin temperatures are requested, extra checks required:
+            # 1. Make sure assembly has pin bundle model with fuel
+            #    temperature calculation enabled
+            # 2. Make sure axial positions are within pin bundle region
+            datatype = tmp[k]['type']
+            asm_to_keep = []
+            z_to_keep = []
+            if datatype in pin_data_types:
+                for a in tmp[k]['assemblies']:
+                    name = self.data['Assignment']['ByPosition'][a - 1][0]
+                    asm_dict = self.data['Assembly'][name]
+                    if not any([x in asm_dict.keys()
+                                for x in ('FuelModel', 'PinModel')]):
+                        msg = (f'WARNING: Requested "{datatype}" pin '
+                               f'values in AssemblyTable "{k}" for '
+                               f'assembly {a}, but no "FuelModel" or '
+                               '"PinModel" input was given for that '
+                               f'assembly type ("{name}"); skipping.')
+                        self.log('warning', msg)
+                    elif asm_dict['use_low_fidelity_model']:
+                        msg = (f'WARNING: Requested "{datatype}" pin '
+                               f'values in AssemblyTable "{k}" for '
+                               f'assembly {a}, but cannot calculate '
+                               'if "use_low_fidelity_model" option is '
+                               'enabled; skipping.')
+                        self.log('warning', msg)
+                    else:
+                        asm_to_keep.append(a)
+                    for z in tmp[k]['axial_positions']:
+                        bnds = [
+                            asm_dict['AxialRegion']['rods']['z_lo'],
+                            asm_dict['AxialRegion']['rods']['z_hi']]
+                        if z < bnds[0] or z > bnds[1]:
+                            msg = (f'WARNING: Requested "{datatype}" pin '
+                                   f'values in AssemblyTable "{k}" for '
+                                   f'assembly {a}, but cannot calculate '
+                                   f'at axial_position "{z}" because it is '
+                                   'outside pin bundle region; skipping.')
+                            self.log('warning', msg)
+                        else:
+                            z_to_keep.append(z)
+
+                if len(asm_to_keep) == 0:
+                    msg = ('WARNING: Did not recieve any acceptable input '
+                           f'for Setup // AssemblyTables // {k} assemblies; '
+                           'skipping.')
+                    self.log('warning', msg)
+                    del self.data['Setup']['AssemblyTables'][k]
+                    continue
+                else:
+                    tmp[k]['assemblies'] = asm_to_keep
+                if len(z_to_keep) == 0:
+                    msg = ('WARNING: Did not recieve any acceptable input for '
+                           f'Setup // AssemblyTables // {k} axial_positions '
+                           '; skipping.')
+                    self.log('warning', msg)
+                    del self.data['Setup']['AssemblyTables'][k]
+                    continue
+                else:
+                    tmp[k]['axial_positions'] = z_to_keep
+
+            # Assign modified dict to input data
+            self.data['Setup']['AssemblyTables'][k] = tmp[k]
+
+        # Make sure you're dumping coolant and average temperatures to CSV
+        self.data['Setup']['Dump']['average'] = True
+        if any(tmp[k]['type'] == 'coolant_subchannel' for k in tmp.keys()):
+            self.data['Setup']['Dump']['coolant'] = True
+        if any(tmp[k]['type'] == 'duct_mw' for k in tmp.keys()):
+            self.data['Setup']['Dump']['duct'] = True
+        if any(tmp[k]['type'] in pin_data_types for k in tmp.keys()):
+            self.data['Setup']['Dump']['pins'] = True
+
     def check_htc_params(self):
         """Check user-specified coefficients to DB correlation"""
         msg_len = "Four HTC correlation parameters required."
@@ -2003,6 +2175,12 @@ def convert_length(data):
     if data['Setup']['conv_approx_dz_cutoff'] is not None:
         data['Setup']['conv_approx_dz_cutoff'] = \
             conv(data['Setup']['conv_approx_dz_cutoff'])
+
+    if 'AssemblyTables' in data['Setup'].keys():
+        for k in data['Setup']['AssemblyTables'].keys():
+            z = data['Setup']['AssemblyTables'][k]['axial_positions']
+            z_conv = [conv(zz) for zz in z]
+            data['Setup']['AssemblyTables'][k]['axial_positions'] = z_conv
 
     return data
 

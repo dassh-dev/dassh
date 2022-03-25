@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-01-05
+date: 2022-03-22
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -275,6 +275,16 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                                  n_sc, se2)
         for k in tmp.keys():
             setattr(self, k, tmp[k])
+
+        # --------------------------------------------------------------
+        # Set up array of duct type indices
+        self._duct_idx = np.zeros(self.subchannel.n_sc['duct']['total'],
+                                  dtype=int)
+        for sci in range(self.subchannel.n_sc['duct']['total']):
+            self._duct_idx[sci] = \
+                self.subchannel.type[
+                    sci + self.subchannel.n_sc['coolant']['total']]
+        self._duct_idx -= 3
 
         # --------------------------------------------------------------
         # Set up x-points for treating mesh disagreement; this is for
@@ -1338,19 +1348,6 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         """
         # Average duct temperatures (only want to have to get once)
         duct_avg_temps = self.avg_duct_mw_temp
-
-        # If you haven't already, set up array of duct type indices
-        # so you don't have to do it in the loop every time
-        if not hasattr(self, '_duct_idx'):
-            self._duct_idx = np.zeros((self.subchannel
-                                           .n_sc['duct']['total']),
-                                      dtype=int)
-            for sci in range(self.subchannel.n_sc['duct']['total']):
-                self._duct_idx[sci] = \
-                    self.subchannel.type[
-                        (sci + self.subchannel.n_sc['coolant']['total'])]
-            self._duct_idx -= 3
-
         for i in range(self.n_duct):
             # No params to update, just need avg duct temp
             # self.duct.update(duct_avg_temps[i])

@@ -1,7 +1,7 @@
 # Ducted Assembly Steady State Heat Transfer Software (DASSH)
 
-[![Build Status](https://travis-ci.com/dassh-dev/dassh.svg?token=9JiRbxest2oH9X8ijsPq&branch=master)](https://travis-ci.com/github/dassh-dev/dassh)
-[![codecov](https://codecov.io/gh/dassh-dev/dassh/branch/master/graph/badge.svg)](https://app.codecov.io/gh/dassh-dev/dassh)
+[![Build](https://github.com/dassh-dev/dassh/actions/workflows/ci.yml/badge.svg)](https://github.com/dassh-dev/dassh/actions)
+[![codecov](https://codecov.io/gh/dassh-dev/dassh/branch/develop/graph/badge.svg)](https://app.codecov.io/gh/dassh-dev/dassh)
 [![License](https://img.shields.io/badge/License-BSD%203--Clause-blue.svg)](https://opensource.org/licenses/BSD-3-Clause)
 
 
