@@ -34,12 +34,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           
-      - name: Package setup and testing
+      - name: Package setup
         shell: bash
         run: |
           pip install -r requirements.txt
           pip install .
-          pytest --cov=./dassh tests/
+      
+      - name: Package tests
+        shell: bash
+        run: pytest --cov=./dassh tests/
 
   finish:
     needs: main
