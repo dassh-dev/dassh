@@ -37,6 +37,7 @@ jobs:
       - name: Package setup and testing
         shell: bash
         run: |
+          pip install -r requirements.txt
           pip install .
           pytest --cov=./dassh tests/
 
