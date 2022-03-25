@@ -10,7 +10,6 @@ on:
     branches:
       - master
       - develop
-
   # Allows us to run this workflow manually
   workflow_dispatch:
 
