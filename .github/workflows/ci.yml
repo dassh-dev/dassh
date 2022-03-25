@@ -48,7 +48,7 @@ jobs:
           # env_vars: OS,PYTHON
           # dry_run: true
           fail_ci_if_error: true
-          files: ./coverage1.xml, ./coverage2.xml, ./coverage3.xml
+          files: .coverage
           flags: unittests
           name: codecov-umbrella
           # path_to_write_report: ./coverage/codecov_report.txt
