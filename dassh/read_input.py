@@ -2170,6 +2170,9 @@ def convert_length(data):
     if data['Setup']['Dump']['interval'] is not None:
         data['Setup']['Dump']['interval'] = \
             conv(data['Setup']['Dump']['interval'])
+    else:
+        # SET DEFAULT DUMP INTERVAL: 1 cm
+        data['Setup']['Dump']['interval'] = 0.01
 
     # Convert duct approx cutoff
     if data['Setup']['conv_approx_dz_cutoff'] is not None:
