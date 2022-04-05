@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-03-23
+date: 2022-04-05
 author: matz
 Methods to plot DASSH objects (such as hexagonal fuel assemblies and
 the pins and subchannels that comprise them).
@@ -1807,6 +1807,7 @@ class CoreHexPlot(CorePlot):
         else:
             f = 'temp_average.csv'
         try:
+            f = os.path.join(dassh_reactor.path, f)
             data = _load_data(f, z_conv)
         except FileNotFoundError:
             msg = 8 * '.' + f'File "{f}" not found, skipping {value}...'
