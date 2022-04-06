@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-03-22
+date: 2022-04-06
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -1073,9 +1073,7 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                         * self.coolant.density
                         * self.coolant_int_params['swirl']
                         / self.coolant_int_params['fs'])
-        swirl_consts = swirl_consts[self.subchannel.type[
-            self.subchannel.n_sc['coolant']['interior']:
-            self.subchannel.n_sc['coolant']['total']]]
+        swirl_consts = swirl_consts[self.ht['conv']['type']]
         # Swirl flow from adjacent subchannel; =0 for interior sc
         # The adjacent subchannel is the one the swirl flow is
         # coming from i.e. it's in the opposite direction of the
