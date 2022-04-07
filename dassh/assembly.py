@@ -161,8 +161,7 @@ class Assembly(LoggedClass):
         # a bit more stuff in order to seek out the right value
         if any(k in asm_input.keys() for k in ('FuelModel', 'PinModel')):
             self._peak['pin'] = {}
-            keys = ['clad_od', 'clad_mw', 'clad_id',
-                    'fuel_od', 'fuel_cl']
+            keys = ['clad_od', 'clad_mw', 'clad_id', 'fuel_od', 'fuel_cl']
             for i in range(len(keys)):
                 # Items in the list:
                 # (1) the peak temperature value
@@ -509,7 +508,8 @@ class Assembly(LoggedClass):
                                      h_gap, adiabatic, ebal)
 
         # Update peak coolant and duct temperatures
-        self._update_peak_coolant_duct()
+        self._update_peak_coolant_temps()
+        self._update_peak_duct_temps()
 
         # If applicable, calculate pin temperatures
         if hasattr(self.active_region, 'pin_model'):
@@ -603,27 +603,34 @@ class Assembly(LoggedClass):
         else:
             return bisect.bisect_left(self.region_bnd, z) - 1
 
-    def _update_peak_coolant_duct(self):
+    def _update_peak_coolant_temps(self):
         """Update peak coolant and duct temperatures, if necessary"""
         max_cool = np.max(self.temp_coolant)
         if max_cool > self._peak['cool'][0]:
             self._peak['cool'] = (max_cool, self.z)
+
+    def _update_peak_duct_temps(self):
+        """Update peak coolant and duct temperatures, if necessary"""
         max_duct = np.max(self.temp_duct_mw, axis=1)
-        for i in range(max_duct.shape[0]):
-            idx_to_write = len(self._peak['duct']) - max_duct.shape[0] + i
-            if max_duct[i] > self._peak['duct'][idx_to_write][0]:
-                self._peak['duct'][idx_to_write] = (max_duct[i], self.z)
+        if max_duct.shape[0] == 1:
+            idx_to_write = -1
+            if max_duct[0] > self._peak['duct'][idx_to_write][0]:
+                self._peak['duct'][idx_to_write] = (max_duct[0], self.z)
+        else:
+            for i in range(max_duct.shape[0]):
+                idx_to_write = len(self._peak['duct']) - max_duct.shape[0] + i
+                if max_duct[i] > self._peak['duct'][idx_to_write][0]:
+                    self._peak['duct'][idx_to_write] = (max_duct[i], self.z)
 
     def _update_peak_pin_temps(self):
         """Check whether peak pin temperatures need to be updated
         and do so if necessary"""
+        t_pin = self.pin_temp_array
         for k in self._peak['pin'].keys():
-            idx = np.argmax(self.pin_temp_array[:, self._peak['pin'][k][1]])
-            if (self.pin_temp_array[idx, self._peak['pin'][k][1]]
-                    > self._peak['pin'][k][0]):
-                self._peak['pin'][k][0] = \
-                    self.pin_temp_array[idx, self._peak['pin'][k][1]]
-                self._peak['pin'][k][2] = list(self.pin_temp_array[idx])
+            idx = np.argmax(t_pin[:, self._peak['pin'][k][1]])
+            if (t_pin[idx, self._peak['pin'][k][1]] > self._peak['pin'][k][0]):
+                self._peak['pin'][k][0] = t_pin[idx, self._peak['pin'][k][1]]
+                self._peak['pin'][k][2] = list(t_pin[idx])
 
     ####################################################################
     # Write data to CSV
