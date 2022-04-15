@@ -128,9 +128,9 @@ def make_SubchannelPlot(dassh_reactor, plot_data, plot_name):
                       pin_alpha=_data['pin_alpha'])
             z_str = np.around(_data['bwd_len_conv'](zi), 2)
             if plot_data['use_default_filename']:
-                plot_name = '_'.join(['SubchannelPlot',
-                                      'asm' + str(asm_id + 1),
-                                      f'z={z_str}'])
+                plot_name = 'SubchannelPlot'
+            plot_name += '_asm=' + str(asm_id + 1)
+            plot_name += '_z=' + str(z_str)
             plot_name += '.png'
             plot_name = os.path.join(dassh_reactor.path, plot_name)
             _save_and_close(plot_name, _data['dpi'])
@@ -174,9 +174,9 @@ def make_PinPlot(dassh_reactor, plot_data, plot_name):
                         cbar_label=_data['cbar_label'])
                 z_str = np.around(_data['bwd_len_conv'](zi), 2)
                 if plot_data['use_default_filename']:
-                    plot_name = '_'.join(['PinPlot',
-                                          'asm' + str(asm_id + 1),
-                                          f'z={z_str}'])
+                    plot_name = 'PinPlot'
+                plot_name += '_asm=' + str(asm_id + 1)
+                plot_name += '_z=' + str(z_str)
                 plot_name += '.png'
                 plot_name = os.path.join(dassh_reactor.path, plot_name)
                 _save_and_close(plot_name, _data['dpi'])
@@ -203,13 +203,14 @@ def make_CoreSubchannelPlot(dassh_reactor, plot_data, plot_name):
                   ignore_ur=plot_data['ignore_simple'])
         z_str = np.around(_data['bwd_len_conv'](zi), 2)
         if plot_data['use_default_filename']:
-            plot_name = '_'.join(['CoreSubchannelPlot', f'z={z_str}'])
+            plot_name = 'CoreSubchannelPlot'
+        plot_name += '_z=' + str(z_str)
         plot_name += '.png'
         plot_name = os.path.join(dassh_reactor.path, plot_name)
         _save_and_close(plot_name, _data['dpi'])
 
 
-def make_CorePinPlot(dassh_reactor, plot_data):
+def make_CorePinPlot(dassh_reactor, plot_data, plot_name):
     """Make core pin-by-pin figures"""
     f = os.path.join(dassh_reactor.path, 'temp_pin.csv')
     try:
@@ -230,7 +231,9 @@ def make_CorePinPlot(dassh_reactor, plot_data):
                      rings=plot_data['rings'])
             z_str = np.around(_data['bwd_len_conv'](zi), 2)
             if plot_data['use_default_filename']:
-                plot_name = '_'.join(['CorePinPlot', v, f'z={z_str}'])
+                plot_name = 'CorePinPlot'
+            plot_name += '_' + v
+            plot_name += '_z=' + str(z_str)
             plot_name += '.png'
             plot_name = os.path.join(dassh_reactor.path, plot_name)
             _save_and_close(plot_name, _data['dpi'])
@@ -1790,7 +1793,8 @@ class CoreHexPlot(CorePlot):
                   data_label=plot_data['data_label'],
                   omit_nonvalue_rings=plot_data['omit_nonvalue_rings'])
         if plot_data['use_default_filename']:
-            plot_name = f'CoreHexPlot_{value}'
+            plot_name = 'CoreHexPlot'
+        plot_name += '_' + value
         plot_name += '.png'
         plot_name = os.path.join(dassh_reactor.path, plot_name)
         _save_and_close(plot_name, plot_data['dpi'])
@@ -1843,7 +1847,9 @@ class CoreHexPlot(CorePlot):
                           data_label=plot_data['data_label'],
                           omit_nonvalue_rings=plot_data['omit_nonvalue_rings'])
             if plot_data['use_default_filename']:
-                plot_name = f'CoreHexPlot_{value}_z={z_str}'
+                plot_name = 'CoreHexPlot'
+            plot_name += '_' + value
+            plot_name += '_z=' + str(z_str)
             plot_name += '.png'
             plot_name = os.path.join(dassh_reactor.path, plot_name)
             _save_and_close(plot_name, plot_data['dpi'])
