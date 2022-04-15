@@ -1,0 +1,13 @@
+[Setup]
+    [[Units]]
+        temperature    = Celsius
+        length         = cm
+
+[Plot]
+    [[use_the_default_name]]
+        type = CoreSubchannelPlot
+        z = 200.0
+        use_default_filename=True
+    [[subchannel_temperatures_z=300cm]]
+        type = CoreSubchannelPlot
+        z = 300.0
