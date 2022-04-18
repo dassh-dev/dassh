@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-03-25
+date: 2022-04-18
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -182,25 +182,8 @@ class DASSHPlot_Input(LoggedClass):
         """Read and check DASSHPlot input data against the template"""
         # Read input with ConfigObj and check it against the template
         tmp_path = os.path.join(_ROOT, 'dasshplot_input_template.txt')
-        inp = ConfigObj(infile.splitlines(), configspec=tmp_path,
-                        raise_errors=True, file_error=True)
-
-        # Instantiate Validator object; check against the template
-        validator = Validator()
-        res = inp.validate(validator, preserve_errors=True)
-        if res is not True:
-            msg = ''
-            for (sec_list, key, _) in flatten_errors(inp, res):
-                if key is not None:
-                    msg += ('"%s" key in section "%s" failed validation'
-                            '; check that it meets the requirements'
-                            % (key, ', '.join(sec_list)) + '\n')
-                else:
-                    msg += ('Error found in the following '
-                            + 'section: %s ' % ', '.join(sec_list)
-                            + '; maybe missing required input?' + '\n')
-            self.log('error', msg)
-
+        inp = _configobj_load(self, infile, tmp_path)
+        _configobj_check_extra_kw(self, inp)
         return inp
 
     def load_from_reactor(self, infile, reactor):
@@ -496,9 +479,9 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         # Read all sections except Assignment into ConfigObj dict,
         # stored in instances as self.data; make sure that the main
         # required sections are present
-        self.get_input(str_infile)
+        self.data = _configobj_load(self, str_infile, self.tmp_path)
         self.check_configobj_sections()
-        self.check_for_extra_kw()
+        _configobj_check_extra_kw(self, self.data)
 
         # Process Assignment text input; add to self.data
         self.data['Assignment'] = \
@@ -580,40 +563,6 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         clone.path = copy.deepcopy(self.path)
         return clone
 
-    def get_input(self, infile):
-        """Read input into dictionary using configobj.
-
-        Parameters
-        ----------
-        infile : str
-            File path to user-produced DASSH input file
-
-        Returns
-        -------
-        dict
-            Input file data
-
-        """
-        inp = ConfigObj(infile.splitlines(), configspec=self.tmp_path,
-                        raise_errors=True, file_error=True)
-        # Instantiate Validator object; check against the template
-        validator = Validator()
-        res = inp.validate(validator, preserve_errors=True)
-        if res is not True:
-            msg = ''
-            for (sec_list, key, _) in flatten_errors(inp, res):
-                if key is not None:
-                    msg += ('"%s" key in section "%s" failed validation'
-                            '; check that it meets the requirements'
-                            % (key, ', '.join(sec_list)) + '\n')
-                else:
-                    msg += ('Error found in the following '
-                            + 'section: %s ' % ', '.join(sec_list)
-                            + '; maybe missing required input?' + '\n')
-            self.log('error', msg)
-        # otherwise no errors, return data
-        self.data = inp
-
     def get_timepoints(self, infile):
         with open(infile, 'r') as f:
             txt = f.read().splitlines()
@@ -671,18 +620,6 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         """Get template config file for single- or multi-time input."""
         tmp_path = os.path.join(_ROOT, 'input_template.txt')
         return tmp_path
-
-    def check_for_extra_kw(self):
-        """If the user added anything funky, make sure it's known"""
-        extra_args = configobj.get_extra_values(self.data)
-        for x in extra_args:
-            msg = 'Warning: unrecognized input. '
-            section = '"//"'.join(x[0])
-            if section == '':
-                msg += f'section: "{x[1]}"'
-            else:
-                msg += f'section: "{section}"; keyword: "{x[1]}"'
-            self.log('warning', msg)
 
     ####################################################################
     # INPUT FILE VALIDATION
@@ -2020,6 +1957,76 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                                  + 'optimization on pin temperatures '
                                  + f'for Assembly "{a}": no FuelModel '
                                  + 'input section')
+
+
+########################################################################
+# GENERAL CONFIGOBJ METHODS
+########################################################################
+
+
+def _configobj_load(dassh_inp_object, infile, path_to_template):
+    """Read input into dictionary using configobj.
+
+    Parameters
+    ----------
+    dassh_inp_object : DASSH_Input or DASSHPlot_Input object
+        DASSH input handler
+    infile : str
+        User-produced DASSH input file
+    path_to_template : str
+        File path to Configobj input template
+
+    Returns
+    -------
+    dict
+        Input file data
+
+    """
+    inp = ConfigObj(infile.splitlines(), configspec=path_to_template,
+                    raise_errors=True, file_error=True)
+    # Instantiate Validator object; check against the template
+    validator = Validator()
+    res = inp.validate(validator, preserve_errors=True)
+    if res is not True:
+        msg = ''
+        for (sec_list, key, _) in flatten_errors(inp, res):
+            if key is not None:
+                msg += ('"%s" key in section "%s" failed validation'
+                        '; check that it meets the requirements'
+                        % (key, ', '.join(sec_list)) + '\n')
+            else:
+                msg += ('Error found in the following '
+                        + 'section: %s ' % ', '.join(sec_list)
+                        + '; maybe missing required input?' + '\n')
+        dassh_inp_object.log('error', msg)
+    # otherwise no errors, return data
+    return inp
+
+
+def _configobj_check_extra_kw(dassh_inp_object, input_data):
+    """If the user added anything funky, make sure it's known
+
+    Parameters
+    ----------
+    dassh_inp_object : DASSH_Input or DASSHPlot_Input object
+        DASSH input handler
+    input_data : dict
+        Input file data from ConfigObj
+
+    Returns
+    -------
+    None
+
+    """
+    extra_args = configobj.get_extra_values(input_data)
+    for x in extra_args:
+        msg = 'Warning: unrecognized input. '
+        section = '"//"'.join(x[0])
+        if section == '':
+            msg += f'Section: "{x[1]}"'
+        else:
+            msg += f'Section: "{section}"; keyword: "{x[1]}"'
+        dassh_inp_object.log('warning', msg)
 
 
 ########################################################################

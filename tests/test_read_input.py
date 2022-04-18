@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-03-22
+date: 2022-04-18
 author: matz
 Test the DASSH read_input module and DASSH_input object
 """
@@ -671,9 +671,9 @@ def test_unrecognized_inputs(testdir, caplog):
             testdir,
             'test_inputs',
             'input_unrecognized_args.txt'))
-    m1 = 'Warning: unrecognized input. section: "Unrecognized_Section"'
+    m1 = 'Warning: unrecognized input. Section: "Unrecognized_Section"'
     assert m1 in caplog.text
-    m2 = 'Warning: unrecognized input. section: "{}"; keyword: "{}"'
+    m2 = 'Warning: unrecognized input. Section: "{}"; keyword: "{}"'
     assert m2.format('Power"//"ARC', 'wrong_arg') in caplog.text
 
 
