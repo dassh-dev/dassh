@@ -675,6 +675,7 @@ def test_unrecognized_inputs(testdir, caplog):
     assert m1 in caplog.text
     m2 = 'Warning: unrecognized input. Section: "{}"; keyword: "{}"'
     assert m2.format('Power"//"ARC', 'wrong_arg') in caplog.text
+    assert m2.format('Plot"//"MyPlot', 'wrong_arg') in caplog.text
 
 
 def test_detailed_subchannel_table_inputs(testdir, caplog):
