@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-01-11
+date: 2022-04-20
 author: matz
 Test the clad/fuel pin temperature model
 """
@@ -454,13 +454,13 @@ def test_general_pin_conductivity(testdir):
                   gap_mat=None)
     res = pm._fuel_cond(0, 800)
     ans = 20.0 - 0.03 * 800 + 0.00002 * 800**2
-    assert pytest.approx(res, ans)
+    assert res == pytest.approx(ans)
     res = pm._fuel_cond(1, 1000)
-    ans = 12.0 + 0.04 * 800 - 0.00005 * 800**2
-    assert pytest.approx(res, ans)
+    ans = 12.0 + 0.04 * 1000 + 0.00005 * 1000**2
+    assert res == pytest.approx(ans)
     res = pm._fuel_cond(2, 23525)
     ans = 20.0
-    assert pytest.approx(res, ans)
+    assert res == pytest.approx(ans)
 
 
 def test_verify_general_pin_model(testdir):
