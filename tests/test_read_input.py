@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-04-18
+date: 2022-04-26
 author: matz
 Test the DASSH read_input module and DASSH_input object
 """
@@ -676,6 +676,10 @@ def test_unrecognized_inputs(testdir, caplog):
     m2 = 'Warning: unrecognized input. Section: "{}"; keyword: "{}"'
     assert m2.format('Power"//"ARC', 'wrong_arg') in caplog.text
     assert m2.format('Plot"//"MyPlot', 'wrong_arg') in caplog.text
+    assert 'Section: "Materials"' not in caplog.text
+    assert 'Section: "Core"' not in caplog.text
+    assert 'Section: "Assembly"' not in caplog.text
+    assert 'Section: "Setup"' not in caplog.text
 
 
 def test_detailed_subchannel_table_inputs(testdir, caplog):
