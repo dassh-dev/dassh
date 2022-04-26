@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-28
+date: 2022-04-26
 author: matz
 Objects and methods to print ASCII tables in Python
 """
@@ -1511,13 +1511,6 @@ class PeakPinTempTable(LoggedClass, DASSH_Table):
         row += self.divider
         row += f'  Nominal Radial Temperatures ({fmttd_temp_unit}) --> '
         self._table += row + '\n'
-        # self.add_row('', ['', '',
-        #                   'Height',
-        #                   'Pin power',
-        #                   'Nominal',
-        #                   'Temperatures',
-        #                   f'({fmttd_temp_unit}) --> ',
-        #                   '', '', ''])
         self.add_row('Asm.', ['Loc.',
                               'Pin',
                               f'({len_unit})',
@@ -1539,7 +1532,6 @@ class PeakPinTempTable(LoggedClass, DASSH_Table):
         tab = []
         for i in range(len(reactor_obj.assemblies)):
             a = reactor_obj.assemblies[i]
-            # row = [_fmt_idx(a.id), _fmt_pos(a.loc)]
             row = [_fmt_idx(i), _fmt_pos(a.loc)]
             if 'pin' in a._peak.keys():
                 xx = keys[component][region]
@@ -1560,8 +1552,8 @@ class PeakPinTempTable(LoggedClass, DASSH_Table):
         height = self._ffmt2.format(self.len_conv(data[1]))
         out = [pin, height]
 
-        # Get power
-        plin = asm_obj.power.get_power(data[1])
+        # Get power: round height to make sure no numerical error
+        plin = asm_obj.power.get_power(round(data[1], 10))
         plin = plin['pins'][int(data[2])] / self.len_conv(1)
         out.append(self._ffmt2.format(plin))
 
