@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-02-16
+date: 2022-04-27
 author: matz
 Test container for general execution
 """
@@ -141,6 +141,40 @@ def test_conv_approx_byp(testdir, wdir_setup):
     max_rel_diff = np.max(np.abs(diff_byp)) / overall_diff
     print('Max (abs) byp diff / dT:', max_rel_diff)
     assert max_rel_diff < 0.003
+
+
+def test_conv_approx_interior_shield(testdir, wdir_setup):
+    """Test convection approximation for duct wall connection gives
+    similar results to the original implementation
+
+    Note: inter-asm gap model is no_flow; both cases use the same axial
+    step size because the step size change """
+    r_obj = {}
+    for x in ['on', 'off']:
+        inpath = os.path.join(testdir, 'test_inputs',
+                              f'input_conv_approx_shield_{x}.txt')
+        outpath = os.path.join(testdir, 'test_results', 'conv_approx', x)
+        path_to_tmp_infile = wdir_setup(inpath, outpath)
+        execute_dassh([path_to_tmp_infile, '--save_reactor'])
+        r_obj[x] = dassh.reactor.load(
+            os.path.join(outpath, 'dassh_reactor.pkl'))
+
+    # -----------------------------------------------------------------
+    # Average differences
+    diff_avg_int = (r_obj['on'].assemblies[0].avg_coolant_int_temp
+                    - r_obj['off'].assemblies[0].avg_coolant_int_temp)
+    print('Avg. interior temp diff:', diff_avg_int)
+
+    # Interior subchannel differences
+    diff = (r_obj['on'].assemblies[-1].region[0].temp['coolant_int']
+            - r_obj['off'].assemblies[-1].region[0].temp['coolant_int'])
+    print('Max (+) interior temp diff: ', np.max(diff))
+    print('Max (-) interior temp diff: ', np.min(diff))
+
+    overall_diff = 4e3 / 0.02 / 1275
+    max_rel_diff = np.max(np.abs(diff)) / overall_diff
+    print('Max (abs) diff / dT:', max_rel_diff)
+    assert max_rel_diff < 0.0025
 
 
 def test_ebal_with_ur(testdir, wdir_setup):
