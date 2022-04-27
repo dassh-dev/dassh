@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-04-26
+date: 2022-04-27
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -183,7 +183,7 @@ class DASSHPlot_Input(LoggedClass):
         # Read input with ConfigObj and check it against the template
         tmp_path = os.path.join(_ROOT, 'dasshplot_input_template.txt')
         inp = _configobj_load(self, infile, tmp_path)
-        _configobj_check_extra_kw(self, inp, 'Plot')
+        _configobj_check_extra_kw(self, inp, only='Plot')
         return inp
 
     def load_from_reactor(self, infile, reactor):
@@ -481,7 +481,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         # required sections are present
         self.data = _configobj_load(self, str_infile, self.tmp_path)
         self.check_configobj_sections()
-        _configobj_check_extra_kw(self, self.data)
+        _configobj_check_extra_kw(self, self.data, skip='Plot')
 
         # Process Assignment text input; add to self.data
         self.data['Assignment'] = \
@@ -2003,7 +2003,7 @@ def _configobj_load(dassh_inp_object, infile, path_to_template):
     return inp
 
 
-def _configobj_check_extra_kw(dassh_inp_object, input_data, section=None):
+def _configobj_check_extra_kw(dassh_inp_obj, inp_data, only=None, skip=None):
     """If the user added anything funky, make sure it's known
 
     Parameters
@@ -2012,31 +2012,31 @@ def _configobj_check_extra_kw(dassh_inp_object, input_data, section=None):
         DASSH input handler
     input_data : dict
         Input file data from ConfigObj
-    section (optional) : str
+    only (optional) : str
         Check arguments for a specific section (default=None)
+    skip (optional) : str
+        Skip a specific section (default=None)
 
     Returns
     -------
     None
 
     """
-    if section is not None:
-        extra_args = configobj.get_extra_values(input_data[section])
-    else:
-        extra_args = configobj.get_extra_values(input_data)
-    extra_args = configobj.get_extra_values(input_data)
+    extra_args = configobj.get_extra_values(inp_data)
     for x in extra_args:
         msg = 'Warning: unrecognized input. '
-        if section is not None:
-            sec = section + '"//"'
-            sec += '"//"'.join(x[0])
-        else:
+        if len(x[0]) > 0:
             sec = '"//"'.join(x[0])
-        if sec == '':
-            msg += f'Section: "{x[1]}"'
+            msg += f'Section: "{sec}"'
+            msg += f'; keyword: "{x[1]}"'
         else:
-            msg += f'Section: "{sec}"; keyword: "{x[1]}"'
-        dassh_inp_object.log('warning', msg)
+            msg += f'Section: "{x[1]}"'
+        if only is not None and only not in msg:
+            continue
+        elif skip is not None and skip in msg:
+            continue
+        else:
+            dassh_inp_obj.log('warning', msg)
 
 
 ########################################################################
