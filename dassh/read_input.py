@@ -2024,6 +2024,7 @@ def _configobj_check_extra_kw(dassh_inp_object, input_data, section=None):
         extra_args = configobj.get_extra_values(input_data[section])
     else:
         extra_args = configobj.get_extra_values(input_data)
+    extra_args = configobj.get_extra_values(input_data)
     for x in extra_args:
         msg = 'Warning: unrecognized input. '
         if section is not None:

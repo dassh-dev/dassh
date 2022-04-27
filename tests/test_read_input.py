@@ -676,6 +676,7 @@ def test_unrecognized_inputs(testdir, caplog):
     m2 = 'Warning: unrecognized input. Section: "{}"; keyword: "{}"'
     assert m2.format('Power"//"ARC', 'wrong_arg') in caplog.text
     assert m2.format('Plot"//"MyPlot', 'wrong_arg') in caplog.text
+    assert m2.format('Plot', 'MyPlot') not in caplog.text
     assert 'Section: "Materials"' not in caplog.text
     assert 'Section: "Core"' not in caplog.text
     assert 'Section: "Assembly"' not in caplog.text
