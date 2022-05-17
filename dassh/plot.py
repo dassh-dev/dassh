@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-04-27
+date: 2022-05-17
 author: matz
 Methods to plot DASSH objects (such as hexagonal fuel assemblies and
 the pins and subchannels that comprise them).
@@ -128,7 +128,7 @@ def make_SubchannelPlot(dassh_reactor, plot_data, plot_name):
                       pin_alpha=_data['pin_alpha'])
             z_str = np.around(_data['bwd_len_conv'](zi), 2)
             if plot_data['use_default_filename']:
-                plot_name = 'SubchannelPlot'
+                plot_filename = 'SubchannelPlot'
             else:
                 plot_filename = plot_name
             plot_filename += '_asm=' + str(asm_id + 1)
