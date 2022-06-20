@@ -114,6 +114,9 @@
             pu_frac = force_list(default=list(0.0))
             zr_frac = force_list(default=list(0.0))
             porosity = force_list(default=list(0.0))
+            hotspot_analysis_sigma = integer(default=2)
+            hotspot_subfactors_csv_clad = string(default=None)
+            hotspot_subfactors_csv_fuel = string(default=None)         
         [[[PinModel]]]
             fcgap_thickness = float(min=0.0, default=0.0)
             gap_material = string(default=None)
@@ -122,6 +125,9 @@
             htc_params_clad = float_list(default=None)
             pin_material = force_list(default=None)
             r_frac = force_list(default=list(0.0))
+            hotspot_analysis_sigma = integer(default=2)
+            hotspot_subfactors_csv_clad = string(default=None)
+            hotspot_subfactors_csv_fuel = string(default=None)
 
 
 [Orificing]
