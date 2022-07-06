@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-02
+date: 2022-07-06
 author: matz
 Test the correlations
 """
@@ -43,7 +43,8 @@ def make_assembly(n_ring, pin_pitch, pin_diameter, clad_thickness,
                   wire_pitch, wire_diameter, duct_ftf, coolant_obj,
                   duct_obj, inlet_temp, inlet_flow_rate,
                   corr_friction='CTD', corr_flowsplit='CTD',
-                  corr_mixing='CTD', se2geo=False):
+                  corr_mixing='CTD', corr_shapefactor=None,
+                  se2geo=False):
     m = {'coolant': coolant_obj, 'duct': duct_obj}
     rr = dassh.RoddedRegion('fuel', n_ring, pin_pitch, pin_diameter,
                             wire_pitch, wire_diameter, clad_thickness,
@@ -54,6 +55,7 @@ def make_assembly(n_ring, pin_pitch, pin_diameter, clad_thickness,
                             corr_flowsplit=corr_flowsplit,
                             corr_mixing=corr_mixing,
                             corr_nusselt='DB',
+                            corr_shapefactor=corr_shapefactor,
                             se2=se2geo)
     return activate_rodded_region(rr, inlet_temp)
 
@@ -81,10 +83,10 @@ def test_correlation_warnings(caplog):
     inlet_temp = 273.15 + 350.0  # K
     coolant_obj = dassh.Material('sodium')
     duct_obj = dassh.Material('ss316')
-    a = make_assembly(n_ring, pin_pitch, pin_diameter, clad_thickness,
-                      wire_pitch, wire_diameter, duct_ftf, coolant_obj,
-                      duct_obj, inlet_temp, inlet_flow_rate,
-                      corr_friction='CTD')
+    make_assembly(n_ring, pin_pitch, pin_diameter, clad_thickness,
+                  wire_pitch, wire_diameter, duct_ftf, coolant_obj,
+                  duct_obj, inlet_temp, inlet_flow_rate,
+                  corr_friction='CTD')
 
     assert all([param in caplog.text for param in
                 ['pin pitch to diameter ratio',
@@ -448,7 +450,8 @@ def test_compare_ff_correlations_turbulent(textbook_active_rr):
     abs_err = np.zeros(len(corr))
     rel_err = np.zeros(len(corr))
     for i in range(len(corr)):
-        textbook_active_rr._setup_correlations(name[i], 'CTD', 'CTD', 'DB')
+        textbook_active_rr._setup_correlations(
+            name[i], 'CTD', 'CTD', 'DB', None)
         textbook_active_rr._update_coolant_int_params(300.15)
         res[i] = corr[i].calculate_bundle_friction_factor(textbook_active_rr)
         abs_err[i] = (res[i] - res[0])
@@ -984,3 +987,38 @@ def test_ctd_sc_intermittency_factor(thesis_asm_rr):
 # if name[i] == 'ENG':  # outside the Engel range
 #     with pytest.warns(UserWarning):
 #         corr[i].calculate_bundle_friction_factor(textbook_asm)
+
+########################################################################
+# SHAPE FACTOR
+########################################################################
+
+
+def test_ct_shape_factor():
+    """Test Cheng-Todreas shape factor against analytical results"""
+    # Vary P/D, get different answers
+    p2d = [1.1, 1.2, 1.3, 1.4]
+    # Answers calculated by hand, verified against Fig 8 in Lodi 2016
+    ans = [1.45, 1.28, 1.235, 1.22]
+    # Some standard parameters for assembly instantiation (some will
+    # be changed to assess that the proper warnings are raised)
+    n_ring = 4
+    clad_thickness = 0.5 / 1e3
+    wire_diameter = 1.094 / 1e3  # mm -> m
+    duct_ftf = [0.11154, 0.11757]  # m
+    h2d = 3.0
+    inlet_flow_rate = 30.0  # kg /s
+    inlet_temp = 273.15 + 350.0  # K
+    coolant_obj = dassh.Material('sodium')
+    duct_obj = dassh.Material('ss316')
+    for i in range(len(p2d)):
+        pin_diameter = ((duct_ftf[0] - 2 * wire_diameter)
+                        / (np.sqrt(3) * (n_ring - 1) * p2d[i] + 1))
+        pin_diameter -= 1e-7  # fudge factor to ensure pins fit in duct
+        pin_pitch = pin_diameter * p2d[i]
+        wire_pitch = pin_diameter * h2d
+        a = make_assembly(
+            n_ring, pin_pitch, pin_diameter, clad_thickness, wire_pitch,
+            wire_diameter, duct_ftf, coolant_obj, duct_obj, inlet_temp,
+            inlet_flow_rate, corr_shapefactor='CT')
+        diff = a._sf - ans[i]
+        assert abs(diff) / ans[i] <= 0.01

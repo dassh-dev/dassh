@@ -19,7 +19,6 @@ author: matz
 Cheng-Todreas correlation for conduction shape factor (1984)
 """
 ########################################################################
-import numpy as np
 
 
 def calculate_shape_factor(rr):

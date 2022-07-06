@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-01-05
+date: 2022-07-06
 author: matz
 Methods for unrodded axial regions; to be used within Assembly objects
 """
@@ -772,6 +772,7 @@ class _RREquivalent(RoddedRegion):
             asm_input['corr_flowsplit'],
             asm_input['corr_mixing'],
             asm_input['corr_nusselt'],
+            asm_input['corr_shapefactor'],
             asm_input['bypass_gap_flow_fraction'],
             asm_input['bypass_gap_loss_coeff'],
             asm_input['wire_direction'],

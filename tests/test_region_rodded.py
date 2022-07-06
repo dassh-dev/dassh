@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-29
+date: 2022-07-06
 author: matz
 Test the DASSH RoddedRegion object (pin bundle)
 """
@@ -223,8 +223,8 @@ def test_double_duct_single_pin_rr():
                 for key in asm.duct_params.keys()])
     for i in range(len(asm.L)):
         for j in range(len(asm.L[i])):
-            assert np.all(np.array(asm.L[i][j]) >= 0.0)
             # assert np.all(np.array(asm.ht_consts[i][j]) >= 0.0)
+            assert np.all(np.array(asm.L[i][j]) >= 0.0)
 
 
 def test_rr_duct_areas(textbook_rr):
@@ -276,7 +276,7 @@ def test_error_pins_fit_in_duct(c_fuel_rr, caplog):
             c_fuel_rr.coolant,
             c_fuel_rr.duct,
             None, None,
-            'CTD', 'CTD', 'CTD', 'DB')
+            'CTD', 'CTD', 'CTD', 'DB', None)
         assert 'Pins do not fit inside duct;' in caplog.text
 
 
@@ -288,7 +288,8 @@ def test_error_correlation_assignment(c_fuel_rr, caplog):
     kwargs = {'corr_friction': 'CTD',
               'corr_flowsplit': 'CTD',
               'corr_mixing': 'CTD',
-              'corr_nusselt': 'DB'}
+              'corr_nusselt': 'DB',
+              'corr_shapefactor': None}
     passed = 0
     for corr in kwargs.keys():
         tmp = copy.deepcopy(kwargs)
