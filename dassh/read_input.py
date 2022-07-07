@@ -1145,28 +1145,37 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         # Maximum P/D or W/D ratio for CTD/UCTD correlation
         limit = 2.10
         for asm in self.data['Assembly']:
-            pre = f'Asm: \"{asm}\"; '  # indicate asm for error msg
-            if any(corr in ['ctd', 'uctd'] for corr in
+            pre = f'Asm \"{asm}\"; '  # indicate asm for error msg
+            if any(corr in ['CTD', 'UCTD'] for corr in
                    [self.data['Assembly'][asm]['corr_friction'],
                     self.data['Assembly'][asm]['corr_flowsplit'],
                     self.data['Assembly'][asm]['corr_mixing']]):
-                # Calculate pitch-to-diameter ratio
-                p2d = (self.data['Assembly'][asm]['pin_pitch'] /
-                       self.data['Assembly'][asm]['pin_diameter'])
-                # Calculate edge gap-to-diameter ratio
+                # Pull stuff out of the dictionary, it's too much
+                d = self.data['Assembly'][asm]['pin_diameter']
+                p = self.data['Assembly'][asm]['pin_pitch']
+                nr = self.data['Assembly'][asm]['num_rings']
                 dftf = min(self.data['Assembly'][asm]['duct_ftf'])
-                w = (dftf + self.data['Assembly'][asm]['pin_diameter']
-                     - (np.sqrt(3)
-                        * (self.data['Assembly'][asm]['n_ring'] - 1)
-                        * self.data['Assembly'][asm]['pin_pitch']))
-                w2d = w / self.data['Assembly'][asm]['pin_diameter']
+                p2d = p / d
+                bftf = np.sqrt(3) * (nr - 1) * p + d  # Bundle F2F
+                g = 0.5 * (dftf - bftf)  # Gap between duct and bundle
+                w = g + 0.5 * d  # Edge pitch parameter
+                w2d = w / d
                 msg = pre + ('{:s} must be less than {:.2f} in order to '
                              'guarantee that (U)CTD parameters remain '
                              'non-negative.')
                 if p2d > limit:
                     self.log('error', msg.format('P/D', limit))
                 if w2d > limit:
-                    self.log('error', msg.format('W/D', limit))
+                    msg = msg.format('W/D (W is the gap between the '
+                                     'pins and hex flat plus D/2)',
+                                     limit)
+                    self.log('error', msg)
+            if self.data['Assembly'][asm]['corr_mixing'] == 'KC-BARE':
+                if self.data['Assembly'][asm]['wire_diameter'] > 0.0:
+                    msg = 'WARNING: ' + pre
+                    msg += 'Using bare-rod correlation for turbulent ' \
+                           'mixing but specified nonzero wire diameter.'
+                    self.log('warning', msg)
 
     def check_assignment_assembly_agreement(self):
         """Make sure all assigned assemblies are specified"""

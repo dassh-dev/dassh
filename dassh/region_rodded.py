@@ -2208,6 +2208,11 @@ def _import_mixing_correlation(name, bundle):
         name = 'upgraded-cheng-todreas'
         nickname = 'uctd'
 
+    elif name in ['kc', 'kim-chung', 'kc-bare', 'kim-chung-bare']:
+        import dassh.correlations.mixing_kc as mix
+        name = 'kim-chung-bare'
+        nickname = 'kc-bare'
+
     else:
         module_logger.error(f'Assembly {bundle.name}: unknown '
                             f'correlation specified for mixing '

@@ -80,7 +80,7 @@
         duct_ftf = float_list(min=2)
         duct_material = string
         clad_thickness = float
-        corr_mixing = option('MIT', 'CTD', 'UCTD', default='CTD')
+        corr_mixing = option('MIT', 'CTD', 'UCTD', 'KC-BARE', default='CTD')
         corr_friction = option('NOV', 'REH', 'ENG', 'CTD', 'CTS', 'UCTD', default='CTD')
         corr_flowsplit = option('NOV', 'SE2', 'MIT', 'CTD', 'UCTD', default='CTD')
         corr_shapefactor = option('CT', default=None) 

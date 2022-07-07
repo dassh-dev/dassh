@@ -36,7 +36,8 @@ from dassh.correlations import (flowsplit_mit,
                                 flowsplit_ctd,
                                 flowsplit_uctd)
 from dassh.correlations import (mixing_ctd,
-                                mixing_mit)
+                                mixing_mit,
+                                mixing_kc)
 
 
 def make_assembly(n_ring, pin_pitch, pin_diameter, clad_thickness,
@@ -980,6 +981,110 @@ def test_ctd_sc_intermittency_factor(thesis_asm_rr):
                                                  Re_bnds[1])
     assert all([0 < x[i] < 1 for i in range(len(x))])
 
+
+class MockRR(object):
+    """Mock RoddedRegion class for testing Kim-Chung (2001) bare
+    rod bundle turbulent mixing"""
+    def __init__(self, pitch, diam):
+        self.pin_pitch = pitch
+        self.pin_diameter = diam
+        A_int = 0.25 * np.sqrt(3) * pitch**2 - 0.125 * np.pi * diam**2
+        Pw_int = np.pi * diam / 2
+        De_int = 4 * A_int / Pw_int
+        eta_int = np.sqrt(3) * pitch / 3
+        self.params = {
+            'area': [A_int, 0.0, 0.0],
+            'wp': [Pw_int, 0.0, 0.0],
+            'de': [De_int, 0.0, 0.0]
+        }
+        self.L = [[eta_int, 0.0, 0.0]]
+
+
+def test_kc_bare_mixing_parameter_fig6_g2d():
+    """Test the turbulent mixing parameter result from the Kim
+    and Chung correlation for bare rod bundles vs g/D"""
+    # Set up some examples
+    g2d = [0.1, 0.2, 0.3]
+    diameter = 0.01
+    Pr = [0.001, 0.001, 0.01, 0.01]
+    Re = [1e5, 3e5, 1e4, 1e5]
+
+    # Answers from the graph
+    ans = [[3.50, 4.77, 6.12],
+           [1.94, 2.31, 2.72],
+           [3.00, 4.01, 5.08],
+           [1.28, 1.19, 1.22]]
+
+    for i in range(len(Pr)):
+        for j in range(len(g2d)):
+            p2d = g2d[j] + 1
+            pitch = p2d * diameter
+            mock_rr = MockRR(pitch, diameter)
+            C = mixing_kc.calc_constants(mock_rr, use_simple=True)
+            Stg = mixing_kc._calculate_stg(Pr[i], Re[i], *C)
+            Stg_mod = Stg * 100 / Re[i]**-0.1
+            ans_ij = ans[i][j]
+            diff_ij = abs(ans_ij - Stg_mod)
+            rdiff_ij = diff_ij / ans_ij
+            if rdiff_ij > 0.02:
+                print('Result:   ', round(Stg_mod, 2))
+                print('Answer:   ', ans_ij)
+                print('Diff:     ', round(diff_ij, 4))
+                print('Rel diff: ', round(rdiff_ij, 4))
+                assert rdiff_ij <= 0.02
+
+
+def test_kc_bare_mixing_parameter_fig5_g2d():
+    """Test the turbulent mixing parameter result from the Kim
+    and Chung correlation for bare rod bundles vs g/D"""
+    # Set up some examples
+    g2d = [0.1, 0.2, 0.3, 0.4]
+    diameter = 0.01
+    Pr = 1.0
+    Re = 1e5
+
+    # Answers from the graph
+    ans = [1.03, 0.79, 0.69, 0.61]
+
+    for j in range(len(g2d)):
+        p2d = g2d[j] + 1
+        pitch = p2d * diameter
+        mock_rr = MockRR(pitch, diameter)
+        C = mixing_kc.calc_constants(mock_rr, use_simple=True)
+        Stg = mixing_kc._calculate_stg(Pr, Re, *C)
+        Stg_mod = Stg * 100 / Re**-0.1
+        ans_ij = ans[j]
+        diff_ij = abs(ans_ij - Stg_mod)
+        rdiff_ij = diff_ij / ans_ij
+        if rdiff_ij > 0.02:
+            print('g/D:      ', g2d[j])
+            print('Result:   ', round(Stg_mod, 2))
+            print('Answer:   ', ans_ij)
+            print('Diff:     ', round(diff_ij, 4))
+            print('Rel diff: ', round(rdiff_ij, 4))
+            assert rdiff_ij <= 0.02
+
+
+# def test_kc_bare_mixing_parameter_fig6_Pr(testdir):
+#     """Test the turbulent mixing parameter result from the Kim
+#     and Chung correlation for bare rod bundles vs Pr
+#
+#     NOTE: Fig 6 e-h do not make sense. There should be some overlap
+#     between the data shown in these figures and that shown in the
+#     preceding ones, but there is not. Cannot discern how the authors
+#     generated these values.
+#
+#     """
+#     # Set up some examples
+#     p2d = [1.1]  # , 1.3, 1.3, 1.3]
+#     diameter = 0.01
+#     Re = [1e4, 1e5, 1e4, 1e5]
+#     p2d = [1.1]
+#     Re = [1e5]
+#     Pr = [0.001, 0.01, 0.1, 1.0]
+#
+#     # Answers from the graph
+#     ans = [[110, 11.0, 1.5, 0.41], [], [], []]
 
 ########################################################################
 # CORRELATION APPLICABILITY
