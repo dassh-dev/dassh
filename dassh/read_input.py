@@ -1141,9 +1141,28 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
 
     def check_correlations(self):
         """Add some hard cutoffs on assembly characteristics to avoid
-        negative numbers"""
-        # Maximum P/D or W/D ratio for CTD/UCTD correlation
-        limit = 2.109
+        negative numbers.
+
+        Notes
+        -----
+        This check is based on determining what values of P/D or W/D
+        (W is edge pitch: the distance from the center of an edge pin
+        to the inner duct wall) are allowable by solving for the
+        quadratic roots based on the coefficients in Table 4 of the
+        1986 Cheng-Todreas paper.
+
+        There are two maximum values for P/D or W/D: one for laminar
+        flow, another for turbulent flow. The laminar flow value is
+        more restrictive. At the time this function is called, we
+        don't know what the flow regime is. Therefore, we use the
+        less restrictive value (turbulent) and will check again
+        later on.
+
+        """
+        # w2d_limit = 2.10889   # LAMINAR
+        # p2d_limit = 2.38024  # LAMINAR
+        w2d_limit = 3.33271   # TURBULENT
+        p2d_limit = 3.70617  # TURBULENT
         for asm in self.data['Assembly']:
             pre = f'Asm \"{asm}\"; '  # indicate asm for error msg
             if any(corr.lower() in ['ctd', 'uctd'] for corr in
@@ -1161,12 +1180,12 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                         * self.data['Assembly'][asm]['pin_pitch']))
                 w2d = w / self.data['Assembly'][asm]['pin_diameter']
                 msg = 'ERROR: ' + pre
-                if p2d > limit:
+                if p2d > p2d_limit:
                     msg += ('Bundle P/D is too large to be acceptable '
                             'for CTD/UCTD correlations. Consider '
                             'modifying pin bundle design.')
-                    self.log('error', msg.format(limit))
-                if w2d > limit:
+                    self.log('error', msg)
+                if w2d > w2d_limit:
                     msg += ('Gap between pin bundle and duct is too '
                             'large to be acceptable by CTD/UCTD '
                             'correlations. Consider modifying pin '

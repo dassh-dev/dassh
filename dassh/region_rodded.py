@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-04-06
+date: 2022-07-14
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -603,6 +603,30 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                  'vel': np.zeros(self.n_bypass),  # bypass-avg velocities
                  'ff': np.zeros(self.n_bypass),  # byp sc fric. fracs.
                  'htc': np.zeros((self.n_bypass, 2))}  # byp sc htc
+
+        # Check P/D and W/D ratios for acceptability if CTD/UCTD.
+        # Already checked for turbulent value in read_input. Here,
+        # need to check if flow is laminar.
+        if 'ctd' in self.corr_names.values() or \
+                'uctd' in self.corr_names.values():
+            p2d = self.pin_pitch / self.pin_diameter
+            Re_bt = 1e4 * 10**(0.7 * p2d - 1)
+            m2a = self.int_flow_rate / self.bundle_params['area']
+            Re = m2a * self.bundle_params['de'] / self.coolant.viscosity
+            if Re < Re_bt:
+                p2d_limit = 2.38024  # Laminar limit
+                if p2d > p2d_limit:
+                    msg = f'ERROR: P/D for pin bundle "{self.name}" '
+                    + 'is too large for CTD/UCTD correlations. '
+                    + 'Consider modifying pin bundle design.'
+                    self.log('error', msg)
+                w2d_limit = 2.10889   # Laminar limit
+                if self.edge_pitch / self.pin_diameter > w2d_limit:
+                    msg = 'ERROR: Gap between pin bundle and duct '
+                    + f'for pin bundle "{self.name}" is too large '
+                    + 'to be acceptable by CTD/UCTD correlations. '
+                    + 'Consider modifying pin bundle dimensions.'
+                    self.log('error')
 
     def _determine_byp_flow_rate(self):
         """Calculate the bypass flow rate by estimating pressure drop
