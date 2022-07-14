@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-04-27
+date: 2022-07-14
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -1143,10 +1143,10 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         """Add some hard cutoffs on assembly characteristics to avoid
         negative numbers"""
         # Maximum P/D or W/D ratio for CTD/UCTD correlation
-        limit = 2.10
+        limit = 2.109
         for asm in self.data['Assembly']:
-            pre = f'Asm: \"{asm}\"; '  # indicate asm for error msg
-            if any(corr in ['ctd', 'uctd'] for corr in
+            pre = f'Asm \"{asm}\"; '  # indicate asm for error msg
+            if any(corr.lower() in ['ctd', 'uctd'] for corr in
                    [self.data['Assembly'][asm]['corr_friction'],
                     self.data['Assembly'][asm]['corr_flowsplit'],
                     self.data['Assembly'][asm]['corr_mixing']]):
@@ -1157,16 +1157,21 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                 dftf = min(self.data['Assembly'][asm]['duct_ftf'])
                 w = (dftf + self.data['Assembly'][asm]['pin_diameter']
                      - (np.sqrt(3)
-                        * (self.data['Assembly'][asm]['n_ring'] - 1)
+                        * (self.data['Assembly'][asm]['num_rings'] - 1)
                         * self.data['Assembly'][asm]['pin_pitch']))
                 w2d = w / self.data['Assembly'][asm]['pin_diameter']
-                msg = pre + ('{:s} must be less than {:.2f} in order to '
-                             'guarantee that (U)CTD parameters remain '
-                             'non-negative.')
+                msg = 'ERROR: ' + pre
                 if p2d > limit:
-                    self.log('error', msg.format('P/D', limit))
+                    msg += ('Bundle P/D is too large to be acceptable '
+                            'for CTD/UCTD correlations. Consider '
+                            'modifying pin bundle design.')
+                    self.log('error', msg.format(limit))
                 if w2d > limit:
-                    self.log('error', msg.format('W/D', limit))
+                    msg += ('Gap between pin bundle and duct is too '
+                            'large to be acceptable by CTD/UCTD '
+                            'correlations. Consider modifying pin '
+                            'bundle dimensions.')
+                    self.log('error', msg)
 
     def check_assignment_assembly_agreement(self):
         """Make sure all assigned assemblies are specified"""
