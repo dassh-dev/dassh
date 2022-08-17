@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-04-27
+date: 2022-07-14
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -1141,41 +1141,54 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
 
     def check_correlations(self):
         """Add some hard cutoffs on assembly characteristics to avoid
-        negative numbers"""
-        # Maximum P/D or W/D ratio for CTD/UCTD correlation
-        limit = 2.10
+        negative numbers.
+
+        Notes
+        -----
+        This check is based on determining what values of P/D or W/D
+        (W is edge pitch: the distance from the center of an edge pin
+        to the inner duct wall) are allowable by solving for the
+        quadratic roots based on the coefficients in Table 4 of the
+        1986 Cheng-Todreas paper.
+
+        There are two maximum values for P/D or W/D: one for laminar
+        flow, another for turbulent flow. The laminar flow value is
+        more restrictive. At the time this function is called, we
+        don't know what the flow regime is. Therefore, we use the
+        less restrictive value (turbulent) and will check again
+        later on.
+
+        """
+        # w2d_limit = 2.10889   # LAMINAR
+        # p2d_limit = 2.38024  # LAMINAR
+        w2d_limit = 3.33271   # TURBULENT
+        p2d_limit = 3.70617  # TURBULENT
         for asm in self.data['Assembly']:
             pre = f'Asm \"{asm}\"; '  # indicate asm for error msg
-            if any(corr in ['CTD', 'UCTD'] for corr in
+            if any(corr.lower() in ('ctd', 'uctd') for corr in
                    [self.data['Assembly'][asm]['corr_friction'],
                     self.data['Assembly'][asm]['corr_flowsplit'],
                     self.data['Assembly'][asm]['corr_mixing']]):
                 # Pull stuff out of the dictionary, it's too much
                 d = self.data['Assembly'][asm]['pin_diameter']
                 p = self.data['Assembly'][asm]['pin_pitch']
+                p2d = p / d
                 nr = self.data['Assembly'][asm]['num_rings']
                 dftf = min(self.data['Assembly'][asm]['duct_ftf'])
-                p2d = p / d
-                bftf = np.sqrt(3) * (nr - 1) * p + d  # Bundle F2F
-                g = 0.5 * (dftf - bftf)  # Gap between duct and bundle
-                w = g + 0.5 * d  # Edge pitch parameter
+                w = (dftf + d - (np.sqrt(3) * (nr - 1) * p))
                 w2d = w / d
-                msg = pre + ('{:s} must be less than {:.2f} in order to '
-                             'guarantee that (U)CTD parameters remain '
-                             'non-negative.')
-                if p2d > limit:
-                    self.log('error', msg.format('P/D', limit))
-                if w2d > limit:
-                    msg = msg.format('W/D (W is the gap between the '
-                                     'pins and hex flat plus D/2)',
-                                     limit)
+                msg = 'ERROR: ' + pre
+                if p2d > p2d_limit:
+                    msg += ('Bundle P/D is too large to be acceptable '
+                            'for CTD/UCTD correlations. Consider '
+                            'modifying pin bundle design.')
                     self.log('error', msg)
-            if self.data['Assembly'][asm]['corr_mixing'] == 'KC-BARE':
-                if self.data['Assembly'][asm]['wire_diameter'] > 0.0:
-                    msg = 'WARNING: ' + pre
-                    msg += 'Using bare-rod correlation for turbulent ' \
-                           'mixing but specified nonzero wire diameter.'
-                    self.log('warning', msg)
+                if w2d > w2d_limit:
+                    msg += ('Gap between pin bundle and duct is too '
+                            'large to be acceptable by CTD/UCTD '
+                            'correlations. Consider modifying pin '
+                            'bundle dimensions.')
+                    self.log('error', msg)
 
     def check_assignment_assembly_agreement(self):
         """Make sure all assigned assemblies are specified"""
