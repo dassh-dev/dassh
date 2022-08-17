@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-07-14
+date: 2022-08-17
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -1189,6 +1189,12 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                             'correlations. Consider modifying pin '
                             'bundle dimensions.')
                     self.log('error', msg)
+            if self.data['Assembly'][asm]['corr_mixing'] == 'KC-BARE':
+                 if self.data['Assembly'][asm]['wire_diameter'] > 0.0:
+                     msg = 'WARNING: ' + pre
+                     msg += 'Using bare-rod correlation for turbulent ' \
+                            'mixing but specified nonzero wire diameter.'
+                     self.log('warning', msg)
 
     def check_assignment_assembly_agreement(self):
         """Make sure all assigned assemblies are specified"""
