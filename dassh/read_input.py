@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-07-14
+date: 2022-08-17
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -1165,20 +1165,18 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         p2d_limit = 3.70617  # TURBULENT
         for asm in self.data['Assembly']:
             pre = f'Asm \"{asm}\"; '  # indicate asm for error msg
-            if any(corr.lower() in ['ctd', 'uctd'] for corr in
+            if any(corr.lower() in ('ctd', 'uctd') for corr in
                    [self.data['Assembly'][asm]['corr_friction'],
                     self.data['Assembly'][asm]['corr_flowsplit'],
                     self.data['Assembly'][asm]['corr_mixing']]):
-                # Calculate pitch-to-diameter ratio
-                p2d = (self.data['Assembly'][asm]['pin_pitch'] /
-                       self.data['Assembly'][asm]['pin_diameter'])
-                # Calculate edge gap-to-diameter ratio
+                # Pull stuff out of the dictionary, it's too much
+                d = self.data['Assembly'][asm]['pin_diameter']
+                p = self.data['Assembly'][asm]['pin_pitch']
+                p2d = p / d
+                nr = self.data['Assembly'][asm]['num_rings']
                 dftf = min(self.data['Assembly'][asm]['duct_ftf'])
-                w = (dftf + self.data['Assembly'][asm]['pin_diameter']
-                     - (np.sqrt(3)
-                        * (self.data['Assembly'][asm]['num_rings'] - 1)
-                        * self.data['Assembly'][asm]['pin_pitch']))
-                w2d = w / self.data['Assembly'][asm]['pin_diameter']
+                w = (dftf + d - (np.sqrt(3) * (nr - 1) * p))
+                w2d = w / d
                 msg = 'ERROR: ' + pre
                 if p2d > p2d_limit:
                     msg += ('Bundle P/D is too large to be acceptable '
@@ -1191,6 +1189,12 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                             'correlations. Consider modifying pin '
                             'bundle dimensions.')
                     self.log('error', msg)
+            if self.data['Assembly'][asm]['corr_mixing'] == 'KC-BARE':
+                 if self.data['Assembly'][asm]['wire_diameter'] > 0.0:
+                     msg = 'WARNING: ' + pre
+                     msg += 'Using bare-rod correlation for turbulent ' \
+                            'mixing but specified nonzero wire diameter.'
+                     self.log('warning', msg)
 
     def check_assignment_assembly_agreement(self):
         """Make sure all assigned assemblies are specified"""

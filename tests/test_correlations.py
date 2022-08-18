@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-02
+date: 2022-07-06
 author: matz
 Test the correlations
 """
@@ -36,14 +36,16 @@ from dassh.correlations import (flowsplit_mit,
                                 flowsplit_ctd,
                                 flowsplit_uctd)
 from dassh.correlations import (mixing_ctd,
-                                mixing_mit)
+                                mixing_mit,
+                                mixing_kc)
 
 
 def make_assembly(n_ring, pin_pitch, pin_diameter, clad_thickness,
                   wire_pitch, wire_diameter, duct_ftf, coolant_obj,
                   duct_obj, inlet_temp, inlet_flow_rate,
                   corr_friction='CTD', corr_flowsplit='CTD',
-                  corr_mixing='CTD', se2geo=False):
+                  corr_mixing='CTD', corr_shapefactor=None,
+                  se2geo=False):
     m = {'coolant': coolant_obj, 'duct': duct_obj}
     rr = dassh.RoddedRegion('fuel', n_ring, pin_pitch, pin_diameter,
                             wire_pitch, wire_diameter, clad_thickness,
@@ -54,6 +56,7 @@ def make_assembly(n_ring, pin_pitch, pin_diameter, clad_thickness,
                             corr_flowsplit=corr_flowsplit,
                             corr_mixing=corr_mixing,
                             corr_nusselt='DB',
+                            corr_shapefactor=corr_shapefactor,
                             se2=se2geo)
     return activate_rodded_region(rr, inlet_temp)
 
@@ -81,10 +84,10 @@ def test_correlation_warnings(caplog):
     inlet_temp = 273.15 + 350.0  # K
     coolant_obj = dassh.Material('sodium')
     duct_obj = dassh.Material('ss316')
-    a = make_assembly(n_ring, pin_pitch, pin_diameter, clad_thickness,
-                      wire_pitch, wire_diameter, duct_ftf, coolant_obj,
-                      duct_obj, inlet_temp, inlet_flow_rate,
-                      corr_friction='CTD')
+    make_assembly(n_ring, pin_pitch, pin_diameter, clad_thickness,
+                  wire_pitch, wire_diameter, duct_ftf, coolant_obj,
+                  duct_obj, inlet_temp, inlet_flow_rate,
+                  corr_friction='CTD')
 
     assert all([param in caplog.text for param in
                 ['pin pitch to diameter ratio',
@@ -448,7 +451,8 @@ def test_compare_ff_correlations_turbulent(textbook_active_rr):
     abs_err = np.zeros(len(corr))
     rel_err = np.zeros(len(corr))
     for i in range(len(corr)):
-        textbook_active_rr._setup_correlations(name[i], 'CTD', 'CTD', 'DB')
+        textbook_active_rr._setup_correlations(
+            name[i], 'CTD', 'CTD', 'DB', None)
         textbook_active_rr._update_coolant_int_params(300.15)
         res[i] = corr[i].calculate_bundle_friction_factor(textbook_active_rr)
         abs_err[i] = (res[i] - res[0])
@@ -978,9 +982,148 @@ def test_ctd_sc_intermittency_factor(thesis_asm_rr):
     assert all([0 < x[i] < 1 for i in range(len(x))])
 
 
+class MockRR(object):
+    """Mock RoddedRegion class for testing Kim-Chung (2001) bare
+    rod bundle turbulent mixing"""
+    def __init__(self, pitch, diam):
+        self.pin_pitch = pitch
+        self.pin_diameter = diam
+        A_int = 0.25 * np.sqrt(3) * pitch**2 - 0.125 * np.pi * diam**2
+        Pw_int = np.pi * diam / 2
+        De_int = 4 * A_int / Pw_int
+        eta_int = np.sqrt(3) * pitch / 3
+        self.params = {
+            'area': [A_int, 0.0, 0.0],
+            'wp': [Pw_int, 0.0, 0.0],
+            'de': [De_int, 0.0, 0.0]
+        }
+        self.L = [[eta_int, 0.0, 0.0]]
+
+
+def test_kc_bare_mixing_parameter_fig6_g2d():
+    """Test the turbulent mixing parameter result from the Kim
+    and Chung correlation for bare rod bundles vs g/D"""
+    # Set up some examples
+    g2d = [0.1, 0.2, 0.3]
+    diameter = 0.01
+    Pr = [0.001, 0.001, 0.01, 0.01]
+    Re = [1e5, 3e5, 1e4, 1e5]
+
+    # Answers from the graph
+    ans = [[3.50, 4.77, 6.12],
+           [1.94, 2.31, 2.72],
+           [3.00, 4.01, 5.08],
+           [1.28, 1.19, 1.22]]
+
+    for i in range(len(Pr)):
+        for j in range(len(g2d)):
+            p2d = g2d[j] + 1
+            pitch = p2d * diameter
+            mock_rr = MockRR(pitch, diameter)
+            C = mixing_kc.calc_constants(mock_rr, use_simple=True)
+            Stg = mixing_kc._calculate_stg(Pr[i], Re[i], *C)
+            Stg_mod = Stg * 100 / Re[i]**-0.1
+            ans_ij = ans[i][j]
+            diff_ij = abs(ans_ij - Stg_mod)
+            rdiff_ij = diff_ij / ans_ij
+            if rdiff_ij > 0.02:
+                print('Result:   ', round(Stg_mod, 2))
+                print('Answer:   ', ans_ij)
+                print('Diff:     ', round(diff_ij, 4))
+                print('Rel diff: ', round(rdiff_ij, 4))
+                assert rdiff_ij <= 0.02
+
+
+def test_kc_bare_mixing_parameter_fig5_g2d():
+    """Test the turbulent mixing parameter result from the Kim
+    and Chung correlation for bare rod bundles vs g/D"""
+    # Set up some examples
+    g2d = [0.1, 0.2, 0.3, 0.4]
+    diameter = 0.01
+    Pr = 1.0
+    Re = 1e5
+
+    # Answers from the graph
+    ans = [1.03, 0.79, 0.69, 0.61]
+
+    for j in range(len(g2d)):
+        p2d = g2d[j] + 1
+        pitch = p2d * diameter
+        mock_rr = MockRR(pitch, diameter)
+        C = mixing_kc.calc_constants(mock_rr, use_simple=True)
+        Stg = mixing_kc._calculate_stg(Pr, Re, *C)
+        Stg_mod = Stg * 100 / Re**-0.1
+        ans_ij = ans[j]
+        diff_ij = abs(ans_ij - Stg_mod)
+        rdiff_ij = diff_ij / ans_ij
+        if rdiff_ij > 0.02:
+            print('g/D:      ', g2d[j])
+            print('Result:   ', round(Stg_mod, 2))
+            print('Answer:   ', ans_ij)
+            print('Diff:     ', round(diff_ij, 4))
+            print('Rel diff: ', round(rdiff_ij, 4))
+            assert rdiff_ij <= 0.02
+
+
+# def test_kc_bare_mixing_parameter_fig6_Pr(testdir):
+#     """Test the turbulent mixing parameter result from the Kim
+#     and Chung correlation for bare rod bundles vs Pr
+#
+#     NOTE: Fig 6 e-h do not make sense. There should be some overlap
+#     between the data shown in these figures and that shown in the
+#     preceding ones, but there is not. Cannot discern how the authors
+#     generated these values.
+#
+#     """
+#     # Set up some examples
+#     p2d = [1.1]  # , 1.3, 1.3, 1.3]
+#     diameter = 0.01
+#     Re = [1e4, 1e5, 1e4, 1e5]
+#     p2d = [1.1]
+#     Re = [1e5]
+#     Pr = [0.001, 0.01, 0.1, 1.0]
+#
+#     # Answers from the graph
+#     ans = [[110, 11.0, 1.5, 0.41], [], [], []]
+
 ########################################################################
 # CORRELATION APPLICABILITY
 ########################################################################
 # if name[i] == 'ENG':  # outside the Engel range
 #     with pytest.warns(UserWarning):
 #         corr[i].calculate_bundle_friction_factor(textbook_asm)
+
+########################################################################
+# SHAPE FACTOR
+########################################################################
+
+
+def test_ct_shape_factor():
+    """Test Cheng-Todreas shape factor against analytical results"""
+    # Vary P/D, get different answers
+    p2d = [1.1, 1.2, 1.3, 1.4]
+    # Answers calculated by hand, verified against Fig 8 in Lodi 2016
+    ans = [1.45, 1.28, 1.235, 1.22]
+    # Some standard parameters for assembly instantiation (some will
+    # be changed to assess that the proper warnings are raised)
+    n_ring = 4
+    clad_thickness = 0.5 / 1e3
+    wire_diameter = 1.094 / 1e3  # mm -> m
+    duct_ftf = [0.11154, 0.11757]  # m
+    h2d = 3.0
+    inlet_flow_rate = 30.0  # kg /s
+    inlet_temp = 273.15 + 350.0  # K
+    coolant_obj = dassh.Material('sodium')
+    duct_obj = dassh.Material('ss316')
+    for i in range(len(p2d)):
+        pin_diameter = ((duct_ftf[0] - 2 * wire_diameter)
+                        / (np.sqrt(3) * (n_ring - 1) * p2d[i] + 1))
+        pin_diameter -= 1e-7  # fudge factor to ensure pins fit in duct
+        pin_pitch = pin_diameter * p2d[i]
+        wire_pitch = pin_diameter * h2d
+        a = make_assembly(
+            n_ring, pin_pitch, pin_diameter, clad_thickness, wire_pitch,
+            wire_diameter, duct_ftf, coolant_obj, duct_obj, inlet_temp,
+            inlet_flow_rate, corr_shapefactor='CT')
+        diff = a._sf - ans[i]
+        assert abs(diff) / ans[i] <= 0.01

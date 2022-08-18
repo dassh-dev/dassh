@@ -80,11 +80,12 @@
         duct_ftf = float_list(min=2)
         duct_material = string
         clad_thickness = float
-        corr_mixing = option('MIT', 'CTD', 'UCTD', default='CTD')
+        corr_mixing = option('MIT', 'CTD', 'UCTD', 'KC-BARE', default='CTD')
         corr_friction = option('NOV', 'REH', 'ENG', 'CTD', 'CTS', 'UCTD', default='CTD')
         corr_flowsplit = option('NOV', 'SE2', 'MIT', 'CTD', 'UCTD', default='CTD')
+        corr_shapefactor = option('CT', default=None) 
         corr_nusselt = string(default='DB')
-	dummy_pin = int_list(min=1, default=None)
+        dummy_pin = int_list(min=1, default=None)
         htc_params_duct = float_list(default=None)
         bypass_gap_flow_fraction = float(default=0.05)
         bypass_gap_loss_coeff = float(default=None)
