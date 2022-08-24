@@ -1071,14 +1071,6 @@ class Reactor(LoggedClass):
         except (AttributeError, KeyError):
             pass
 
-        # write the summary output
-        if self._options['write_output']:
-            self.write_output_summary()
-
-        # write detailed assembly subchannel output, if requested
-        if 'AssemblyTables' in self._options.keys():
-            self.write_assembly_data_tables()
-
     def _print_log_msg(self, step):
         """Format the message to log to the screen"""
         # Format plane number and axial position
@@ -1311,6 +1303,19 @@ class Reactor(LoggedClass):
     # WRITE OUTPUT
     ####################################################################
 
+    def postprocess(self):
+        """Prepare and write output"""
+        # Perform the hotspot analysis on clad/pin temperatures
+        two_sig_temps, asm_ids, asm_names = dassh.hotspot.analyze(self)
+
+        # Write the summary output
+        if self._options['write_output']:
+            self.write_output_summary((two_sig_temps, asm_ids))
+
+        # Write detailed assembly subchannel output, if requested
+        if 'AssemblyTables' in self._options.keys():
+            self.write_assembly_data_tables()
+
     def write_summary(self):
         """Write the main DASSH output file"""
         # Output file preamble
@@ -1334,7 +1339,7 @@ class Reactor(LoggedClass):
         with open(os.path.join(self.path, 'dassh.out'), 'w') as f:
             f.write(out)
 
-    def write_output_summary(self):
+    def write_output_summary(self, hotspot_data=None):
         """Write the main DASSH output file"""
         out = ''
 
@@ -1362,9 +1367,12 @@ class Reactor(LoggedClass):
 
         # Peak pin temperatures
         if any(['pin' in a._peak.keys() for a in self.assemblies]):
-            max_temps = dassh.table.PeakPinTempTable()
-            out += max_temps.generate(self, 'clad', 'mw')
-            out += max_temps.generate(self, 'fuel', 'cl')
+            peak_clad = dassh.table.PeakPinTempTable('clad', 'mw')
+            out += peak_clad.generate(
+                self, (hotspot_data[0]['clad'], hotspot_data[1]))
+            peak_fuel = dassh.table.PeakPinTempTable('fuel', 'cl')
+            out += peak_fuel.generate(
+                self, (hotspot_data[0]['fuel'], hotspot_data[1]))
 
         # Append to file
         with open(os.path.join(self.path, 'dassh.out'), 'a') as f:

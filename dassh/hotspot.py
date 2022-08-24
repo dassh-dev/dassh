@@ -1,6 +1,20 @@
- ########################################################################
+########################################################################
+# Copyright 2021, UChicago Argonne, LLC
+#
+# Licensed under the BSD-3 License (the "License"); you may not use
+# this file except in compliance with the License. You may obtain a
+# copy of the License at
+#
+#     https://opensource.org/licenses/BSD-3-Clause
+#
+# Unless required by applicable law or agreed to in writing, software
+# distributed under the License is distributed on an "AS IS" BASIS,
+# WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or
+# implied. See the License for the specific language governing
+# permissions and limitations under the License.
+########################################################################
 """
-date: 2022-06-20
+date: 2022-08-23
 author: matz
 comment: Hot spot analysis via the semistatistical horizontal method
 """
@@ -10,7 +24,12 @@ comment: Hot spot analysis via the semistatistical horizontal method
 # in the output table which set of HCF was used with which assembly?
 # Asm ID | Hotspot Subfactors | Sigma | Peak Clad | Peak Fuel |
 ########################################################################
+import sys
+import logging
 import numpy as np
+
+
+module_logger = logging.getLogger('dassh.hotspot')
 
 
 def _setup_postprocess(r_obj, dassh_inp):
@@ -32,7 +51,15 @@ def _setup_postprocess(r_obj, dassh_inp):
 
 
 def analyze(r_obj):
-    """x"""
+    """Postprocess temperature results to obtain hotspot temperatures
+    based on user-supplied subfactors
+
+    Parameters
+    ----------
+    r_obj : DASSH Reactor object
+        Contains model state after temperature sweep
+
+    """
     asm_ids = []
     asm_names = []
     peak_temps = {'clad_mw': [], 'fuel_cl': []}
@@ -71,7 +98,7 @@ def analyze(r_obj):
         else:
             peak_temps['fuel_cl'].append(empty_fill)
 
-    # Need to sort! Create lists of ids, names, and temps (?). Sort
+    # Need to sort! Create lists of ids, names, and temps. Sort
     # all according to ids. Then write into output table
     order = np.argsort(asm_ids)
     asm_ids = [asm_ids[i] for i in order]
@@ -197,14 +224,17 @@ def _read_hcf_table(path_to_hcf_table):
         msg = f'Incorrect number of columns in HCF table: {hcf_table}'
         msg += '\nNeed 5 columns for 2-sigma clad temp, and 7 cols'
         msg += f'for 2-sigma fuel temp; found {n_cols} cols'
-        raise ValueError(msg)
+        # raise ValueError(msg)
+        module_logger.log(40, f'ERROR: {msg}')
+        sys.exit(1)
 
     # Check header row elements
     error = _check_header(header)
     if error:
-        msg = f'Incorrect header row in HCF table: {hcf_table}\n'
+        msg = f'Incorrect header row in HCF table: {path_to_hcf_table}\n'
         msg += error
-        raise ValueError(msg)
+        module_logger.log(40, f'ERROR: {msg}')
+        sys.exit(1)
 
     # Determine the number of subfactors - count the number lines
     # minus the header and any expression definitions
@@ -241,7 +271,10 @@ def _read_hcf_table(path_to_hcf_table):
                 krow = len(hcf[key])
                 expressions[(key, krow, col)] = val
             else:
-                raise ValueError('Invalid expression!')
+                msg = 'ERROR: Invalid expression! '
+                msg += f'Found: "{val}" in CSV {path_to_hcf_table}'
+                module_logger.log(40, msg)
+                sys.exit(1)
         hcf[key].append(tmp)
 
     # Tables should be complete - can turn into numpy arrays

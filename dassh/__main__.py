@@ -216,6 +216,7 @@ def _run_dassh(dassh_inp, args, timestep, wdir, link=None):
     # Perform the sweep
     dassh_logger.log(_log_info, 'Performing temperature sweep...')
     reactor.temperature_sweep(verbose=args['verbose'])
+    reactor.postprocess()
 
     # Post-processing: write output, save reactor if desired
     dassh_logger.log(_log_info, 'Temperature sweep complete')
