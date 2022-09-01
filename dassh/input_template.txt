@@ -116,10 +116,10 @@
             porosity = force_list(default=list(0.0))
             hotspot_input_sig_clad = integer(min=0, default=3)
             hotspot_output_sig_clad = integer(min=0, default=2)
-            hotspot_csv_clad = string(default=None)
+            hotspot_subfactors_clad = string(default=None)
             hotspot_input_sig_fuel = integer(min=0, default=3)
             hotspot_output_sig_fuel = integer(min=0, default=2)
-            hotspot_csv_fuel = string(default=None)
+            hotspot_subfactors_fuel = string(default=None)
         [[[PinModel]]]
             fcgap_thickness = float(min=0.0, default=0.0)
             gap_material = string(default=None)

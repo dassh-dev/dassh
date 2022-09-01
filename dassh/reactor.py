@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-03-23
+date: 2022-08-24
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -112,6 +112,12 @@ class Reactor(LoggedClass):
 
         """
         LoggedClass.__init__(self, 0, 'dassh.reactor.Reactor')
+        self._input_path = dassh_input.path
+        if path is None:
+            self.path = dassh_input.path
+        else:
+            self.path = path
+            os.makedirs(path, exist_ok=True)
 
         # Store user options from input/invocation
         self.units = dassh_input.data['Setup']['Units']
@@ -120,12 +126,6 @@ class Reactor(LoggedClass):
         # Store general inputs
         self.inlet_temp = dassh_input.data['Core']['coolant_inlet_temp']
         self.asm_pitch = dassh_input.data['Core']['assembly_pitch']
-        self._input_path = dassh_input.path
-        if path is None:
-            self.path = dassh_input.path
-        else:
-            self.path = path
-            os.makedirs(path, exist_ok=True)
 
         # Store DASSH materials (already loaded in DASSH_Input)
         self.materials = dassh_input.materials
@@ -233,6 +233,9 @@ class Reactor(LoggedClass):
         self._options['ebal'] = inp.data['Setup']['calc_energy_balance']
         if 'calc_energy_balance' in kwargs.keys():
             self._options['ebal'] = kwargs['calc_energy_balance']
+
+        self._options['hotspot'] = \
+            dassh.hotspot._setup_postprocess(self, inp)
 
         # DUMP FILE ARGUMENTS: collect to set up files at sweep time
         self._options['dump'] = inp.data['Setup']['Dump']

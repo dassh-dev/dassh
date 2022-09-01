@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-08-23
+date: 2022-08-24
 author: matz
 comment: Hot spot analysis via the semistatistical horizontal method
 """
@@ -24,6 +24,7 @@ comment: Hot spot analysis via the semistatistical horizontal method
 # in the output table which set of HCF was used with which assembly?
 # Asm ID | Hotspot Subfactors | Sigma | Peak Clad | Peak Fuel |
 ########################################################################
+import os
 import sys
 import logging
 import numpy as np
@@ -38,12 +39,35 @@ def _setup_postprocess(r_obj, dassh_inp):
     hotspot_dict = {}
     keys = ('input_sig_clad', 'output_sig_clad', 'subfactors_clad',
             'input_sig_fuel', 'output_sig_fuel', 'subfactors_fuel')
+    _builtins = ()
     for a in dassh_inp.data['Assembly'].keys():
         if 'PinModel' in dassh_inp.data['Assembly'][a].keys():
-            for k in keys:
-                kk = 'hotspot_' + k
-                hotspot_dict[a][k] = \
-                    dassh_inp.data['Assembly'][a]['PinModel'][kk]
+            k = 'PinModel'
+        elif 'FuelModel' in dassh_inp.data['Assembly'][a].keys():
+            k = 'FuelModel'
+        else:
+            continue
+        hotspot_dict[a] = {}
+        for key in keys:
+            kk = 'hotspot_' + key
+            if key[:10] == 'subfactors':
+                if dassh_inp.data['Assembly'][a][k][kk] in _builtins:
+                    # Do something
+                    pass
+                else:  # It's a filepath to a CSV
+                    fpath = os.path.abspath(
+                        os.path.join(
+                            dassh_inp.path,
+                            dassh_inp.data['Assembly'][a][k][kk]))
+                    if not os.path.exists(fpath):
+                        msg = 'Path to hotspot subfactors ' \
+                              f'CSV does not exist: {fpath}'
+                        module_logger.log(40, f'ERROR: {msg}')
+                        sys.exit(1)
+                    else:
+                        hotspot_dict[a][key] = fpath
+            else:
+                hotspot_dict[a][key] = dassh_inp.data['Assembly'][a][k][kk]
     if hotspot_dict:
         return hotspot_dict
     else:
@@ -77,7 +101,7 @@ def analyze(r_obj):
 
         # Clad temperatures
         if hs['subfactors_clad'] is not None:
-            dT, a_id = _get_clad_peak_dt(r_obj, asm_name)
+            dT = _get_clad_peak_dt(r_obj, asm_name)
             subfactors, expr = _read_hcf_table(hs['subfactors_clad'])
             subfactors = _evaluate_hcf_expr(subfactors, expr, dT)
             peak_clad = calculate_temps(r_obj.inlet_temp, dT, subfactors,
@@ -88,7 +112,7 @@ def analyze(r_obj):
             peak_temps['clad_mw'].append(empty_fill)
         # Fuel temperatures
         if hs['subfactors_fuel'] is not None:
-            dT, a_id = _get_fuel_peak_dt(r_obj, asm_name)
+            dT = _get_fuel_peak_dt(r_obj, asm_name)
             subfactors, expr = _read_hcf_table(hs['subfactors_fuel'])
             subfactors = _evaluate_hcf_expr(subfactors, expr, dT)
             peak_fuel = calculate_temps(r_obj.inlet_temp, dT, subfactors,
@@ -104,7 +128,7 @@ def analyze(r_obj):
     asm_ids = [asm_ids[i] for i in order]
     asm_names = [asm_names[i] for i in order]
     for k in ('clad_mw', 'fuel_cl'):
-        peak_temps[k] = np.vstack(peak_temps[k])
+        peak_temps[k] = np.hstack(peak_temps[k])
         peak_temps[k] = peak_temps[k][order]
     return peak_temps, asm_ids, asm_names
 
@@ -140,7 +164,7 @@ def _get_fuel_peak_dt(r_obj, asm_name):
     return dt
 
 
-def calculate_temps(T_in, dT, hcf, in_sigma=3, out_sigma=2):
+def calculate_temps(T_in, dT, hcf, IN_sigma=3, OUT_sigma=2):
     """Calculate 2-sigma clad/fuel temperatures based on the
     semistatistical horizontal method
 
@@ -192,7 +216,7 @@ def calculate_temps(T_in, dT, hcf, in_sigma=3, out_sigma=2):
     # Now do sum of squares on these --> N_asm
     IN_sig_sOs = np.sqrt(np.sum(IN_sig_unc**2, axis=1))
     T = T_in + np.sum(zero_sig_dT, axis=1)
-    T += out_sigma * IN_sig_sOs / in_sigma
+    T += OUT_sigma * IN_sig_sOs / IN_sigma
     return T
 
 
@@ -214,6 +238,7 @@ def _read_hcf_table(path_to_hcf_table):
         2. Some kind of Python-evaluable expression in terms of dT
 
     """
+    path_to_hcf_table = os.path.abspath(path_to_hcf_table)
     with open(path_to_hcf_table, mode='r', encoding='utf-8-sig') as f:
         hcf_table = f.read()
 
@@ -224,7 +249,6 @@ def _read_hcf_table(path_to_hcf_table):
         msg = f'Incorrect number of columns in HCF table: {hcf_table}'
         msg += '\nNeed 5 columns for 2-sigma clad temp, and 7 cols'
         msg += f'for 2-sigma fuel temp; found {n_cols} cols'
-        # raise ValueError(msg)
         module_logger.log(40, f'ERROR: {msg}')
         sys.exit(1)
 

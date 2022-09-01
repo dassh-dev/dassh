@@ -14,15 +14,18 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-08-23
+date: 2022-08-24
 author: matz
 comment: Unit tests for hot spot analysis methods
 """
 ########################################################################
 import os
+import copy
 import pytest
 import numpy as np
+import dassh
 from dassh import hotspot
+from .test_reactor import cleanup
 
 
 def test_two_sigma_clad_temp():
@@ -160,7 +163,7 @@ def test_read_hcf_csv(testdir):
          [1.052, 1.052, 1.052],
          [1, 1, 1],
          [1, 1, 1]]])
-    fpath = os.path.join(testdir, 'test_data', 'hcf_input_test.csv')
+    fpath = os.path.join(testdir, 'test_data', 'hcf_input_clad.csv')
     tmp, expr = hotspot._read_hcf_table(fpath)
     res = hotspot._evaluate_hcf_expr(tmp, expr, dT)
     assert np.allclose(res['direct'], ans_direct)
@@ -172,7 +175,7 @@ def test_read_and_evaluate(testdir):
     temperatures are correctly calculated"""
     T_in = 623.15
     dT = np.array([[151, 12, 4], [148, 14, 5]])
-    fpath = os.path.join(testdir, 'test_data', 'hcf_input_test.csv')
+    fpath = os.path.join(testdir, 'test_data', 'hcf_input_clad.csv')
     hcf, expr = hotspot._read_hcf_table(fpath)
     hcf = hotspot._evaluate_hcf_expr(hcf, expr, dT)
     two_sig_temps = hotspot.calculate_temps(T_in, dT, hcf)
@@ -209,3 +212,40 @@ def test_csv_invalid_expr(testdir, caplog):
     msg = 'ERROR: Invalid expression! '
     msg += 'Found: "1 + (3 / T) * np.sqrt(0.002304 '
     assert msg in caplog.text
+
+
+def test_Rx_hotspot_analysis_and_table_generation(testdir):
+    """Test hotspot analysis and output table generation
+    from mock Reactor object"""
+    # Read input and create Reactor object
+    inpath = os.path.join(testdir, 'test_inputs')
+    outpath = os.path.join(testdir, 'test_results',
+                           'input_silly_hotspot')
+    cleanup(outpath)
+    inp = dassh.DASSH_Input(
+        os.path.join(inpath, 'input_silly_hotspot.txt'))
+    r = dassh.Reactor(inp, path=outpath, write_output=True)
+
+    # Assign fake "_peak" data to assemblies
+    pin_data = [0.0, 3.0, 0.0, 787.0, 795.4, 805.0, 815.2, 815.2, 1000]
+    keys = ['clad_od', 'clad_mw', 'clad_id', 'fuel_od', 'fuel_cl']
+    for i in range(len(r.assemblies)):
+        r.assemblies[i]._peak = {'pin': {}}
+        for j in range(len(keys)):
+            tmp = np.array(pin_data)
+            tmp[3:] *= np.random.uniform(low=0.98, high=1.02)
+            tmp = list(tmp)
+            r.assemblies[i]._peak['pin'][keys[j]] = \
+                [tmp[j + 4], j + 4, tmp]
+
+    # Run the analysis calculation and check the result
+    two_sig_temps, asm_ids, asm_names = hotspot.analyze(r)
+    # *** check the result ***
+
+    # Generate output tables and test them
+    out = ''
+    peak_clad = dassh.table.PeakPinTempTable('clad', 'mw')
+    out += peak_clad.generate(r, (two_sig_temps['clad_mw'], asm_ids))
+    peak_fuel = dassh.table.PeakPinTempTable('fuel', 'cl')
+    out += peak_fuel.generate(r, (two_sig_temps['fuel_cl'], asm_ids))
+    # *** check the result ***
