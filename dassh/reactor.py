@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-08-24
+date: 2022-10-25
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -1309,11 +1309,11 @@ class Reactor(LoggedClass):
     def postprocess(self):
         """Prepare and write output"""
         # Perform the hotspot analysis on clad/pin temperatures
-        two_sig_temps, asm_ids, asm_names = dassh.hotspot.analyze(self)
+        hotspot_results = dassh.hotspot.analyze(self)
 
         # Write the summary output
         if self._options['write_output']:
-            self.write_output_summary((two_sig_temps, asm_ids))
+            self.write_output_summary(hotspot_results)
 
         # Write detailed assembly subchannel output, if requested
         if 'AssemblyTables' in self._options.keys():
@@ -1371,11 +1371,9 @@ class Reactor(LoggedClass):
         # Peak pin temperatures
         if any(['pin' in a._peak.keys() for a in self.assemblies]):
             peak_clad = dassh.table.PeakPinTempTable('clad', 'mw')
-            out += peak_clad.generate(
-                self, (hotspot_data[0]['clad'], hotspot_data[1]))
+            out += peak_clad.generate(self, hotspot_data)
             peak_fuel = dassh.table.PeakPinTempTable('fuel', 'cl')
-            out += peak_fuel.generate(
-                self, (hotspot_data[0]['fuel'], hotspot_data[1]))
+            out += peak_fuel.generate(self, hotspot_data)
 
         # Append to file
         with open(os.path.join(self.path, 'dassh.out'), 'a') as f:

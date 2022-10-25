@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-08-24
+date: 2022-10-25
 author: matz
 comment: Hot spot analysis via the semistatistical horizontal method
 """
@@ -39,39 +39,48 @@ def _setup_postprocess(r_obj, dassh_inp):
     hotspot_dict = {}
     keys = ('input_sig_clad', 'output_sig_clad', 'subfactors_clad',
             'input_sig_fuel', 'output_sig_fuel', 'subfactors_fuel')
+    keys = ('input_sig', 'output_sig', 'subfactors')
     _builtins = ()
     for a in dassh_inp.data['Assembly'].keys():
+        # Figure out which keyword was used to provide inputs
         if 'PinModel' in dassh_inp.data['Assembly'][a].keys():
             k = 'PinModel'
         elif 'FuelModel' in dassh_inp.data['Assembly'][a].keys():
             k = 'FuelModel'
         else:
             continue
-        hotspot_dict[a] = {}
-        for key in keys:
-            kk = 'hotspot_' + key
-            if key[:10] == 'subfactors':
-                if dassh_inp.data['Assembly'][a][k][kk] in _builtins:
-                    # Do something
-                    pass
-                else:  # It's a filepath to a CSV
-                    fpath = os.path.abspath(
-                        os.path.join(
-                            dassh_inp.path,
-                            dassh_inp.data['Assembly'][a][k][kk]))
-                    if not os.path.exists(fpath):
-                        msg = 'Path to hotspot subfactors ' \
-                              f'CSV does not exist: {fpath}'
-                        module_logger.log(40, f'ERROR: {msg}')
-                        sys.exit(1)
+        # Figure out whether the analysis is required: only if
+        # the user provided subfactors for clad and/or fuel
+        for pin_component in ('clad', 'fuel'):
+            check = f'hotspot_subfactors_{pin_component}'
+            if dassh_inp.data['Assembly'][a][k][check]:  # subfactors specified
+                # Add assembly to hotspot dict if not already present
+                if a not in hotspot_dict.keys():
+                    hotspot_dict[a] = {}
+                for key in keys:
+                    key = key + '_' + pin_component
+                    kk = 'hotspot_' + key
+                    if key[:10] == 'subfactors':
+                        if dassh_inp.data['Assembly'][a][k][kk] in _builtins:
+                            # Do something
+                            pass
+                        else:  # It's a filepath to a CSV
+                            fpath = os.path.abspath(
+                                os.path.join(
+                                    dassh_inp.path,
+                                    dassh_inp.data['Assembly'][a][k][kk]))
+                            if not os.path.exists(fpath):
+                                msg = 'Path to hotspot subfactors ' \
+                                      f'CSV does not exist: {fpath}'
+                                module_logger.log(40, f'ERROR: {msg}')
+                                sys.exit(1)
+                            else:
+                                hotspot_dict[a][key] = fpath
                     else:
-                        hotspot_dict[a][key] = fpath
-            else:
-                hotspot_dict[a][key] = dassh_inp.data['Assembly'][a][k][kk]
+                        hotspot_dict[a][key] = \
+                            dassh_inp.data['Assembly'][a][k][kk]
     if hotspot_dict:
         return hotspot_dict
-    else:
-        return
 
 
 def analyze(r_obj):
@@ -84,6 +93,8 @@ def analyze(r_obj):
         Contains model state after temperature sweep
 
     """
+    if not r_obj._options['hotspot']:
+        return None
     asm_ids = []
     asm_names = []
     peak_temps = {'clad_mw': [], 'fuel_cl': []}
@@ -114,6 +125,7 @@ def analyze(r_obj):
         if hs['subfactors_fuel'] is not None:
             dT = _get_fuel_peak_dt(r_obj, asm_name)
             subfactors, expr = _read_hcf_table(hs['subfactors_fuel'])
+            subfactors, expr = _split_clad_subfactors(subfactors, expr)
             subfactors = _evaluate_hcf_expr(subfactors, expr, dT)
             peak_fuel = calculate_temps(r_obj.inlet_temp, dT, subfactors,
                                         IN_sigma=hs['input_sig_fuel'],
@@ -130,38 +142,7 @@ def analyze(r_obj):
     for k in ('clad_mw', 'fuel_cl'):
         peak_temps[k] = np.hstack(peak_temps[k])
         peak_temps[k] = peak_temps[k][order]
-    return peak_temps, asm_ids, asm_names
-
-
-def _get_clad_peak_dt(r_obj, asm_name):
-    """Collect peak clad MW dT values for each assembly"""
-    t = []
-    for a in r_obj.assemblies:
-        if a.name == asm_name:
-            assert 'pin' in a._peak.keys()
-            tmp = [r_obj.inlet_temp]
-            tmp += a._peak['pin']['clad_mw'][2][3:6]
-            t.append(tmp)
-    t = np.array(t)
-    dt = t[:, 1:] - t[:, :-1]
-    return dt
-
-
-def _get_fuel_peak_dt(r_obj, asm_name):
-    """Collect peak fuel CL dT values for each assembly"""
-    t = []
-    for a in r_obj.assemblies:
-        if a.name == asm_name:
-            assert 'pin' in a._peak.keys()
-            tmp = [a.id, r_obj.inlet_temp]
-            tmp += a._peak['pin']['fuel_cl'][2][3:]
-            t.append(tmp)
-    t = np.array(t)
-    dt = t[:, 1:] - t[:, :-1]
-    # Clad outer-MW and MW-inner are separate - combine
-    dt[:, 2] += dt[:, 3]
-    dt = dt[:, (0, 1, 2, 4, 5)]
-    return dt
+    return peak_temps, asm_ids  # , asm_names
 
 
 def calculate_temps(T_in, dT, hcf, IN_sigma=3, OUT_sigma=2):
@@ -198,26 +179,61 @@ def calculate_temps(T_in, dT, hcf, IN_sigma=3, OUT_sigma=2):
     # dT_subfactors is product of all direct subfactors for each
     # assembly, term; shape is N_asm x N_terms
     dT_subfactors = np.prod(hcf['direct'], axis=1)
+
     # Calculate the zero-sigma dT: array shape is N_asm x N_terms
     zero_sig_dT = dT * dT_subfactors
+
     # Calculate statistical term based on 3-sigma subfactors
     # hcf['statistical'] is N_asm x N_subfactors x N_terms
     # The uncertainties are the products of (a) the difference
     # between the subfactors and unity (SF - 1) and (b) the
     # 0-sigma temperature deltas, summed over all terms
     hcf_stat_m1 = hcf['statistical'] - 1
+
     # First calculate individual products, then sum over terms
     # Note: "IN_sig" refers to the "sigma" being whatever value
     # is given in the HCF subfactors. By default, the values are
     # assumed to be 3-sigma uncertainties, but the user can
     # specify different values.
     IN_sig_unc = zero_sig_dT[:, np.newaxis, :] * hcf_stat_m1
-    IN_sig_unc = np.sum(IN_sig_unc, axis=2)  # N_asm x N_sf
+    IN_sig_unc = np.cumsum(IN_sig_unc, axis=2)  # N_asm x N_sf
     # Now do sum of squares on these --> N_asm
     IN_sig_sOs = np.sqrt(np.sum(IN_sig_unc**2, axis=1))
-    T = T_in + np.sum(zero_sig_dT, axis=1)
+    # T = T_in + np.sum(zero_sig_dT, axis=1)
+    T = T_in + np.cumsum(zero_sig_dT, axis=1)
     T += OUT_sigma * IN_sig_sOs / IN_sigma
     return T
+
+
+def _get_clad_peak_dt(r_obj, asm_name):
+    """Collect peak clad MW dT values for each assembly"""
+    t = []
+    for a in r_obj.assemblies:
+        if a.name == asm_name:
+            assert 'pin' in a._peak.keys()
+            tmp = [r_obj.inlet_temp]
+            tmp += a._peak['pin']['clad_mw'][2][3:6]
+            t.append(tmp)
+    t = np.array(t)
+    dt = t[:, 1:] - t[:, :-1]
+    return dt
+
+
+def _get_fuel_peak_dt(r_obj, asm_name):
+    """Collect peak fuel CL dT values for each assembly"""
+    t = []
+    for a in r_obj.assemblies:
+        if a.name == asm_name:
+            assert 'pin' in a._peak.keys()
+            tmp = [r_obj.inlet_temp]
+            tmp += a._peak['pin']['fuel_cl'][2][3:]
+            t.append(tmp)
+    t = np.array(t)
+    dt = t[:, 1:] - t[:, :-1]
+    # # Clad outer-MW and MW-inner are separate - combine
+    # dt[:, 2] += dt[:, 3]
+    # dt = dt[:, (0, 1, 2, 4, 5)]
+    return dt
 
 
 def _read_hcf_table(path_to_hcf_table):
@@ -305,6 +321,29 @@ def _read_hcf_table(path_to_hcf_table):
     hcf['direct'] = np.array(hcf['direct'], dtype=float)
     hcf['statistical'] = np.array(hcf['statistical'], dtype=float)
     return hcf, expressions
+
+
+def _split_clad_subfactors(subf, expr):
+    """Split clad subfactors into two columns to apply separately
+    to OD-MW and MW-ID temperature deltas"""
+    subf_new = {}
+    for k in subf.keys():
+        new = np.zeros((subf[k].shape[0], subf[k].shape[1] + 1))
+        new[:, :3] = subf[k][:, :3]
+        new[:, 3:] = subf[k][:, 2:]
+        subf_new[k] = new
+    expr_new = {}
+    for k in expr.keys():
+        if k[2] < 2:
+            expr_new[k] = expr[k]
+        elif k[2] == 2:
+            k_new = (k[0], k[1], 3)
+            expr_new[k] = expr[k]
+            expr_new[k_new] = expr[k]
+        else:
+            k_new = (k[0], k[1], k[2] + 1)
+            expr_new[k_new] = expr[k]
+    return subf_new, expr_new
 
 
 def _evaluate_hcf_expr(hcf_dict, expr_dict, dT_in):
