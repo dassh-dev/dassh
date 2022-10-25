@@ -14,13 +14,12 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-08-24
+date: 2022-10-25
 author: matz
 comment: Unit tests for hot spot analysis methods
 """
 ########################################################################
 import os
-import copy
 import pytest
 import numpy as np
 import dassh
@@ -78,6 +77,8 @@ def test_two_sigma_clad_temp():
                    [309, 7, 6]])
     ans = 1263  # sig fig to "ones" place
     res = hotspot.calculate_temps(T_in, dT, hcf)
+    assert res.shape == (2, 3)
+    res = res[:, -1]
     msg = f"Ans (F): {ans}\nRes (F): {res}"
     assert np.all(np.abs(ans - res) < 1.0), msg
 
@@ -114,12 +115,14 @@ def test_two_sigma_fuel_temp():
     dT = np.array([[160, 25, 43, 265, 928]])
     # NOTE: The answer given in the Table V (2523 F) is incorrect.
     # The 3-sigma uncertainties should be obtained by multiplying
-    # the 0-sigma delta temps by the statistical subfactors. The
-    # fuel conductivity 3-sigma uncertainty is instead calculated
-    # using the nominal fuel delta temp.
-    ans = 2523  # As given in Table V; this is WRONG!
+    # the 0-sigma delta temps by the statistical subfactors. In the
+    # table, the fuel conductivity 3-sigma uncertainty is instead
+    # calculated using the nominal fuel delta temp.
+    # ans = 2523  # As given in Table V; this is WRONG!
     ans = 2526  # As calculated using the correct values.
     res = hotspot.calculate_temps(T_in, dT, hcf)
+    assert res.shape == (1, 5)
+    res = res[:, -1]
     msg = f"Ans (F): {ans}\nRes (F): {res}"
     assert abs(ans - res) < 1.0, msg
 
@@ -179,6 +182,8 @@ def test_read_and_evaluate(testdir):
     hcf, expr = hotspot._read_hcf_table(fpath)
     hcf = hotspot._evaluate_hcf_expr(hcf, expr, dT)
     two_sig_temps = hotspot.calculate_temps(T_in, dT, hcf)
+    assert two_sig_temps.shape == (2, 3)
+    two_sig_temps = two_sig_temps[:, -1]
     ans = np.array([832.662166, 832.381719])
     assert np.allclose(two_sig_temps, ans)
 
@@ -214,38 +219,53 @@ def test_csv_invalid_expr(testdir, caplog):
     assert msg in caplog.text
 
 
-def test_Rx_hotspot_analysis_and_table_generation(testdir):
+def test_rx_hotspot_analysis_and_table_gen(testdir):
     """Test hotspot analysis and output table generation
     from mock Reactor object"""
     # Read input and create Reactor object
     inpath = os.path.join(testdir, 'test_inputs')
-    outpath = os.path.join(testdir, 'test_results',
-                           'input_silly_hotspot')
+    outpath = os.path.join(testdir, 'test_results', 'silly_hotspot')
     cleanup(outpath)
     inp = dassh.DASSH_Input(
         os.path.join(inpath, 'input_silly_hotspot.txt'))
     r = dassh.Reactor(inp, path=outpath, write_output=True)
 
     # Assign fake "_peak" data to assemblies
+    # Items: Pin ID, Height, Power, T_cool, T_clad_od,
+    #        T_clad_mw, T_clad_id, T_fuel_od, T_fuel_cl
     pin_data = [0.0, 3.0, 0.0, 787.0, 795.4, 805.0, 815.2, 815.2, 1000]
     keys = ['clad_od', 'clad_mw', 'clad_id', 'fuel_od', 'fuel_cl']
     for i in range(len(r.assemblies)):
         r.assemblies[i]._peak = {'pin': {}}
         for j in range(len(keys)):
-            tmp = np.array(pin_data)
-            tmp[3:] *= np.random.uniform(low=0.98, high=1.02)
-            tmp = list(tmp)
+            # tmp = np.array(pin_data)
+            # tmp[3:] *= np.random.uniform(low=0.995, high=1.005)
+            # tmp = list(tmp)
             r.assemblies[i]._peak['pin'][keys[j]] = \
-                [tmp[j + 4], j + 4, tmp]
+                [pin_data[j + 4], j + 4, pin_data]
 
     # Run the analysis calculation and check the result
-    two_sig_temps, asm_ids, asm_names = hotspot.analyze(r)
+    hotspot_results = hotspot.analyze(r)
+    two_sig_temps, asm_ids = hotspot_results
     # *** check the result ***
+    ans_clad_mw = np.array([830.53, 839.56, 849.78])
+    for row in two_sig_temps['clad_mw']:
+        assert np.all(np.abs(row - ans_clad_mw) < 0.1)
+    ans_fuel_cl = np.array([830.53, 839.56, 849.78, 860.65, 860.65, 1060.52])
+    for row in two_sig_temps['fuel_cl']:
+        assert np.all(np.abs(row - ans_fuel_cl) < 0.1)
 
     # Generate output tables and test them
     out = ''
     peak_clad = dassh.table.PeakPinTempTable('clad', 'mw')
-    out += peak_clad.generate(r, (two_sig_temps['clad_mw'], asm_ids))
+    out += peak_clad.generate(r, hotspot_results)
     peak_fuel = dassh.table.PeakPinTempTable('fuel', 'cl')
-    out += peak_fuel.generate(r, (two_sig_temps['fuel_cl'], asm_ids))
+    out += peak_fuel.generate(r, hotspot_results)
     # *** check the result ***
+    refpath = os.path.join(testdir, 'test_data', 'ref_hotspot_datatable.txt')
+    with open(refpath, 'r') as f:
+        ref = f.read()
+    if out != ref:  # Write to disk so you can look into it
+        with open(os.path.join(outpath, 'table_test.txt'), 'w') as f:
+            f.writelines(out)
+    assert out == ref

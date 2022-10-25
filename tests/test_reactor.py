@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-03-23
+date: 2022-10-25
 author: matz
 Test the temperature sweep across the core
 """
@@ -346,6 +346,7 @@ def test_multiregion_ebal(testdir):
     )
     r = dassh.Reactor(inp, path=outpath, write_output=True)
     r.temperature_sweep()
+    r.postprocess()
     save_reactor_pytest(r)
     assert 'dassh.out' in os.listdir(outpath)
     # Check output file for energy balance
@@ -855,6 +856,7 @@ def test_write_assembly_duct_tables(testdir):
     inp.data['Assembly']['fuel']['use_low_fidelity_model'] = False
     r = dassh.Reactor(inp, path=outpath, write_output=True)
     r.temperature_sweep()
+    r.postprocess()
     assert os.path.exists(filepath)
 
     # Get this for later
@@ -909,6 +911,7 @@ def test_write_assembly_pin_tables(testdir):
     inp = dassh.DASSH_Input(inpath)
     r = dassh.Reactor(inp, path=outpath, write_output=True)
     r.temperature_sweep()
+    r.postprocess()
     assert os.path.exists(filepath)
 
     # Get this for later
