@@ -235,7 +235,7 @@ class Reactor(LoggedClass):
             self._options['ebal'] = kwargs['calc_energy_balance']
 
         self._options['hotspot'] = \
-            dassh.hotspot._setup_postprocess(self, inp)
+            dassh.hotspot._setup_postprocess(inp)
 
         # DUMP FILE ARGUMENTS: collect to set up files at sweep time
         self._options['dump'] = inp.data['Setup']['Dump']

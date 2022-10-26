@@ -1,0 +1,95 @@
+########################################################################
+# author: Milos Atz
+# date: 2021-06-10
+# comment: 16 asm, absurd layout, + hotspot analysis
+########################################################################
+# SETUP: Problem setup, user options, etc
+
+[Setup]
+    calc_energy_balance = True        
+    [[Dump]]
+        coolant = True
+    [[Units]]
+        temperature    = Celsius
+        length         = cm
+        mass_flow_rate = kg/s
+
+
+########################################################################
+# POWER DISTRIBUTION
+
+[Power]
+    total_power          = 3.0e7
+    # power_scaling_factor = 0.1
+    [[ARC]]
+        fuel_material   = metal
+        fuel_alloy      = zr
+        coolant_heating = sodium
+        # power_model     = pin_only
+        pmatrx = ../test_data/16_asm_silly/PMATRX
+        geodst = ../test_data/16_asm_silly/GEODST
+        ndxsrf = ../test_data/16_asm_silly/NDXSRF
+        znatdn = ../test_data/16_asm_silly/ZNATDN
+        labels = ../test_data/16_asm_silly/LABELS
+        nhflux = ../test_data/16_asm_silly/NHFLX0N
+        ghflux = ../test_data/16_asm_silly/NHFLX0G
+
+
+########################################################################
+# CORE DETAILS: Describe characteristics of the reactor core
+
+[Core]
+    coolant_inlet_temp   = 350.0
+    coolant_material     = sodium
+    length               = 400.0
+    assembly_pitch       = 12.0
+    bypass_fraction      = 0.01
+    gap_model            = flow
+
+
+########################################################################
+# ASSEMBLY DETAILS: Describe a group of assemblies
+# NAME identifies a group of assemblies (e.g. "INNER_DRIVER")
+# Can be repeated for as many assemblies as required by the user.
+
+[Assembly]
+    [[fuel]]
+        num_rings      = 10
+        pin_pitch      = 0.6725
+        pin_diameter   = 0.5590
+        clad_thickness = 0.0500
+        wire_pitch     = 20.000
+        wire_diameter  = 0.100
+        duct_ftf       = 11.25, 11.75
+        duct_material  = HT9
+        [[[FuelModel]]]
+            clad_material = HT9
+            gap_material  = sodium
+            gap_thickness = 0.001
+            r_frac        = 0.0, 0.3333, 0.66666
+            pu_frac       = 0.20, 0.20, 0.20
+            zr_frac       = 0.10, 0.10, 0.10
+            porosity      = 0.10, 0.12, 0.18
+            hotspot_input_sig_clad  = 3
+            hotspot_output_sig_clad = 2
+            hotspot_subfactors_clad = crbr_fuel_clad_mw
+            hotspot_input_sig_fuel  = 3
+            hotspot_output_sig_fuel = 2
+            hotspot_subfactors_fuel = fftf_fuel_cl
+
+
+########################################################################
+# ASSIGN assemblies to positions in the core; assign fixed
+# flow rates or temperature limits to one or multiple assemblies.
+# Indicate which assemblies must be grouped together in an orificing
+# calculation.
+
+[Assignment]
+    [[ByPosition]]
+        fuel = 1,  1,  1, FLOWRATE = 19.0
+        fuel = 2,  1,  6, FLOWRATE = 14.0
+        fuel = 3,  1,  1, FLOWRATE = 11.0
+        fuel = 3,  1,  2, FLOWRATE = 6.25
+
+
+########################################################################

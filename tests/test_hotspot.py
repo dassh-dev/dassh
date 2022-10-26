@@ -208,6 +208,24 @@ def test_csv_incorrect_ncol(testdir, caplog):
     assert msg in caplog.text
 
 
+def test_clad_subfactors_for_fuel_calc(testdir, caplog):
+    """Test that code captures error when working HCF for clad
+    calculation are used for fuel calculation (not enough cols)"""
+    # Read input
+    inp = dassh.DASSH_Input(
+        os.path.join(
+            testdir,
+            'test_inputs',
+            'x_hcf_ncols-2.txt'))
+    # Run setup method - should pass
+    test = dassh.hotspot._setup_postprocess(inp)
+    # Now see what happens when you try to read the table
+    with pytest.raises(SystemExit):
+        sf, expr = dassh.hotspot._read_hcf_table(
+            test['fuel']['subfactors_fuel'], cols_needed=7)
+    assert 'Incorrect number of columns in HCF table' in caplog.text
+
+
 def test_csv_invalid_expr(testdir, caplog):
     """Catch errors in user-prepared HCF CSV - invalid expression"""
     # Changed one of the "dT" variables to just be "T"
@@ -217,6 +235,35 @@ def test_csv_invalid_expr(testdir, caplog):
     msg = 'ERROR: Invalid expression! '
     msg += 'Found: "1 + (3 / T) * np.sqrt(0.002304 '
     assert msg in caplog.text
+
+
+def test_load_builtin_subfactors_from_input(testdir):
+    """Test that input can handle user input for builtin subfactors"""
+    # Read input
+    inp = dassh.DASSH_Input(
+        os.path.join(
+            testdir,
+            'test_inputs',
+            'input_builtin_hotspot.txt'))
+    # Run setup method - should pass
+    test = dassh.hotspot._setup_postprocess(inp)
+    # Now make sure you can read the subfactors - should pass
+    sf, expr = dassh.hotspot._read_hcf_table(test['fuel']['subfactors_clad'])
+    sf, expr = dassh.hotspot._read_hcf_table(test['fuel']['subfactors_fuel'])
+
+
+def test_read_all_builtin_subfactors(testdir):
+    """Test that all builtin subfactor tables can be read"""
+    path_to_builtins = os.path.abspath(
+        os.path.join(testdir, '..', 'dassh', 'data'))
+    fnames = ('hcf_crbr_blanket_clad_mw.csv',
+              'hcf_crbr_fuel_clad_mw.csv',
+              'hcf_ebrii_markv_fuel_cl.csv',
+              'hcf_fftf_clad_mw.csv',
+              'hcf_fftf_fuel_cl.csv')
+    for f in fnames:
+        sf, expr = dassh.hotspot._read_hcf_table(
+            os.path.join(path_to_builtins, f))
 
 
 def test_rx_hotspot_analysis_and_table_gen(testdir):

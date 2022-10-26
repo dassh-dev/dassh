@@ -18,11 +18,6 @@ date: 2022-10-25
 author: matz
 comment: Hot spot analysis via the semistatistical horizontal method
 """
-# NOTES:
-# How to handle different hotspot calculations for different assemblies?
-# Maybe just a for-loop over each assembly type? Then sort, and indicate
-# in the output table which set of HCF was used with which assembly?
-# Asm ID | Hotspot Subfactors | Sigma | Peak Clad | Peak Fuel |
 ########################################################################
 import os
 import sys
@@ -33,14 +28,21 @@ import numpy as np
 module_logger = logging.getLogger('dassh.hotspot')
 
 
-def _setup_postprocess(r_obj, dassh_inp):
+_ROOT = os.path.dirname(os.path.abspath(__file__))
+_BUILTINS = ['crbr_blanket_clad_mw',
+             'crbr_fuel_clad_mw',
+             'ebrii_markv_fuel_cl',
+             'fftf_clad_mw',
+             'fftf_fuel_cl']
+
+
+def _setup_postprocess(dassh_inp):
     """Read in necessary information from input into Reactor
     object to enable hotspot calculation after sweep"""
     hotspot_dict = {}
     keys = ('input_sig_clad', 'output_sig_clad', 'subfactors_clad',
             'input_sig_fuel', 'output_sig_fuel', 'subfactors_fuel')
     keys = ('input_sig', 'output_sig', 'subfactors')
-    _builtins = ()
     for a in dassh_inp.data['Assembly'].keys():
         # Figure out which keyword was used to provide inputs
         if 'PinModel' in dassh_inp.data['Assembly'][a].keys():
@@ -61,21 +63,23 @@ def _setup_postprocess(r_obj, dassh_inp):
                     key = key + '_' + pin_component
                     kk = 'hotspot_' + key
                     if key[:10] == 'subfactors':
-                        if dassh_inp.data['Assembly'][a][k][kk] in _builtins:
-                            # Do something
-                            pass
+                        if dassh_inp.data['Assembly'][a][k][kk] in _BUILTINS:
+                            fname = 'hcf_'
+                            fname += dassh_inp.data['Assembly'][a][k][kk]
+                            fname += '.csv'
+                            fpath = os.path.join(_ROOT, 'data', fname)
                         else:  # It's a filepath to a CSV
                             fpath = os.path.abspath(
                                 os.path.join(
                                     dassh_inp.path,
                                     dassh_inp.data['Assembly'][a][k][kk]))
-                            if not os.path.exists(fpath):
-                                msg = 'Path to hotspot subfactors ' \
-                                      f'CSV does not exist: {fpath}'
-                                module_logger.log(40, f'ERROR: {msg}')
-                                sys.exit(1)
-                            else:
-                                hotspot_dict[a][key] = fpath
+                        if not os.path.exists(fpath):
+                            msg = 'Path to hotspot subfactors ' \
+                                  f'CSV does not exist: {fpath}'
+                            module_logger.log(40, f'ERROR: {msg}')
+                            sys.exit(1)
+                        else:
+                            hotspot_dict[a][key] = fpath
                     else:
                         hotspot_dict[a][key] = \
                             dassh_inp.data['Assembly'][a][k][kk]
@@ -113,9 +117,9 @@ def analyze(r_obj):
         # Clad temperatures
         if hs['subfactors_clad'] is not None:
             dT = _get_clad_peak_dt(r_obj, asm_name)
-            subfactors, expr = _read_hcf_table(hs['subfactors_clad'])
-            subfactors = _evaluate_hcf_expr(subfactors, expr, dT)
-            peak_clad = calculate_temps(r_obj.inlet_temp, dT, subfactors,
+            subf, expr = _read_hcf_table(hs['subfactors_clad'], cols_needed=5)
+            subf = _evaluate_hcf_expr(subf, expr, dT)
+            peak_clad = calculate_temps(r_obj.inlet_temp, dT, subf,
                                         IN_sigma=hs['input_sig_clad'],
                                         OUT_sigma=hs['output_sig_clad'])
             peak_temps['clad_mw'].append(peak_clad)
@@ -124,10 +128,10 @@ def analyze(r_obj):
         # Fuel temperatures
         if hs['subfactors_fuel'] is not None:
             dT = _get_fuel_peak_dt(r_obj, asm_name)
-            subfactors, expr = _read_hcf_table(hs['subfactors_fuel'])
-            subfactors, expr = _split_clad_subfactors(subfactors, expr)
-            subfactors = _evaluate_hcf_expr(subfactors, expr, dT)
-            peak_fuel = calculate_temps(r_obj.inlet_temp, dT, subfactors,
+            subf, expr = _read_hcf_table(hs['subfactors_fuel'], cols_needed=5)
+            subf, expr = _split_clad_subfactors(subf, expr)
+            subf = _evaluate_hcf_expr(subf, expr, dT)
+            peak_fuel = calculate_temps(r_obj.inlet_temp, dT, subf,
                                         IN_sigma=hs['input_sig_fuel'],
                                         OUT_sigma=hs['output_sig_fuel'])
             peak_temps['fuel_cl'].append(peak_fuel)
@@ -236,13 +240,15 @@ def _get_fuel_peak_dt(r_obj, asm_name):
     return dt
 
 
-def _read_hcf_table(path_to_hcf_table):
+def _read_hcf_table(path_to_hcf_table, cols_needed=None):
     """Read hot channel subfactors from CSV
 
     Parameters
     ----------
     path_to_hcf_table : str
         Path to the HCF CSV file
+    cols_needed (optional) : int
+        Minimum number of columns that the CSV needs to have
 
     Notes
     -----
@@ -258,15 +264,25 @@ def _read_hcf_table(path_to_hcf_table):
     with open(path_to_hcf_table, mode='r', encoding='utf-8-sig') as f:
         hcf_table = f.read()
 
-    # Check header row length
+    # Check header row length - assess the number of columns
     header = hcf_table.splitlines()[0].split(',')
     n_cols = len(header)
-    if n_cols not in (5, 7):
-        msg = f'Incorrect number of columns in HCF table: {hcf_table}'
-        msg += '\nNeed 5 columns for 2-sigma clad temp, and 7 cols'
-        msg += f'for 2-sigma fuel temp; found {n_cols} cols'
-        module_logger.log(40, f'ERROR: {msg}')
-        sys.exit(1)
+    if cols_needed:
+        if n_cols < cols_needed:
+            msg = 'Incorrect number of columns in HCF table: ' \
+                  f'{path_to_hcf_table} \nNeed at least ' \
+                  f'{cols_needed} columns for requested ' \
+                  f'hotspot temp calculation; found {n_cols} columns'
+            module_logger.log(40, f'ERROR: {msg}')
+            sys.exit(1)
+    else:
+        if n_cols not in (5, 7):
+            msg = 'Incorrect number of columns in HCF table: ' \
+                  f'{path_to_hcf_table} \nNeed (at least) 5 columns ' \
+                  'for hotspot clad temp and 7 cols for hotspot fuel '\
+                  f'temp; found {n_cols} columns'
+            module_logger.log(40, f'ERROR: {msg}')
+            sys.exit(1)
 
     # Check header row elements
     error = _check_header(header)
@@ -300,7 +316,7 @@ def _read_hcf_table(path_to_hcf_table):
     for row in range(n_lines):
         line = hcf_table_lines[row].split(',')
         key = line[1].lower()
-        assert key in ('direct', 'statistical')
+        assert key in ('direct', 'statistical'), key
         tmp = []
         for col in range(n_cols - 2):
             val = line[col + 2]
