@@ -53,57 +53,6 @@ _COLS_NEEDED = {
     'fuel_cl': 7}
 
 
-def _setup_postprocess_old(dassh_inp):
-    """Read in necessary information from input into Reactor
-    object to enable hotspot calculation after sweep"""
-    hotspot_dict = {}
-    keys = ('input_sig_clad', 'output_sig_clad', 'subfactors_clad',
-            'input_sig_fuel', 'output_sig_fuel', 'subfactors_fuel')
-    keys = ('input_sig', 'output_sig', 'subfactors')
-    for a in dassh_inp.data['Assembly'].keys():
-        # Figure out which keyword was used to provide inputs
-        if 'PinModel' in dassh_inp.data['Assembly'][a].keys():
-            k = 'PinModel'
-        elif 'FuelModel' in dassh_inp.data['Assembly'][a].keys():
-            k = 'FuelModel'
-        else:
-            continue
-        # Figure out whether the analysis is required: only if
-        # the user provided subfactors for clad and/or fuel
-        for pin_component in ('clad', 'fuel'):
-            check = f'hotspot_subfactors_{pin_component}'
-            if dassh_inp.data['Assembly'][a][k][check]:  # subfactors specified
-                # Add assembly to hotspot dict if not already present
-                if a not in hotspot_dict.keys():
-                    hotspot_dict[a] = {}
-                for key in keys:
-                    key = key + '_' + pin_component
-                    kk = 'hotspot_' + key
-                    if key[:10] == 'subfactors':
-                        if dassh_inp.data['Assembly'][a][k][kk] in _BUILTINS:
-                            fname = 'hcf_'
-                            fname += dassh_inp.data['Assembly'][a][k][kk]
-                            fname += '.csv'
-                            fpath = os.path.join(_ROOT, 'data', fname)
-                        else:  # It's a filepath to a CSV
-                            fpath = os.path.abspath(
-                                os.path.join(
-                                    dassh_inp.path,
-                                    dassh_inp.data['Assembly'][a][k][kk]))
-                        if not os.path.exists(fpath):
-                            msg = 'Path to hotspot subfactors ' \
-                                  f'CSV does not exist: {fpath}'
-                            module_logger.log(40, f'ERROR: {msg}')
-                            sys.exit(1)
-                        else:
-                            hotspot_dict[a][key] = fpath
-                    else:
-                        hotspot_dict[a][key] = \
-                            dassh_inp.data['Assembly'][a][k][kk]
-    if hotspot_dict:
-        return hotspot_dict
-
-
 def _setup_postprocess(dassh_inp):
     """Read in necessary information from input into Reactor
     object to enable hotspot calculation after sweep"""
@@ -156,68 +105,6 @@ def _setup_postprocess(dassh_inp):
                         dassh_inp.data['Assembly'][a]['Hotspot'][hs][k]
     if hotspot_dict:
         return hotspot_dict
-
-
-def analyze_old(r_obj):
-    """Postprocess temperature results to obtain hotspot temperatures
-    based on user-supplied subfactors
-
-    Parameters
-    ----------
-    r_obj : DASSH Reactor object
-        Contains model state after temperature sweep
-
-    """
-    if not r_obj._options['hotspot']:
-        return None
-    asm_ids = []
-    asm_names = []
-    peak_temps = {'clad_mw': [], 'fuel_cl': []}
-    for asm_name in r_obj._options['hotspot'].keys():
-        hs = r_obj._options['hotspot'][asm_name]
-        if not any((hs['subfactors_clad'], hs['subfactors_fuel'])):
-            continue  # No hotspot analysis requested
-
-        # Otherwise, collect assembly ids that match the name
-        ids = [a.id for a in r_obj.assemblies if a.name == asm_name]
-        n_asm = len(ids)
-        empty_fill = np.zeros(n_asm)
-        asm_ids += ids
-        asm_names += [asm_name for i in range(n_asm)]
-
-        # Clad temperatures
-        if hs['subfactors_clad'] is not None:
-            dT = _get_clad_peak_dt(r_obj, asm_name)
-            subf, expr = _read_hcf_table(hs['subfactors_clad'], cols_needed=5)
-            subf = _evaluate_hcf_expr(subf, expr, dT)
-            peak_clad = calculate_temps(r_obj.inlet_temp, dT, subf,
-                                        IN_sigma=hs['input_sig_clad'],
-                                        OUT_sigma=hs['output_sig_clad'])
-            peak_temps['clad_mw'].append(peak_clad)
-        else:
-            peak_temps['clad_mw'].append(empty_fill)
-        # Fuel temperatures
-        if hs['subfactors_fuel'] is not None:
-            dT = _get_fuel_peak_dt(r_obj, asm_name)
-            subf, expr = _read_hcf_table(hs['subfactors_fuel'], cols_needed=5)
-            subf, expr = _split_clad_subfactors(subf, expr)
-            subf = _evaluate_hcf_expr(subf, expr, dT)
-            peak_fuel = calculate_temps(r_obj.inlet_temp, dT, subf,
-                                        IN_sigma=hs['input_sig_fuel'],
-                                        OUT_sigma=hs['output_sig_fuel'])
-            peak_temps['fuel_cl'].append(peak_fuel)
-        else:
-            peak_temps['fuel_cl'].append(empty_fill)
-
-    # Need to sort! Create lists of ids, names, and temps. Sort
-    # all according to ids. Then write into output table
-    order = np.argsort(asm_ids)
-    asm_ids = [asm_ids[i] for i in order]
-    asm_names = [asm_names[i] for i in order]
-    for k in ('clad_mw', 'fuel_cl'):
-        peak_temps[k] = np.hstack(peak_temps[k])
-        peak_temps[k] = peak_temps[k][order]
-    return peak_temps, asm_ids  # , asm_names
 
 
 def analyze(r_obj):
