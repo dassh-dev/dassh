@@ -337,6 +337,13 @@ def test_rx_hotspot_analysis_and_table_gen(testdir):
     refpath = os.path.join(testdir, 'test_data', 'ref_hotspot_datatable.txt')
     with open(refpath, 'r') as f:
         ref = f.read()
+    # Replace the tagged paths to HCF CSVs with the actual paths; this
+    # is necessary so that the reference file is not static and can be
+    # used when running on GitHub CI.
+    hcf_csv_clad = r._options['hotspot']['fuel']['clad_mw']['subfactors']
+    hcf_csv_fuel = r._options['hotspot']['fuel']['fuel_cl']['subfactors']
+    ref = ref.replace('TAG_HCF_INPUT_CLAD', hcf_csv_clad)
+    ref = ref.replace('TAG_HCF_INPUT_FUEL', hcf_csv_fuel)
     if out != ref:  # Write to disk so you can look into it
         with open(os.path.join(outpath, 'table_test.txt'), 'w') as f:
             f.writelines(out)

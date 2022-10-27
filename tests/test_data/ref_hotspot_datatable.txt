@@ -14,7 +14,7 @@ Hot spot temperatures are calculated based on:
 
 Assembly        Input unc.   Output unc.  Hotspot subfactors
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-fuel            3-sigma      2-sigma      /Users/matz/Documents/DASSH/src_DASSH/tests/test_data/hcf_input_clad.csv
+fuel            3-sigma      2-sigma      TAG_HCF_INPUT_CLAD
 
 
                                      | Nominal Peak Temps (˚C) ----------------------| N-Sigma Peak Temps (˚C) 
@@ -46,7 +46,7 @@ Hot spot temperatures are calculated based on:
 
 Assembly        Input unc.   Output unc.  Hotspot subfactors
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-fuel-2          3-sigma      2-sigma      /Users/matz/Documents/DASSH/src_DASSH/tests/test_data/hcf_input_clad.csv
+fuel-2          3-sigma      2-sigma      TAG_HCF_INPUT_CLAD
 
 
                                      | Nominal Peak Temps (˚C) ----------------------| N-Sigma Peak Temps (˚C) -----
@@ -78,8 +78,8 @@ Hot spot temperatures are calculated based on:
 
 Assembly        Input unc.   Output unc.  Hotspot subfactors
 - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
-fuel            3-sigma      2-sigma      /Users/matz/Documents/DASSH/src_DASSH/tests/test_data/hcf_input_fuel.csv
-fuel-2          3-sigma      2-sigma      /Users/matz/Documents/DASSH/src_DASSH/tests/test_data/hcf_input_fuel.csv
+fuel            3-sigma      2-sigma      TAG_HCF_INPUT_FUEL
+fuel-2          3-sigma      2-sigma      TAG_HCF_INPUT_FUEL
 
 
                                      | Nominal Peak Temps (˚C) ----------------------| N-Sigma Peak Temps (˚C) ---------------------
