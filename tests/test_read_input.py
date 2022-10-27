@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-04-27
+date: 2022-07-07
 author: matz
 Test the DASSH read_input module and DASSH_input object
 """
@@ -720,3 +720,17 @@ def test_detailed_subchannel_table_inputs(testdir, caplog):
     assert len(tmp['assemblies']) == 1
     assert tmp['assemblies'][0] == 1
     assert all(x in ans_z for x in tmp['axial_positions'])
+
+
+def test_warning_bare_rod_kc_corr(testdir, caplog):
+    """Confirm DASSH warning if KC bare rode mixing core is
+    used for wire wrapped bundle"""
+    dassh.DASSH_Input(
+        os.path.join(
+            testdir,
+            'test_inputs',
+            'x_input_kcmix_wire.txt'))
+    msg = 'WARNING: Asm "TEST"; Using bare-rod correlation for ' \
+          'turbulent mixing but specified nonzero wire diameter.'
+    print(caplog.text)
+    assert msg in caplog.text

@@ -516,7 +516,10 @@ class Reactor(LoggedClass):
         # Normalize power to user request
         renorm = 1.0
         if ptot_user is not None:
-            renorm = ptot_user / pcalc
+            if ptot_user == 0.0 or pcalc == 0.0:
+                renorm = 0.0
+            else:
+                renorm = ptot_user / pcalc
             for i in range(len(plist)):
                 if plist[i] == []:  # skip if asm is undefined
                     continue

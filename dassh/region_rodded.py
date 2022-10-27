@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-04-06
+date: 2022-07-14
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -64,6 +64,7 @@ def make_rr_asm(asm_input, name, mat_dict, flow_rate, se2geo=False,
                       asm_input['corr_flowsplit'],
                       asm_input['corr_mixing'],
                       asm_input['corr_nusselt'],
+                      asm_input['corr_shapefactor'],
                       asm_input['bypass_gap_flow_fraction'],
                       asm_input['bypass_gap_loss_coeff'],
                       asm_input['wire_direction'],
@@ -156,6 +157,8 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         Correlation for subchannel mixing params; "CTD" is recommended
     corr_nusselt : str (optional) {'DB'}
         Correlation for Nu; "DB" (Dittus-Boelter) is recommended
+    corr_shapefactor : str (optional) {'CT'}
+        Correlation for conduction shape factor.
     byp_ff : float (optional)
         Unused
     byp_k : float (optional)
@@ -197,8 +200,9 @@ class RoddedRegion(LoggedClass, DASSH_Region):
     def __init__(self, name, n_ring, pin_pitch, pin_diam, wire_pitch,
                  wire_diam, clad_thickness, duct_ftf, flow_rate,
                  coolant_mat, duct_mat, htc_params_duct, corr_friction,
-                 corr_flowsplit, corr_mixing, corr_nusselt, byp_ff=None,
-                 byp_k=None, wwdir='clockwise', sf=1.0, se2=False,
+                 corr_flowsplit, corr_mixing, corr_nusselt,
+                 corr_shapefactor, byp_ff=None, byp_k=None,
+                 wwdir='clockwise', sf=1.0, se2=False,
                  param_update_tol=0.0):
         """Instantiate RoddedRegion object"""
         # Instantiate Logger
@@ -336,7 +340,8 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         # if self.n_ring == 1:
         #     self._cleanup_1pin()
         self._setup_correlations(corr_friction, corr_flowsplit,
-                                 corr_mixing, corr_nusselt)
+                                 corr_mixing, corr_nusselt,
+                                 corr_shapefactor)
 
     ####################################################################
     # SETUP METHODS
@@ -479,7 +484,7 @@ class RoddedRegion(LoggedClass, DASSH_Region):
             # First: try using loss coefficient to calculate pressure
             # drop; use to determine required flow rate
             if self._byp_k is not None:
-                raise NotImplementedError('Loss coefficient input'
+                raise NotImplementedError('Loss coefficient input '
                                           'not yet supported')
                 # Need to determine bypass flow rates based on pressure
                 # drop, which needs to be equal across all flow paths
@@ -567,7 +572,7 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         self.ht['cond'] = _setup_conduction_constants(self, const)
         self.ht['conv'] = _setup_convection_constants(self, const)
 
-    def _setup_correlations(self, ff, fs, mix, nu, raise_warnings=True):
+    def _setup_correlations(self, ff, fs, mix, nu, sf, warn=True):
         """Import correlations and load any constants
 
         Parameters
@@ -580,13 +585,15 @@ class RoddedRegion(LoggedClass, DASSH_Region):
             Mixing parameters correlation name
         nu : str
             Nusselt number correlation name
-        raise_warnings : boolean
+        sf : str
+            Shape factor correlation name
+        warn : boolean
             If True, raise warnings accumulated when importing
             correlations (default = True)
 
         """
         self.corr, self.corr_names, self.corr_constants = \
-            import_corr(ff, fs, mix, nu, self, raise_warnings)
+            import_corr(ff, fs, mix, nu, sf, self, warn)
         self.coolant_int_params = \
             {'Re': 0.0,  # bundle-average Reynolds number
              'Re_sc': np.zeros(3),  # subchannel Reynolds numbers
@@ -603,6 +610,33 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                  'vel': np.zeros(self.n_bypass),  # bypass-avg velocities
                  'ff': np.zeros(self.n_bypass),  # byp sc fric. fracs.
                  'htc': np.zeros((self.n_bypass, 2))}  # byp sc htc
+        # Update shape factor if correlation was specified
+        if self.corr['sf'] is not None:
+            self._sf = self.corr['sf'](self)
+
+        # Check P/D and W/D ratios for acceptability if CTD/UCTD.
+        # Already checked for turbulent value in read_input. Here,
+        # need to check if flow is laminar.
+        if 'ctd' in self.corr_names.values() or \
+                'uctd' in self.corr_names.values():
+            p2d = self.pin_pitch / self.pin_diameter
+            Re_bt = 1e4 * 10**(0.7 * p2d - 1)
+            m2a = self.int_flow_rate / self.bundle_params['area']
+            Re = m2a * self.bundle_params['de'] / self.coolant.viscosity
+            if Re < Re_bt:
+                p2d_limit = 2.38024  # Laminar limit
+                if p2d > p2d_limit:
+                    msg = f'ERROR: P/D for pin bundle "{self.name}" '
+                    + 'is too large for CTD/UCTD correlations. '
+                    + 'Consider modifying pin bundle design.'
+                    self.log('error', msg)
+                w2d_limit = 2.10889   # Laminar limit
+                if self.edge_pitch / self.pin_diameter > w2d_limit:
+                    msg = 'ERROR: Gap between pin bundle and duct '
+                    + f'for pin bundle "{self.name}" is too large '
+                    + 'to be acceptable by CTD/UCTD correlations. '
+                    + 'Consider modifying pin bundle dimensions.'
+                    self.log('error')
 
     def _determine_byp_flow_rate(self):
         """Calculate the bypass flow rate by estimating pressure drop
@@ -633,7 +667,8 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                                   self.corr_names['fs'],
                                   self.corr_names['mix'],
                                   self.corr_names['nu'],
-                                  raise_warnings=False)
+                                  self.corr_names['sf'],
+                                  warn=False)
         if new_flowrate is not None:
             # Define new flow rate attribute in clone
             clone._setup_flowrate(new_flowrate)
@@ -1942,7 +1977,7 @@ def _setup_convection_constants(rr, ht_consts):
 ########################################################################
 
 
-def import_corr(friction, flowsplit, mixing, nusselt, bundle, warn):
+def import_corr(friction, flowsplit, mix, nu, sf, bundle, warn):
     """Import correlations to be used in a DASSH Assembly object
 
     Parameters
@@ -1953,12 +1988,15 @@ def import_corr(friction, flowsplit, mixing, nusselt, bundle, warn):
     flowsplit : str {'NOV', 'CTD', 'UCTD'}
         Name of the correlation used to determine the flow split
         parameter between coolant subchannels.
-    mixing : str {'MIT', 'CTD'}
+    mix : str {'MIT', 'CTD'}
         Name of the correlation used to determine the mixing
         parameters for coolant between subchannels
-    nusselt : str {'DB'}
+    nu : str {'DB'}
         Name of the correlation used to determine the Nusselt number,
         from which the heat transfer coefficients are determined
+    sf : str {'CT'}
+        Name of the correlation used to determine the conduction shape
+        factor; enhances conduction between subchannels
     bundle : DASSH RoddedRegion object
     warn : bool
         Raise applicability warnings or no
@@ -1974,7 +2012,6 @@ def import_corr(friction, flowsplit, mixing, nusselt, bundle, warn):
     """
     # Dictionary stores the calculation methods imported from
     # each correlation module
-
     corr = {}
     corr_names = {}
     corr_const = {}
@@ -1998,29 +2035,38 @@ def import_corr(friction, flowsplit, mixing, nusselt, bundle, warn):
         corr_names['fs'] = None
 
     # Mixing parameters
-    if mixing is not None:
-        mixing = '-'.join(re.split('-| ', mixing.lower()))
+    if mix is not None:
+        mix = '-'.join(re.split('-| ', mix.lower()))
         corr_names['mix'], corr['mix'], corr_const['mix'] = \
-            _import_mixing_correlation(mixing, bundle)
+            _import_mixing_correlation(mix, bundle)
     else:
         corr['mix'] = None
         corr_names['mix'] = None
 
+    # Conduction shape factor
+    if sf is not None:
+        sf = '-'.join(re.split('-| ', sf.lower()))
+        corr_names['sf'], corr['sf'], corr_const['sf'] = \
+            _import_shapefactor_correlation(sf, bundle)
+    else:
+        corr['sf'] = None
+        corr_names['sf'] = None
+
     # Nusselt number (for heat transfer coefficient)
-    nusselt = '-'.join(re.split('-| ', nusselt.lower()))
-    if nusselt in ['db', 'dittus-boelter']:
-        import dassh.correlations.nusselt_db as nu
+    nu = '-'.join(re.split('-| ', nu.lower()))
+    if nu in ['db', 'dittus-boelter']:
+        import dassh.correlations.nusselt_db as nusselt_db
         corr_names['nu'] = 'dittus-boelter'
-        corr['nu'] = nu.calculate_sc_Nu
+        corr['nu'] = nusselt_db.calculate_sc_Nu
         corr_const['nu'] = None
         # Add clad-to-coolant htc for bundle : use "bundle Nu" because
         # we do heat transfer to pins based on bundle-average Re
         # rather than subchannel Re
         corr_names['pin_nu'] = 'dittus-boelter'
-        corr['pin_nu'] = nu.calculate_bundle_Nu
+        corr['pin_nu'] = nusselt_db.calculate_bundle_Nu
     else:
         msg = 'Unknown correlation specified for Nusselt number: '
-        module_logger.error(msg + nusselt)
+        module_logger.error(msg + nu)
         sys.exit(1)
 
     return corr, corr_names, corr_const
@@ -2186,6 +2232,11 @@ def _import_mixing_correlation(name, bundle):
         name = 'upgraded-cheng-todreas'
         nickname = 'uctd'
 
+    elif name in ['kc', 'kim-chung', 'kc-bare', 'kim-chung-bare']:
+        import dassh.correlations.mixing_kc as mix
+        name = 'kim-chung-bare'
+        nickname = 'kc-bare'
+
     else:
         module_logger.error(f'Assembly {bundle.name}: unknown '
                             f'correlation specified for mixing '
@@ -2193,6 +2244,38 @@ def _import_mixing_correlation(name, bundle):
         sys.exit(1)
     constants = mix.calc_constants(bundle)
     return nickname, mix.calculate_mixing_params, constants
+
+
+def _import_shapefactor_correlation(name, bundle):
+    """Import mixing parameter correlations for use in DASSH Assembly
+
+    Parameters
+    ----------
+    name : str {'CT'}
+        Name of the correlation used to determine the mixing
+        parameters for coolant between subchannels
+    bundle : DASSH RoddedRegion object
+
+    Returns
+    -------
+    tuple
+        Correlation name, method, and dict of geometric constants
+
+    Notes
+    -----
+    No applicability warning - not sure there are any.
+
+    """
+    if name.lower() in ['ct', 'cheng-todreas']:
+        import dassh.correlations.shapefactor_ct as sf
+        name = 'cheng-todreas'
+        nickname = 'ct'
+    else:
+        module_logger.error(f'Assembly {bundle.name}: unknown '
+                            f'correlation specified for conduction '
+                            f'shape factor: {name}')
+        sys.exit(1)
+    return nickname, sf.calculate_shape_factor, None
 
 
 ########################################################################

@@ -14,36 +14,26 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-08-24
-author: Milos Atz, Micheal Smith
+date: 2022-07-06
+author: matz
+Cheng-Todreas correlation for conduction shape factor (1984)
 """
 ########################################################################
-import sys
-import numpy as np
-from dassh.read_input import *
-from dassh.pin import *
-from dassh.subchannel import *
-from dassh.logged_class import *
-from dassh.region import *
-from dassh.region_rodded import *
-from dassh.region_unrodded import *
-from dassh.assembly import *
-from dassh.core import *
-from dassh.material import *
-from dassh.power import *
-from dassh.reactor import *
-from dassh.utils import *
-from dassh.table import *
-from dassh.pin_model import *
-from dassh._ascii import *
-from dassh.plot import *
-from dassh import mesh_functions
-from dassh.orificing import *
-from dassh import hotspot
-import dassh.py4c as py4c
 
 
-np.set_printoptions(threshold=sys.maxsize, linewidth=500)
+def calculate_shape_factor(rr):
+    """Calculate conduction shape factor
 
+    Parameters
+    ----------
+    rr : DASSH RoddedRegion object
 
-__version__ = '0.10.13'
+    Returns
+    -------
+    float
+        Scalar by which conduction between subchannels is enhanced
+
+    """
+    P_over_D = rr.pin_pitch / rr.pin_diameter
+    s_over_D = (rr.pin_pitch - rr.pin_diameter) / rr.pin_diameter
+    return 0.66 * P_over_D * s_over_D**-0.3
