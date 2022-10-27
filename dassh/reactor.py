@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-07-06
+date: 2022-10-26
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -112,6 +112,12 @@ class Reactor(LoggedClass):
 
         """
         LoggedClass.__init__(self, 0, 'dassh.reactor.Reactor')
+        self._input_path = dassh_input.path
+        if path is None:
+            self.path = dassh_input.path
+        else:
+            self.path = path
+            os.makedirs(path, exist_ok=True)
 
         # Store user options from input/invocation
         self.units = dassh_input.data['Setup']['Units']
@@ -120,12 +126,6 @@ class Reactor(LoggedClass):
         # Store general inputs
         self.inlet_temp = dassh_input.data['Core']['coolant_inlet_temp']
         self.asm_pitch = dassh_input.data['Core']['assembly_pitch']
-        self._input_path = dassh_input.path
-        if path is None:
-            self.path = dassh_input.path
-        else:
-            self.path = path
-            os.makedirs(path, exist_ok=True)
 
         # Store DASSH materials (already loaded in DASSH_Input)
         self.materials = dassh_input.materials
@@ -233,6 +233,9 @@ class Reactor(LoggedClass):
         self._options['ebal'] = inp.data['Setup']['calc_energy_balance']
         if 'calc_energy_balance' in kwargs.keys():
             self._options['ebal'] = kwargs['calc_energy_balance']
+
+        self._options['hotspot'] = \
+            dassh.hotspot._setup_postprocess(inp)
 
         # DUMP FILE ARGUMENTS: collect to set up files at sweep time
         self._options['dump'] = inp.data['Setup']['Dump']
@@ -1074,14 +1077,6 @@ class Reactor(LoggedClass):
         except (AttributeError, KeyError):
             pass
 
-        # write the summary output
-        if self._options['write_output']:
-            self.write_output_summary()
-
-        # write detailed assembly subchannel output, if requested
-        if 'AssemblyTables' in self._options.keys():
-            self.write_assembly_data_tables()
-
     def _print_log_msg(self, step):
         """Format the message to log to the screen"""
         # Format plane number and axial position
@@ -1314,6 +1309,19 @@ class Reactor(LoggedClass):
     # WRITE OUTPUT
     ####################################################################
 
+    def postprocess(self):
+        """Prepare and write output"""
+        # Perform the hotspot analysis on clad/pin temperatures
+        hotspot_results = dassh.hotspot.analyze(self)
+
+        # Write the summary output
+        if self._options['write_output']:
+            self.write_output_summary(hotspot_results)
+
+        # Write detailed assembly subchannel output, if requested
+        if 'AssemblyTables' in self._options.keys():
+            self.write_assembly_data_tables()
+
     def write_summary(self):
         """Write the main DASSH output file"""
         # Output file preamble
@@ -1337,7 +1345,7 @@ class Reactor(LoggedClass):
         with open(os.path.join(self.path, 'dassh.out'), 'w') as f:
             f.write(out)
 
-    def write_output_summary(self):
+    def write_output_summary(self, hotspot_data=None):
         """Write the main DASSH output file"""
         out = ''
 
@@ -1364,10 +1372,23 @@ class Reactor(LoggedClass):
         out += duct_table.generate(self)
 
         # Peak pin temperatures
+        # First, figure out which peak temperatures to include.
+        # By default, clad MW and fuel CL will be included.
+        include = [('clad', 'mw'), ('fuel', 'cl')]
+        if hotspot_data:
+            if 'clad_od' in hotspot_data[0].keys():
+                # Put clad OD at the beginning
+                include.insert(0, ('clad', 'od'))
+            if 'clad_id' in hotspot_data[0].keys():
+                # Put clad ID right before fuel CL
+                include.insert(-1, ('clad', 'id'))
+            if 'fuel_od' in hotspot_data[0].keys():
+                # Put fuel OD right before fuel CL
+                include.insert(-1, ('fuel', 'od'))
         if any(['pin' in a._peak.keys() for a in self.assemblies]):
-            max_temps = dassh.table.PeakPinTempTable()
-            out += max_temps.generate(self, 'clad', 'mw')
-            out += max_temps.generate(self, 'fuel', 'cl')
+            for k in include:
+                peak_pin = dassh.table.PeakPinTempTable(k[0], k[1])
+                out += peak_pin.generate(self, hotspot_data)
 
         # Append to file
         with open(os.path.join(self.path, 'dassh.out'), 'a') as f:

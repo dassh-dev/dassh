@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-07-14
+date: 2022-08-24
 author: Milos Atz, Micheal Smith
 """
 ########################################################################
@@ -39,10 +39,11 @@ from dassh._ascii import *
 from dassh.plot import *
 from dassh import mesh_functions
 from dassh.orificing import *
+from dassh import hotspot
 import dassh.py4c as py4c
 
 
 np.set_printoptions(threshold=sys.maxsize, linewidth=500)
 
 
-__version__ = '0.10.12'
+__version__ = '0.10.13'

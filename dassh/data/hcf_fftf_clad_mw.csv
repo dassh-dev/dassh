@@ -1,0 +1,14 @@
+﻿Subfactor,Type,Coolant,Film,Cladding
+Inlet flow maldistribution,Direct,1.05,1.012,1
+Intrasubassembly flow maldistribution,Direct,1.14,1.0335,1
+Interchannel coolant mixing,Direct,1,1,1
+Power control band,Direct,1.02,1.02,1.02
+Wire wrap peaking,Direct,1,1,2
+Fissile fuel distribution,Statistical,1.035,1.035,1.035
+Power level measurements,Statistical,1.079,1.079,1.079
+Nuclear power distribution,Statistical,1.06,1.065,1.065
+Rod diameter and pitch and bow,Statistical,1.011,1,1
+Film coefficient,Statistical,1,1.266,1
+Gap coefficient,Statistical,1,1,1
+Fuel conductivity,Statistical,1.017,1,1
+Cladding conductivity and thickness,Statistical,1,1,1.12

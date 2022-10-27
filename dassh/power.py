@@ -740,9 +740,6 @@ class AssemblyPower(object):
     temperatures.
 
     """
-
-    # def __init__(self, power_profiles, avg_power_profile, z_finemesh,
-    #              k_bnds, scale=1.0):
     def __init__(self, power_profiles, avg_power_profile, z_finemesh,
                  rod_bundle_zbnds, scale=1.0):
         """Instantiate the AssemblyPower object"""
@@ -831,27 +828,8 @@ class AssemblyPower(object):
             return p_lin
 
         else:
-            # zm = self.transform_z(kf, z)
-            # z_exp = np.power(zm, np.arange(self.n_terms))
-            # if self.pin_power is not None:
-            #     p_lin['pins'] = np.dot(self.pin_power[kf], z_exp) * 100
-            # if self.coolant_power is not None:
-            #     p_lin['cool'] = np.dot(self.coolant_power[kf], z_exp) * 100
-            # if self.duct_power is not None:
-            #     p_lin['duct'] = np.dot(self.duct_power[kf], z_exp) * 100
             p_lin = self._calculate_pdist(kf, z)
 
-        # At extremely low power, can get some negative values
-        # (~ -1e-6 W/m); want to filter these out as zeros.
-        for k in p_lin.keys():
-            # try:
-            #     p_lin[k] = p_lin[k].clip(0.0)
-            # except AttributeError:
-            #     continue
-            try:
-                p_lin[k][p_lin[k] < 0.0] = 0.0
-            except TypeError:
-                continue
         return p_lin
 
     def get_power_sweep(self, step=None, z=None):

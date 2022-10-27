@@ -972,7 +972,8 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         for asm in self.data['Assembly']:
             pre = f'Asm: "{asm}"; '  # indicate asm for error msg
             # For asm with default FuelModel entry: delete and continue
-            if self.data['Assembly'][asm]['FuelModel'] == _DEFAULT:
+            if all(_DEFAULT[k] == self.data['Assembly'][asm]['FuelModel'][k]
+                   for k in _DEFAULT.keys()):
                 del self.data['Assembly'][asm]['FuelModel']
                 continue
 
@@ -1065,7 +1066,8 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         for asm in self.data['Assembly']:
             pre = f'Asm: "{asm}"; '  # indicate asm for error msg
             # For asm with default PinModel entry: delete and continue
-            if self.data['Assembly'][asm]['PinModel'] == _DEFAULT:
+            if all(_DEFAULT[k] == self.data['Assembly'][asm]['PinModel'][k]
+                   for k in _DEFAULT.keys()):
                 del self.data['Assembly'][asm]['PinModel']
                 continue
             else:

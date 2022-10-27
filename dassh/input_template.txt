@@ -123,6 +123,12 @@
             htc_params_clad = float_list(default=None)
             pin_material = force_list(default=None)
             r_frac = force_list(default=list(0.0))
+        [[[Hotspot]]]
+            [[[[__many__]]]]
+                temperature = option('coolant', 'clad_od', 'clad_mw', 'clad_id', 'fuel_od', 'fuel_cl')
+                input_sigma = integer(min=0, default=3)
+                output_sigma = integer(min=0, default=2)
+                subfactors = string(default=None)
 
 
 [Orificing]

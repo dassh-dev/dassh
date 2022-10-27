@@ -1,0 +1,18 @@
+﻿Subfactor,Type,Coolant,Film,Cladding,Gap,Fuel
+Inlet flow maldistribution,Direct,1.02,1,1,1,1
+Flow distribution calculational uncertainty,Direct,1.03,1.006,1,1,1
+Physics modeling,Direct,1.02,1.02,1.02,1,1.02
+Control rod banking,Direct,1.02,1.02,1.02,1,1.02
+Reactor delta T and inlet temperature variation,Statistical,1 + (3 / dT) * np.sqrt(0.002304 * dT**2 - 0.384 * dT + 121),1,1,1,1
+Inlet flow maldistribution,Statistical,1.059,1.016,1,1,1
+Loop temperature imbalance,Statistical,1 + 7.4 * 5 / 9 / dT,1,1,1,1
+Wire wrap orientation,Statistical,1.01,1,1,1,1
+Subchannel flow area,Statistical,1.019,1,1,1,1
+Film heat transfer coefficient,Statistical,1,1.12,1,1,1
+Coolant properties,Statistical,1.017,1,1,1,1
+Flow distribution calculational uncertainty,Statistical,1.058,1.005,1,1,1
+Experimental,Statistical,1.07,1.07,1.07,1,1.07
+Criticality,Statistical,1.01,1.01,1.01,1,1.01
+Fissile fuel distribution,Statistical,1.052,1.052,1.052,1,1.05
+Gap conductance,Statistical,1,1,1,1.05,1
+Fuel conductivity,Statistical,1,1,1,1,1.08
