@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-10-25
+date: 2022-10-27
 author: matz
 comment: Hot spot analysis via the semistatistical horizontal method
 """
@@ -28,15 +28,32 @@ import numpy as np
 module_logger = logging.getLogger('dassh.hotspot')
 
 
+# Path to module - use to identify paths to builtin HCF
 _ROOT = os.path.dirname(os.path.abspath(__file__))
+# Names of built-in HCF options
 _BUILTINS = ['crbr_blanket_clad_mw',
              'crbr_fuel_clad_mw',
              'ebrii_markv_fuel_cl',
              'fftf_clad_mw',
              'fftf_fuel_cl']
+# Temperature options available for hotspot calculation and number of
+# cols needed in the corresponding HCF subfactor CSV file
+_REGIONS = ['coolant',
+            'clad_od',
+            'clad_mw',
+            'clad_id',
+            'fuel_od',
+            'fuel_cl']
+_COLS_NEEDED = {
+    'coolant': 3,
+    'clad_od': 4,
+    'clad_mw': 5,
+    'clad_id': 5,
+    'fuel_od': 6,
+    'fuel_cl': 7}
 
 
-def _setup_postprocess(dassh_inp):
+def _setup_postprocess_old(dassh_inp):
     """Read in necessary information from input into Reactor
     object to enable hotspot calculation after sweep"""
     hotspot_dict = {}
@@ -87,7 +104,61 @@ def _setup_postprocess(dassh_inp):
         return hotspot_dict
 
 
-def analyze(r_obj):
+def _setup_postprocess(dassh_inp):
+    """Read in necessary information from input into Reactor
+    object to enable hotspot calculation after sweep"""
+    hotspot_dict = {}
+    keys = ('input_sigma', 'output_sigma', 'subfactors')
+    for a in dassh_inp.data['Assembly'].keys():
+        # Skip if not hotspot inputs are provided
+        if not dassh_inp.data['Assembly'][a]['Hotspot']:
+            continue
+        # Add information for each hotspot calculation
+        hotspot_dict[a] = {}
+        for hs in dassh_inp.data['Assembly'][a]['Hotspot'].keys():
+            temp = dassh_inp.data['Assembly'][a]['Hotspot'][hs]['temperature']
+            # Coolant hotspot calculation does not require PinModel
+            # (or FuelModel) inputs. If "coolant" is not one of the
+            # inputs and PinModel (or FuelModel) is not specified,
+            # skip the hotspot calculation
+            if temp != 'coolant':
+                if not any(k in dassh_inp.data['Assembly'][a].keys()
+                           for k in ('PinModel', 'FuelModel')):
+                    msg = 'Skipping "{}" hotspot calculation for ' \
+                          'assembly "{}": No "PinModel" / "FuelModel" ' \
+                          'input provided.'
+                    msg = msg.format(temp, a)
+                    module_logger.log(30, f'WARNING: {msg}')
+                    continue
+            # Otherwise, keep going: add assembly to hotspot
+            # dict if not already there
+            if a not in hotspot_dict.keys():
+                hotspot_dict[a] = {}
+            hotspot_dict[a][temp] = {}
+            for k in keys:
+                if k == 'subfactors':
+                    name = dassh_inp.data['Assembly'][a]['Hotspot'][hs][k]
+                    if name in _BUILTINS:  # Point to builtin CSV
+                        fname = 'hcf_' + name + '.csv'
+                        fpath = os.path.join(_ROOT, 'data', fname)
+                    else:  # It's a filepath to a CSV
+                        fpath = os.path.abspath(
+                            os.path.join(dassh_inp.path, name))
+                    if not os.path.exists(fpath):
+                        msg = 'Path to hotspot subfactors ' \
+                              f'CSV does not exist: {fpath}'
+                        module_logger.log(40, f'ERROR: {msg}')
+                        sys.exit(1)
+                    else:
+                        hotspot_dict[a][temp][k] = fpath
+                else:
+                    hotspot_dict[a][temp][k] = \
+                        dassh_inp.data['Assembly'][a]['Hotspot'][hs][k]
+    if hotspot_dict:
+        return hotspot_dict
+
+
+def analyze_old(r_obj):
     """Postprocess temperature results to obtain hotspot temperatures
     based on user-supplied subfactors
 
@@ -149,9 +220,78 @@ def analyze(r_obj):
     return peak_temps, asm_ids  # , asm_names
 
 
+def analyze(r_obj):
+    """Postprocess temperature results to obtain hotspot temperatures
+    based on user-supplied subfactors
+
+    Parameters
+    ----------
+    r_obj : DASSH Reactor object
+        Contains model state after temperature sweep
+
+    """
+    if not r_obj._options['hotspot']:
+        return None
+    asm_ids = {k: [] for k in _REGIONS}
+    asm_names = {k: [] for k in _REGIONS}
+    peak_temps = {k: [] for k in _REGIONS}
+    for asm_name in r_obj._options['hotspot'].keys():
+        hs = r_obj._options['hotspot'][asm_name]
+        if asm_name in r_obj._options['hotspot'].keys():
+            # Collect assembly IDs that match the name
+            ids = [a.id for a in r_obj.assemblies if a.name == asm_name]
+            n_asm = len(ids)
+            # Do each hotspot calc
+            for k in _REGIONS:
+
+                if k in hs.keys():
+                    # Add assembly IDs/names to relevant list
+                    asm_ids[k] += ids
+                    asm_names[k] += [asm_name for i in range(n_asm)]
+                    dT = _get_peak_dt(r_obj, asm_name, k)
+                    cols = _COLS_NEEDED[k]
+                    subf, expr = _read_hcf_table(hs[k]['subfactors'], cols)
+                    if k in ('clad_id', 'fuel_od', 'fuel_cl'):
+                        subf, expr = _split_clad_subfactors(subf, expr)
+                    subf = _evaluate_hcf_expr(subf, expr, dT)
+                    peak_temps[k].append(
+                        calculate_temps(r_obj.inlet_temp, dT, subf,
+                                        IN_sigma=hs[k]['input_sigma'],
+                                        OUT_sigma=hs[k]['output_sigma']))
+                # else:
+                #     empty_fill = np.zeros(n_asm)
+                #     peak_temps[k].append(empty_fill)
+
+    # Need to sort! Create lists of ids, names, and temps. Sort
+    # all according to ids. Then write into output table
+    for k in _REGIONS:
+        # Remove the empty arrays if no hotspot temps
+        # were calculated for a particular region
+        if asm_ids[k] == []:
+            del asm_ids[k]
+            del asm_names[k]
+            assert np.all(arr == 0.0 for arr in peak_temps[k])
+            del peak_temps[k]
+        else:
+            order = np.argsort(asm_ids[k])
+            asm_ids[k] = [asm_ids[k][i] for i in order]
+            asm_names[k] = [asm_names[k][i] for i in order]
+            try:
+                # peak_temps[k] = np.hstack(peak_temps[k])
+                peak_temps[k] = np.vstack(peak_temps[k])
+            except:
+                print(k)
+                for x in peak_temps[k]:
+                    print(x.shape)
+                raise
+            peak_temps[k] = peak_temps[k][order]
+    # return peak_temps, asm_ids, asm_names
+    return peak_temps, asm_ids
+
+
 def calculate_temps(T_in, dT, hcf, IN_sigma=3, OUT_sigma=2):
-    """Calculate 2-sigma clad/fuel temperatures based on the
-    semistatistical horizontal method
+    """Calculate hotspot (eg 2-sigma) coolant, clad, or fuel
+    temperatures using semistatistical horizontal method
 
     Parameters
     ----------
@@ -165,17 +305,17 @@ def calculate_temps(T_in, dT, hcf, IN_sigma=3, OUT_sigma=2):
         Dictionary of clad MW hot channel/spot subfactors
         Two entries: "direct" and "statistical"; each is array with
         shape N_asm x N_subfactors x N_terms (N_terms = 3 if clad, 5 if fuel)
-    in_sigma (optional) : int
+    IN_sigma (optional) : int
         Degree of uncertainty in the provided subfactors
         (default=3, as in "3-sigma uncertainties")
-    out_sigma (optional) : int
+    OUT_sigma (optional) : int
         Degree of uncertainty in the output hotspot temperatures
         (default=2, as in "2-sigma peak temperatures")
 
     Returns
     -------
     numpy.ndarray
-        Two-sigma clad MW temperature in each assembly (N_asm x 1)
+        Hotspot temperature in each assembly (N_asm x 1)
 
     """
     # Calculate zero-sigma delta Ts based on direct subfactors
@@ -209,7 +349,27 @@ def calculate_temps(T_in, dT, hcf, IN_sigma=3, OUT_sigma=2):
     return T
 
 
-def _get_clad_peak_dt(r_obj, asm_name):
+def _get_peak_dt(r_obj, asm_name, value):
+    """x"""
+    idx = {'coolant': 4,
+           'clad_od': 5,
+           'clad_mw': 6,
+           'clad_id': 7,
+           'fuel_od': 8,
+           'fuel_cl': 9}
+    t = []
+    for a in r_obj.assemblies:
+        if a.name == asm_name:
+            assert 'pin' in a._peak.keys()
+            tmp = [r_obj.inlet_temp]
+            tmp += a._peak['pin'][value][2][3:idx[value]]
+            t.append(tmp)
+    t = np.array(t)
+    dt = t[:, 1:] - t[:, :-1]
+    return dt
+
+
+def _get_clad_mw_peak_dt(r_obj, asm_name):
     """Collect peak clad MW dT values for each assembly"""
     t = []
     for a in r_obj.assemblies:

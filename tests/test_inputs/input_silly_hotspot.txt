@@ -1,7 +1,7 @@
 ########################################################################
 # author: Milos Atz
-# date: 2021-06-10
-# comment: 16 asm, absurd layout, + hotspot analysis
+# date: 2022-10-26
+# comment: 9 asm, absurd layout, + hotspot analysis
 ########################################################################
 # SETUP: Problem setup, user options, etc
 
@@ -70,13 +70,45 @@
             pu_frac       = 0.20, 0.20, 0.20
             zr_frac       = 0.10, 0.10, 0.10
             porosity      = 0.10, 0.12, 0.18
-            hotspot_input_sig_clad  = 3
-            hotspot_output_sig_clad = 2
-            hotspot_subfactors_clad = ../test_data/hcf_input_clad.csv
-            hotspot_input_sig_fuel  = 3
-            hotspot_output_sig_fuel = 2
-            hotspot_subfactors_fuel = ../test_data/hcf_input_fuel.csv
-
+        [[[Hotspot]]]
+            [[[[clad_mw]]]]
+                temperature  = clad_mw
+                input_sigma  = 3
+                output_sigma = 2
+                subfactors   = ../test_data/hcf_input_clad.csv
+            [[[[fuel_cl]]]]
+                temperature  = fuel_cl
+                input_sigma  = 3
+                output_sigma = 2
+                subfactors   = ../test_data/hcf_input_fuel.csv
+    [[fuel-2]]
+        num_rings      = 10
+        pin_pitch      = 0.6725
+        pin_diameter   = 0.5590
+        clad_thickness = 0.0500
+        wire_pitch     = 20.000
+        wire_diameter  = 0.100
+        duct_ftf       = 11.25, 11.75
+        duct_material  = HT9
+        [[[FuelModel]]]
+            clad_material = HT9
+            gap_material  = sodium
+            gap_thickness = 0.001
+            r_frac        = 0.0, 0.3333, 0.66666
+            pu_frac       = 0.20, 0.20, 0.20
+            zr_frac       = 0.10, 0.10, 0.10
+            porosity      = 0.10, 0.12, 0.18
+        [[[Hotspot]]]
+            [[[[clad_id]]]]
+                temperature  = clad_id
+                input_sigma  = 3
+                output_sigma = 2
+                subfactors   = ../test_data/hcf_input_clad.csv
+            [[[[fuel_cl]]]]
+                temperature  = fuel_cl
+                input_sigma  = 3
+                output_sigma = 2
+                subfactors   = ../test_data/hcf_input_fuel.csv
 
 ########################################################################
 # ASSIGN assemblies to positions in the core; assign fixed
@@ -86,10 +118,10 @@
 
 [Assignment]
     [[ByPosition]]
-        fuel = 1,  1,  1, FLOWRATE = 19.0
-        fuel = 2,  1,  6, FLOWRATE = 14.0
-        fuel = 3,  1,  1, FLOWRATE = 11.0
-        fuel = 3,  1,  2, FLOWRATE = 6.25
+        fuel   = 1,  1,  1, FLOWRATE = 19.0
+        fuel   = 2,  1,  6, FLOWRATE = 14.0
+        fuel-2 = 3,  1,  1, FLOWRATE = 11.0
+        fuel-2 = 3,  1,  2, FLOWRATE = 6.25
 
 
 ########################################################################

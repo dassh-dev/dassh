@@ -114,12 +114,6 @@
             pu_frac = force_list(default=list(0.0))
             zr_frac = force_list(default=list(0.0))
             porosity = force_list(default=list(0.0))
-            hotspot_input_sig_clad = integer(min=0, default=3)
-            hotspot_output_sig_clad = integer(min=0, default=2)
-            hotspot_subfactors_clad = string(default=None)
-            hotspot_input_sig_fuel = integer(min=0, default=3)
-            hotspot_output_sig_fuel = integer(min=0, default=2)
-            hotspot_subfactors_fuel = string(default=None)
         [[[PinModel]]]
             fcgap_thickness = float(min=0.0, default=0.0)
             gap_material = string(default=None)
@@ -128,12 +122,12 @@
             htc_params_clad = float_list(default=None)
             pin_material = force_list(default=None)
             r_frac = force_list(default=list(0.0))
-            hotspot_input_sig_clad = integer(min=0, default=3)
-            hotspot_output_sig_clad = integer(min=0, default=2)
-            hotspot_subfactors_clad = string(default=None)
-            hotspot_input_sig_fuel = integer(min=0, default=3)
-            hotspot_output_sig_fuel = integer(min=0, default=2)
-            hotspot_subfactors_fuel = string(default=None)
+        [[[Hotspot]]]
+            [[[[__many__]]]]
+                temperature = option('coolant', 'clad_od', 'clad_mw', 'clad_id', 'fuel_od', 'fuel_cl')
+                input_sigma = integer(min=0, default=3)
+                output_sigma = integer(min=0, default=2)
+                subfactors = string(default=None)
 
 
 [Orificing]

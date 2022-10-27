@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-10-25
+date: 2022-10-26
 author: matz
 comment: Unit tests for hot spot analysis methods
 """
@@ -222,7 +222,7 @@ def test_clad_subfactors_for_fuel_calc(testdir, caplog):
     # Now see what happens when you try to read the table
     with pytest.raises(SystemExit):
         sf, expr = dassh.hotspot._read_hcf_table(
-            test['fuel']['subfactors_fuel'], cols_needed=7)
+            test['fuel']['fuel_cl']['subfactors'], cols_needed=7)
     assert 'Incorrect number of columns in HCF table' in caplog.text
 
 
@@ -248,8 +248,10 @@ def test_load_builtin_subfactors_from_input(testdir):
     # Run setup method - should pass
     test = dassh.hotspot._setup_postprocess(inp)
     # Now make sure you can read the subfactors - should pass
-    sf, expr = dassh.hotspot._read_hcf_table(test['fuel']['subfactors_clad'])
-    sf, expr = dassh.hotspot._read_hcf_table(test['fuel']['subfactors_fuel'])
+    sf, expr = dassh.hotspot._read_hcf_table(
+        test['fuel']['clad_mw']['subfactors'])
+    sf, expr = dassh.hotspot._read_hcf_table(
+        test['fuel']['fuel_cl']['subfactors'])
 
 
 def test_read_all_builtin_subfactors(testdir):
@@ -302,12 +304,24 @@ def test_rx_hotspot_analysis_and_table_gen(testdir):
     for row in two_sig_temps['fuel_cl']:
         assert np.all(np.abs(row - ans_fuel_cl) < 0.1)
 
-    # Generate output tables and test them
+    # Generate output tables - this is the code used in the
+    # DASSH Reactor object.
     out = ''
-    peak_clad = dassh.table.PeakPinTempTable('clad', 'mw')
-    out += peak_clad.generate(r, hotspot_results)
-    peak_fuel = dassh.table.PeakPinTempTable('fuel', 'cl')
-    out += peak_fuel.generate(r, hotspot_results)
+    include = [('clad', 'mw'), ('fuel', 'cl')]
+    if 'clad_od' in hotspot_results[0].keys():
+        # Put clad OD at the beginning
+        include.insert(0, ('clad', 'od'))
+    if 'clad_id' in hotspot_results[0].keys():
+        # Put clad ID right before fuel CL
+        include.insert(-1, ('clad', 'id'))
+    if 'fuel_od' in hotspot_results[0].keys():
+        # Put fuel OD right before fuel CL
+        include.insert(-1, ('fuel', 'od'))
+    if any(['pin' in a._peak.keys() for a in r.assemblies]):
+        for k in include:
+            peak_pin = dassh.table.PeakPinTempTable(k[0], k[1])
+            out += peak_pin.generate(r, hotspot_results)
+
     # *** check the result ***
     refpath = os.path.join(testdir, 'test_data', 'ref_hotspot_datatable.txt')
     with open(refpath, 'r') as f:

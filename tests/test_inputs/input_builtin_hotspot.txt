@@ -70,12 +70,13 @@
             pu_frac       = 0.20, 0.20, 0.20
             zr_frac       = 0.10, 0.10, 0.10
             porosity      = 0.10, 0.12, 0.18
-            hotspot_input_sig_clad  = 3
-            hotspot_output_sig_clad = 2
-            hotspot_subfactors_clad = crbr_fuel_clad_mw
-            hotspot_input_sig_fuel  = 3
-            hotspot_output_sig_fuel = 2
-            hotspot_subfactors_fuel = fftf_fuel_cl
+        [[[Hotspot]]]
+            [[[[CLAD]]]]
+                temperature = clad_mw
+                subfactors  = crbr_fuel_clad_mw
+            [[[[FUEL]]]]
+                temperature = fuel_cl
+                subfactors  = fftf_fuel_cl
 
 
 ########################################################################

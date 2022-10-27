@@ -13,7 +13,7 @@ Hot spot temperatures are calculated based on:
 - the degree of uncertainty desired in the output hotspot temperatures.
 
 Assembly        Input unc.   Output unc.  Hotspot subfactors
-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 fuel            3-sigma      2-sigma      /Users/matz/Documents/DASSH/src_DASSH/tests/test_data/hcf_input_clad.csv
 
 
@@ -28,8 +28,40 @@ fuel            3-sigma      2-sigma      /Users/matz/Documents/DASSH/src_DASSH/
    5    fuel       0   300.0     1.8   513.9   522.2   531.9   542.1   542.1   726.9   557.4   566.4   576.6
    6    fuel       0   300.0     0.0   513.9   522.2   531.9   542.1   542.1   726.9   557.4   566.4   576.6
    7    fuel       0   300.0     0.0   513.9   522.2   531.9   542.1   542.1   726.9   557.4   566.4   576.6
-   8    fuel       0   300.0     2.3   513.9   522.2   531.9   542.1   542.1   726.9   557.4   566.4   576.6
-   9    fuel       0   300.0     2.7   513.9   522.2   531.9   542.1   542.1   726.9   557.4   566.4   576.6
+   8  fuel-2       0   300.0     2.3   513.9   522.2   531.9   542.1   542.1   726.9   -----   -----   -----
+   9  fuel-2       0   300.0     2.7   513.9   522.2   531.9   542.1   542.1   726.9   -----   -----   -----
+
+
+
+PEAK CLAD ID TEMPERATURES
+--------------------------
+The table shows radial pin temperatures in the pin and at the
+height where the peak clad id temperature occurs. Nominal
+temperatures are those calculated directly by DASSH.
+
+Hot spot temperatures are calculated based on:
+- user input for hot channel factors (built-in or user-specified);
+- the degree of uncertainty in the provided statistical factors; and
+- the degree of uncertainty desired in the output hotspot temperatures.
+
+Assembly        Input unc.   Output unc.  Hotspot subfactors
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+fuel-2          3-sigma      2-sigma      /Users/matz/Documents/DASSH/src_DASSH/tests/test_data/hcf_input_clad.csv
+
+
+                                     | Nominal Peak Temps (˚C) ----------------------| N-Sigma Peak Temps (˚C) -----
+ Asm     Asm          Height   Power |          Clad    Clad    Clad    Fuel    Fuel |          Clad    Clad    Clad
+  ID    Name     Pin    (cm)  (W/cm) |  Cool      OD      MW      ID      OD      CL |  Cool      OD      MW      ID
+--------------------------------------------------------------------------------------------------------------------
+   1    fuel       0   300.0     3.7   513.9   522.2   531.9   542.1   542.1   726.9   -----   -----   -----   -----
+   2    fuel       0   300.0     4.2   513.9   522.2   531.9   542.1   542.1   726.9   -----   -----   -----   -----
+   3    fuel       0   300.0     3.8   513.9   522.2   531.9   542.1   542.1   726.9   -----   -----   -----   -----
+   4    fuel       0   300.0     2.3   513.9   522.2   531.9   542.1   542.1   726.9   -----   -----   -----   -----
+   5    fuel       0   300.0     1.8   513.9   522.2   531.9   542.1   542.1   726.9   -----   -----   -----   -----
+   6    fuel       0   300.0     0.0   513.9   522.2   531.9   542.1   542.1   726.9   -----   -----   -----   -----
+   7    fuel       0   300.0     0.0   513.9   522.2   531.9   542.1   542.1   726.9   -----   -----   -----   -----
+   8  fuel-2       0   300.0     2.3   513.9   522.2   531.9   542.1   542.1   726.9   557.4   566.4   576.6   587.5
+   9  fuel-2       0   300.0     2.7   513.9   522.2   531.9   542.1   542.1   726.9   557.4   566.4   576.6   587.5
 
 
 
@@ -45,8 +77,9 @@ Hot spot temperatures are calculated based on:
 - the degree of uncertainty desired in the output hotspot temperatures.
 
 Assembly        Input unc.   Output unc.  Hotspot subfactors
-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
 fuel            3-sigma      2-sigma      /Users/matz/Documents/DASSH/src_DASSH/tests/test_data/hcf_input_fuel.csv
+fuel-2          3-sigma      2-sigma      /Users/matz/Documents/DASSH/src_DASSH/tests/test_data/hcf_input_fuel.csv
 
 
                                      | Nominal Peak Temps (˚C) ----------------------| N-Sigma Peak Temps (˚C) ---------------------
@@ -60,5 +93,5 @@ fuel            3-sigma      2-sigma      /Users/matz/Documents/DASSH/src_DASSH/
    5    fuel       0   300.0     1.8   513.9   522.2   531.9   542.1   542.1   726.9   557.4   566.4   576.6   587.5   587.5   787.4
    6    fuel       0   300.0     0.0   513.9   522.2   531.9   542.1   542.1   726.9   557.4   566.4   576.6   587.5   587.5   787.4
    7    fuel       0   300.0     0.0   513.9   522.2   531.9   542.1   542.1   726.9   557.4   566.4   576.6   587.5   587.5   787.4
-   8    fuel       0   300.0     2.3   513.9   522.2   531.9   542.1   542.1   726.9   557.4   566.4   576.6   587.5   587.5   787.4
-   9    fuel       0   300.0     2.7   513.9   522.2   531.9   542.1   542.1   726.9   557.4   566.4   576.6   587.5   587.5   787.4
+   8  fuel-2       0   300.0     2.3   513.9   522.2   531.9   542.1   542.1   726.9   557.4   566.4   576.6   587.5   587.5   787.4
+   9  fuel-2       0   300.0     2.7   513.9   522.2   531.9   542.1   542.1   726.9   557.4   566.4   576.6   587.5   587.5   787.4

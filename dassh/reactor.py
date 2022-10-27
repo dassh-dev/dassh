@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-10-25
+date: 2022-10-26
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -1369,11 +1369,23 @@ class Reactor(LoggedClass):
         out += duct_table.generate(self)
 
         # Peak pin temperatures
+        # First, figure out which peak temperatures to include.
+        # By default, clad MW and fuel CL will be included.
+        include = [('clad', 'mw'), ('fuel', 'cl')]
+        if hotspot_data:
+            if 'clad_od' in hotspot_data[0].keys():
+                # Put clad OD at the beginning
+                include.insert(0, ('clad', 'od'))
+            if 'clad_id' in hotspot_data[0].keys():
+                # Put clad ID right before fuel CL
+                include.insert(-1, ('clad', 'id'))
+            if 'fuel_od' in hotspot_data[0].keys():
+                # Put fuel OD right before fuel CL
+                include.insert(-1, ('fuel', 'od'))
         if any(['pin' in a._peak.keys() for a in self.assemblies]):
-            peak_clad = dassh.table.PeakPinTempTable('clad', 'mw')
-            out += peak_clad.generate(self, hotspot_data)
-            peak_fuel = dassh.table.PeakPinTempTable('fuel', 'cl')
-            out += peak_fuel.generate(self, hotspot_data)
+            for k in include:
+                peak_pin = dassh.table.PeakPinTempTable(k[0], k[1])
+                out += peak_pin.generate(self, hotspot_data)
 
         # Append to file
         with open(os.path.join(self.path, 'dassh.out'), 'a') as f:

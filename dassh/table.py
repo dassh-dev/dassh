@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-10-25
+date: 2022-10-26
 author: matz
 Objects and methods to print ASCII tables in Python
 """
@@ -1485,6 +1485,7 @@ temperatures are those calculated directly by DASSH.
         """
         self._component = component
         self._region = region
+        self._lookup = component.lower() + '_' + region.lower()
         # Decimal places for rounding, where necessary
         self.dp = col_w - 6
         # Float formatting option
@@ -1523,10 +1524,12 @@ temperatures are those calculated directly by DASSH.
         # Override the title and notes
         self.title = 'PEAK {0} {1} TEMPERATURES'.format(
             self._component.upper(), self._region.upper()) + "\n"
-        if hotspot_data is not None:
+        # Figure out whether to include hotspot data
+        if hotspot_data is not None and \
+                self._lookup in hotspot_data[0].keys():
+            # any(self._lookup in hotspot_data[0][a].values
+            #     for a in hotspot_data[0].keys()):
             msg = self._make_hotspot_msg(r_obj)
-            self._hs_lookup = self._component.lower()
-            self._hs_lookup += '_' + self._region.lower()
         else:
             msg = """Two-sigma peak temperatures are not calculated."""
         self.notes = self._notes.format(self._component, self._region, msg)
@@ -1633,17 +1636,17 @@ temperatures are those calculated directly by DASSH.
         empty = ['-----' for i in range(self.n_col - 9)]
         if not hotspot_data:
             return empty
-        elif self._hs_lookup not in hotspot_data[0].keys():
+        elif self._lookup not in hotspot_data[0].keys():
             return empty
-        elif a_id not in hotspot_data[1]:
+        elif a_id not in hotspot_data[1][self._lookup]:
             return empty
         else:
-            idx = hotspot_data[1].index(a_id)
+            idx = hotspot_data[1][self._lookup].index(a_id)
             # tmp = hotspot_data[0][idx]
             # print(tmp)
             # print([self._ffmt2.format(self.temp_conv(x)) for x in tmp])
             t_hotspot = [self._ffmt2.format(self.temp_conv(x))
-                         for x in hotspot_data[0][self._hs_lookup][idx]]
+                         for x in hotspot_data[0][self._lookup][idx]]
             if len(t_hotspot) > len(empty):
                 t_hotspot = t_hotspot[:len(empty)]
             elif len(t_hotspot) < len(empty):
@@ -1661,20 +1664,22 @@ temperatures are those calculated directly by DASSH.
 - the degree of uncertainty desired in the output hotspot temperatures.
 
 Assembly        Input unc.   Output unc.  Hotspot subfactors
-- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - -
 """
+        msg += '- ' * 50 + '\n'
         for a in r_obj._options['hotspot'].keys():
+            # Skip if no hotspot temperatures for this assembly type
+            if self._lookup not in r_obj._options['hotspot'][a].keys():
+                continue
+            # Otherwise add a line for this assembly type
+            tmp = r_obj._options['hotspot'][a][self._lookup]
             line = []
             line.append(a[:14])
             line.append(" " * (14 - len(line[0])) + "  ")
-            k = "input_sig_" + self._component
-            line.append(f"{r_obj._options['hotspot'][a][k]}-sigma")
+            line.append(f"{tmp['input_sigma']}-sigma")
             line.append(" " * (11 - len(line[-1])) + "  ")
-            k = "output_sig_" + self._component
-            line.append(f"{r_obj._options['hotspot'][a][k]}-sigma")
+            line.append(f"{tmp['output_sigma']}-sigma")
             line.append(" " * (11 - len(line[-1])) + "  ")
-            k = "subfactors_" + self._component
-            line.append(r_obj._options['hotspot'][a][k])
+            line.append(tmp['subfactors'])
             line = "".join(line)
             msg += line + "\n"
         return msg
