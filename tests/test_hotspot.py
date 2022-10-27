@@ -208,6 +208,17 @@ def test_csv_incorrect_ncol(testdir, caplog):
     assert msg in caplog.text
 
 
+def test_no_pin_model_warning(testdir, caplog):
+    """Test that DASSH raises warning about skipping the hotspot
+    calculation when no PinModel/FuelModel parameters are given"""
+    inp = dassh.DASSH_Input(
+        os.path.join(
+            testdir, 'test_inputs', 'x_hcf_no_pin_model.txt'))
+    dassh.hotspot._setup_postprocess(inp)
+    s = 'Skipping "fuel_cl" hotspot calculation for assembly "fuel":'
+    assert s in caplog.text
+
+
 def test_clad_subfactors_for_fuel_calc(testdir, caplog):
     """Test that code captures error when working HCF for clad
     calculation are used for fuel calculation (not enough cols)"""
