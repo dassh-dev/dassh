@@ -1350,8 +1350,8 @@ class Reactor(LoggedClass):
         out = ''
 
         # Pressure drop
-        dp = dassh.table.PressureDropTable(
-            max([len(a.region) for a in self.assemblies]))
+        n_regions = max([len(a.region) for a in self.assemblies])
+        dp = dassh.table.PressureDropTable(n_regions)
         out += dp.generate(self)
 
         # Energy balances

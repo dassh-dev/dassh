@@ -749,7 +749,8 @@ class _RREquivalent(RoddedRegion):
                      'int_flow_rate',
                      'total_flow_rate',
                      'htc_params',
-                     '_sf']
+                     '_sf',
+                     '_spacer_grid']
 
     def __init__(self, asm_input, mat_dict, fr, se2geo=False):
         """Instantiate RoddedRegion object and pull out useful attr"""
@@ -773,6 +774,7 @@ class _RREquivalent(RoddedRegion):
             asm_input['corr_mixing'],
             asm_input['corr_nusselt'],
             asm_input['corr_shapefactor'],
+            asm_input['SpacerGrid'],
             asm_input['bypass_gap_flow_fraction'],
             asm_input['bypass_gap_loss_coeff'],
             asm_input['wire_direction'],

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-07-06
+date: 2022-11-01
 author: matz
 Pytest fixtures and related test utilities for the whole shebang
 """
@@ -403,6 +403,7 @@ def make_rodded_region_fixture(name, bundle_params, mat_params, fr):
                               bundle_params['corr_mixing'],
                               bundle_params['corr_nusselt'],
                               bundle_params['corr_shapefactor'],
+                              bundle_params['SpacerGrid'],
                               bundle_params['bypass_gap_flow_fraction'],
                               bundle_params['bypass_gap_loss_coeff'],
                               bundle_params['wire_direction'],
@@ -423,7 +424,8 @@ def assembly_default_params():
             'bypass_gap_flow_fraction': 0.05,
             'bypass_gap_loss_coeff': None,
             'wire_direction': 'counterclockwise',
-            'shape_factor': 1.0}
+            'shape_factor': 1.0,
+            'SpacerGrid': None}
 
 
 @pytest.fixture(scope='module')

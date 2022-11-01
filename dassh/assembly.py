@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-07-06
+date: 2022-11-01
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -60,6 +60,7 @@ class Assembly(LoggedClass):
     se2geo : bool
         Indicate whether to use DASSH or SE2 bundle geometry definitions
         (use only when comparing DASSH and SE2)
+
     """
 
     def __init__(self, name, loc, asm_input, mat_dict, inlet_temp,
@@ -503,9 +504,14 @@ class Assembly(LoggedClass):
             if power_j[k] is not None:
                 self._power_delivered[k] += dz * np.sum(power_j[k])
 
-        # Calculate coolant and duct temperatures
-        self.active_region.calculate(dz, power_j, t_gap,
-                                     h_gap, adiabatic, ebal)
+        # Calculate coolant and duct temperatures, pressure drop; then
+        # acccount for pressure drop due to spacer grid on this step,
+        # if necessary
+        self.active_region.calculate(dz, power_j, t_gap, h_gap,
+                                     adiabatic, ebal)
+        if hasattr(self.active_region, '_spacer_grid'):
+            self.active_region.calculate_spacergrid_pressure_drop(
+                self._z, dz)
 
         # Update peak coolant and duct temperatures
         self._update_peak_coolant_temps()

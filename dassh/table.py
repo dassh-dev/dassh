@@ -872,7 +872,7 @@ class PressureDropTable(LoggedClass, DASSH_Table):
         self._ffmt4e = '{' + f':.{4}E' + '}'
 
         # Inherit from DASSH_Table
-        DASSH_Table.__init__(self, n_reg + 3, col_width, col0_width, sep)
+        DASSH_Table.__init__(self, n_reg + 5, col_width, col0_width, sep)
 
     def make(self, reactor_obj):
         """Create the table
@@ -884,8 +884,8 @@ class PressureDropTable(LoggedClass, DASSH_Table):
 
         """
         # Process units from input_obj: length
-        n_reg = self.n_col - 3
-        header = ['Name', 'Loc.', 'Total']
+        n_reg = self.n_col - 5
+        header = ['Name', 'Loc.', 'Total', 'Friction', 'SpacerGrid']
         header += [f'Region {i + 1}' for i in range(n_reg)]
         self.add_row('Asm.', header)
         self.add_horizontal_line()
@@ -896,10 +896,20 @@ class PressureDropTable(LoggedClass, DASSH_Table):
             # Include total pressure drop
             params.append(self._ffmt4e.format(a.pressure_drop / 1e6))
 
+            # Separate out pressure drop due to friction and losses
+            # due to spacer grids, if applicable.
+            params += ['---', '---']
+            if a.has_rodded:
+                spacer = a.rodded._pressure_drop['spacer_grid']
+                friction = a.pressure_drop - spacer
+                params[-2] = self._ffmt4e.format(friction / 1e6)
+                if spacer > 0.0:
+                    params[-1] = self._ffmt4e.format(spacer / 1e6)
+
             # Fill up the row with blanks; replace as applicable
             params += ['' for ri in range(n_reg)]
             for ri in range(len(a.region)):
-                params[ri + 3] = self._ffmt4e.format(
+                params[ri + 5] = self._ffmt4e.format(
                     a.region[ri].pressure_drop / 1e6)
             # self.add_row(_fmt_idx(a.id), params)
             self.add_row(_fmt_idx(i), params)
