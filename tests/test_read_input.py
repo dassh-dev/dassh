@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-07-07
+date: 2022-11-01
 author: matz
 Test the DASSH read_input module and DASSH_input object
 """
@@ -733,4 +733,42 @@ def test_warning_bare_rod_kc_corr(testdir, caplog):
     msg = 'WARNING: Asm "TEST"; Using bare-rod correlation for ' \
           'turbulent mixing but specified nonzero wire diameter.'
     print(caplog.text)
+    assert msg in caplog.text
+
+
+def test_spacergrid_axialpos_warn_error(testdir, caplog):
+    """Confirm DASSH warning/error for acceptable spacer
+    grid axial positions"""
+    with pytest.raises(SystemExit):
+        dassh.DASSH_Input(
+            os.path.join(
+                testdir,
+                'test_inputs',
+                'x_spacergrid_axialpositions.txt'))
+    # Warning that assembly has both wire wrap and spacer grids
+    msg = 'WARNING: Asm "driver"; Bundle has both wire wrap and '
+    assert msg in caplog.text
+    # Warning that DASSH is dismissing some spacer grid axial positions
+    msg = 'WARNING: Asm "driver"; Spacer grid axial position "50.0" is'
+    assert msg in caplog.text
+    # Error that none of the spacer grid axial positions are valid
+    msg = 'ERROR: Asm "driver"; No acceptable spacer grid axial positions'
+    assert msg in caplog.text
+
+
+def test_spacergrid_solidity_warning_and_coeff_error(testdir, caplog):
+    """Test that DASSH raises a warning when the user does not
+    provide spacer grid solidity input, and that DASSH crashes
+    when incorrect correlation coefficients are supplied"""
+    with pytest.raises(SystemExit):
+        dassh.DASSH_Input(
+            os.path.join(
+                testdir,
+                'test_inputs',
+                'x_spacergrid_corr.txt'))
+    # Check warning
+    msg = 'Spacer grid solidity (A_grid / A_flow) is undefined'
+    assert msg in caplog.text
+    # Check error
+    msg = '"CDD" correlation requires 7 coefficients; found 6'
     assert msg in caplog.text

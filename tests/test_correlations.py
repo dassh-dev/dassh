@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-07-06
+date: 2022-11-01
 author: matz
 Test the correlations
 """
@@ -28,7 +28,6 @@ import dassh
 from dassh.correlations import (friction_ctd,
                                 friction_cts,
                                 friction_nov,
-                                # friction_eng,
                                 friction_reh,
                                 friction_uctd)
 from dassh.correlations import (flowsplit_mit,
@@ -38,6 +37,7 @@ from dassh.correlations import (flowsplit_mit,
 from dassh.correlations import (mixing_ctd,
                                 mixing_mit,
                                 mixing_kc)
+from dassh.correlations import grid_rehme, grid_cdd
 
 
 def make_assembly(n_ring, pin_pitch, pin_diameter, clad_thickness,
@@ -1127,3 +1127,36 @@ def test_ct_shape_factor():
             inlet_flow_rate, corr_shapefactor='CT')
         diff = a._sf - ans[i]
         assert abs(diff) / ans[i] <= 0.01
+
+
+########################################################################
+# SPACER GRID PRESSURE LOSS
+########################################################################
+
+
+def test_rehme_spacergrid():
+    """Test that Rehme spacer grid method returns expected loss coeff
+    (generated based on visual inspection of figure in paper)"""
+    Re = np.array([5e3, 1.5e4, 5e4, 1.5e5])
+    ans = np.array([11.5, 8.05, 6.95, 6.35])
+    res = grid_rehme.calc_loss_coeff(Re, 1.0)
+    diff = res - ans
+    assert np.allclose(diff, 0.0)
+
+
+def test_cdd_spacergrid():
+    """Test that CDD spacer grid method with default coefficients gives
+    loss coeff similar to that from the simpler Rehme interpolation"""
+    Cv_REH = grid_rehme.Cv
+    coeffs = grid_cdd._DEFAULT_COEFFS
+    coeffs[5] = 100.0
+    ans_CDD = np.zeros(Cv_REH.shape[0])
+    for i in range(ans_CDD.shape[0]):
+        ans_CDD[i] = grid_cdd.calc_loss_coeff(Cv_REH[i, 0], 1.0, coeffs)
+    diff = ans_CDD - Cv_REH[:, 1]
+    rdiff = diff / Cv_REH[:, 1]
+    # The tolerance here is rather arbitrary - the max difference is
+    # 0.19, so I set the tolerance to be 0.20 so it would pass. The
+    # two relationships do generate similar curves for loss coeff vs.
+    # Re, so I think this an acceptable check.
+    assert np.max(np.abs(rdiff)) < 0.2
