@@ -1549,6 +1549,7 @@ temperatures are those calculated directly by DASSH.
         row += ' ' * self.col_width * 4
         row += self.divider * 5
         row += f'| Nominal Peak Temps ({fmttd_temp_unit}) '
+        row += '-' * (2 - len(fmttd_temp_unit))
         row += '----------------------'
         row += f'| N-Sigma Peak Temps ({fmttd_temp_unit}) '
         row += '-' * (self.width - len(row))
