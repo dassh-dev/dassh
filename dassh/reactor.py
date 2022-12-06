@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-10-26
+date: 2022-11-30
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -627,6 +627,8 @@ class Reactor(LoggedClass):
            assign power profiles.
         5. Store outlet temperature estimate to use when determining
            axial mesh size requirement.
+        6. Calculate friction factor and flowsplit parameters using
+           bundle axial-average coolant temperature.
 
         """
         # List of assemblies to populate
@@ -644,16 +646,11 @@ class Reactor(LoggedClass):
             loc = k[1][:2]
             asm_data = inp.data['Assembly'][atype]
 
-            # Power scaling for individual assemblies: WARNING
-            # This is only meant to be a developer feature to test
-            # heat transfer between assemblies. It will ruin the
-            # normalization of power to the fixed value requested
-            # in the input
+            # WARNING: Power scaling for individual assemblies is
+            # is only meant to be a developer feature to test heat
+            # transfer between assemblies. It will ruin the power
+            # normalization if a value was requested in the input
             power_scalar = 1.0
-            # if self._options['debug']:
-            #     if 'scale_power' in k[2].keys():
-            #         power_scalar = k[2]['scale_power']
-            # asm_power *= power_scalar
 
             # Clone assembly object from template using flow rate
             # and assign power profiles
@@ -673,6 +670,14 @@ class Reactor(LoggedClass):
                 self.log('error', m[1].format(i + 1))
             asm.total_power = asm_power[i][2]
             asm._estimated_T_out = To[i]
+
+            # Calculate the friction factor and flow split parameters
+            # for each region at the assembly axial-average temperature
+            t_avg = (self.inlet_temp + To[i]) / 2
+            for reg in asm.region:
+                reg._init_static_correlated_params(t_avg)
+
+            # Add the assembly to the list.
             assemblies.append(asm)
 
         # Sort the assemblies according to the DASSH assembly ID
