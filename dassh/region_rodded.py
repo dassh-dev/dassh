@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-11-01
+date: 2022-12-06
 author: matz
 Methods to describe the components of hexagonal fuel typical of
 liquid metal fast reactors
@@ -681,6 +681,46 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                     self._spacer_grid['corr_coeff'] = \
                         input_grid['corr_coeff']
 
+    def _init_static_correlated_params(self, t):
+        """Calculate bundle friction factor and flowsplit parameters
+        at the bundle-average temperature
+
+        Parameters
+        ----------
+        t : float
+            Bundle axial average temperature ((T_in + T_out) / 2)
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        This method is called within the '_setup_asm' method inside
+        the Reactor object instantiation. It is very similar to
+        '_update_coolant_int_params', found below.
+
+        """
+        # Update coolant material properties
+        t_inlet = self.coolant.temperature
+        self._update_coolant(t)
+        # Coolant axial velocity, bundle Reynolds number
+        mfr_over_area = self.int_flow_rate / self.bundle_params['area']
+        self.coolant_int_params['vel'] = mfr_over_area / self.coolant.density
+        self.coolant_int_params['Re'] = \
+            mfr_over_area * self.bundle_params['de'] / self.coolant.viscosity
+
+        # Flow split parameters
+        if self.corr['fs'] is not None:
+            self.coolant_int_params['fs'] = self.corr['fs'](self)
+
+        # Friction factor
+        if self.corr['ff'] is not None:
+            self.coolant_int_params['ff'] = self.corr['ff'](self)
+
+        # Reset inlet temperature
+        self.coolant.temperature = t_inlet
+
     def _determine_byp_flow_rate(self):
         """Calculate the bypass flow rate by estimating pressure drop
         in the bundle and determining what flow rate is required to
@@ -690,7 +730,7 @@ class RoddedRegion(LoggedClass, DASSH_Region):
 
         return
 
-    def clone(self, new_flowrate=None):
+    def clone(self, new_flowrate=None, new_avg_temp=None):
         """Clone the rodded region into another assembly object;
         shallow copy some attributes, deep copy others"""
         # Create a shallow copy (stuff like the pin and subchannel
@@ -717,6 +757,10 @@ class RoddedRegion(LoggedClass, DASSH_Region):
             clone._setup_flowrate(new_flowrate)
             # New flow rate attributes used in new heat transfer consts
             clone._setup_ht_constants()
+        # If new average temperature, update the static correlated
+        # parameters
+        if new_avg_temp is not None:
+            clone._init_static_correlated_params(new_avg_temp)
 
         return clone
 
@@ -741,15 +785,10 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         # Need flow split to get mass flow rate to get avg temp, but
         # need avg temp to get flow split!
         if np.all(self.coolant_int_params['fs'] == 0):
-            # return (np.sum(self.temp['coolant_int']
-            #                * self.area['coolant_int'])
-            #         / self.total_area['coolant_int'])
             return (np.dot(self.temp['coolant_int'],
                            self.area['coolant_int'])
                     / self.total_area['coolant_int'])
         else:
-            # return (np.sum(self.sc_mfr * self.temp['coolant_int'])
-            #         / self.int_flow_rate)
             return (np.dot(self.sc_mfr, self.temp['coolant_int'])
                     / self.int_flow_rate)
 
@@ -836,9 +875,12 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         self.coolant_int_params['Re'] = \
             mfr_over_area * self.bundle_params['de'] / self.coolant.viscosity
 
+        # MODIFICATION 2022-11-29: No longer updating flow split
+        # during the sweep. It is now determined at the start of
+        # the calculation, basedon bundle-average coolant temperature.
         # Flow split parameters
-        if self.corr['fs'] is not None:
-            self.coolant_int_params['fs'] = self.corr['fs'](self)
+        # if self.corr['fs'] is not None:
+        #     self.coolant_int_params['fs'] = self.corr['fs'](self)
 
         # Subchannel Reynolds numbers
         tmp = (self.coolant.density * self.coolant_int_params['vel']
@@ -857,9 +899,13 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         self.coolant_int_params['htc'] = \
             self.coolant.thermal_conductivity * nu / self.params['de']
 
+        # MODIFICATION 2022-11-29: No longer updating friction factor
+        # during the sweep. It is now static and  determined at the
+        # start of the calculation, based on bundle-average coolant
+        # temperature.
         # Friction factor
-        if self.corr['ff'] is not None:
-            self.coolant_int_params['ff'] = self.corr['ff'](self)
+        # if self.corr['ff'] is not None:
+        #     self.coolant_int_params['ff'] = self.corr['ff'](self)
 
         # Mixing params - these come dimensionless, need to adjust
         if self.corr['mix'] is not None:

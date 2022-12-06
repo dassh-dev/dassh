@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-07-06
+date: 2022-11-30
 author: matz
 Methods for unrodded axial regions; to be used within Assembly objects
 """
@@ -277,7 +277,6 @@ class SingleNodeHomogeneous(LoggedClass, DASSH_Region):
             'swirl': swirl velocity
 
         """
-        # self.coolant.update(temp)
         self._update_coolant(temp)
         if self._rr_equiv is not None:
             self._rr_equiv._update_coolant_int_params(
@@ -289,8 +288,8 @@ class SingleNodeHomogeneous(LoggedClass, DASSH_Region):
             self.coolant_params['Re'] = \
                 self._rr_equiv.coolant_int_params['Re']
             # Friction factor
-            self.coolant_params['ff'] = \
-                self._rr_equiv.coolant_int_params['ff']
+            # self.coolant_params['ff'] = \
+            #     self._rr_equiv.coolant_int_params['ff']
             # Placeholder for coolant thermal conductivity
             k = self.coolant.thermal_conductivity
             k *= self._rr_equiv._sf
@@ -298,8 +297,6 @@ class SingleNodeHomogeneous(LoggedClass, DASSH_Region):
                       / self._rr_equiv.pin_pitch)
             k += (self.coolant.density * self.coolant.heat_capacity
                   * self._rr_equiv.coolant_int_params['eddy'])
-            # k *= 1 - (self._rr_equiv.pin_diameter
-            #           / self._rr_equiv.pin_pitch)
 
         else:
             # Bundle-average velocity
@@ -313,20 +310,20 @@ class SingleNodeHomogeneous(LoggedClass, DASSH_Region):
                 * self._params['de']
                 / self.coolant.viscosity
                 / self.total_area['coolant_int'])
-            # Friction factor
-            if self.coolant_params['Re'] < 2200.0:  # Laminar
-                self.coolant_params['ff'] = \
-                    64 / self.coolant_params['Re']
-            else:  # Turbulent or transition
-                a = self._params['eps'] / self._params['de'] / 3.7
-                b = 4.518 / self.coolant_params['Re']
-                c = 6.9 / self.coolant_params['Re']
-                f = (-0.5 / np.log10(a - b * np.log10(c + a**1.11)))**2
-                if self.coolant_params['Re'] < 3000.0:  # Turbulent
-                    f2200 = 64.0 / 2200.0
-                    x = 3.75 - 8250.0 / self.coolant_params['Re']
-                    f = f2200 + x * (f - f2200)
-                self.coolant_params['ff'] = f
+            # # Friction factor
+            # if self.coolant_params['Re'] < 2200.0:  # Laminar
+            #     self.coolant_params['ff'] = \
+            #         64 / self.coolant_params['Re']
+            # else:  # Turbulent or transition
+            #     a = self._params['eps'] / self._params['de'] / 3.7
+            #     b = 4.518 / self.coolant_params['Re']
+            #     c = 6.9 / self.coolant_params['Re']
+            #     f = (-0.5 / np.log10(a - b * np.log10(c + a**1.11)))**2
+            #     if self.coolant_params['Re'] < 3000.0:  # Turbulent
+            #         f2200 = 64.0 / 2200.0
+            #         x = 3.75 - 8250.0 / self.coolant_params['Re']
+            #         f = f2200 + x * (f - f2200)
+            #     self.coolant_params['ff'] = f
             # Placeholder for coolant thermal conductivity
             k = self.coolant.thermal_conductivity
 
@@ -521,6 +518,73 @@ class SingleNodeHomogeneous(LoggedClass, DASSH_Region):
             self.temp['duct_mw'][0] = c2
             self.temp['duct_surf'][0, 0] = c1 * -L_over_2 + c2
             self.temp['duct_surf'][0, 1] = c1 * L_over_2 + c2
+
+    def _init_static_correlated_params(self, t):
+        """Calculate bundle friction factor at the bundle-average
+        temperature
+
+        Parameters
+        ----------
+        t : float
+            Bundle axial average temperature ((T_in + T_out) / 2)
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        This method is called within the '_setup_asm' method
+        inside the Reactor object instantiation. It is similar
+        to the '_update_coolant_params' method.
+
+        """
+        # Update coolant material properties
+        t_inlet = self.coolant.temperature
+        self._update_coolant(t)
+
+        if self._rr_equiv is not None:
+            self._rr_equiv._init_static_correlated_params(t)
+            # Bundle RE
+            self.coolant_params['Re'] = \
+                self._rr_equiv.coolant_int_params['Re']
+            # Bundle-average velocity
+            self.coolant_params['vel'] = \
+                self._rr_equiv.coolant_int_params['vel']
+            # Friction factor
+            self.coolant_params['ff'] = \
+                self._rr_equiv.coolant_int_params['ff']
+
+        else:
+            # Bundle-average velocity
+            self.coolant_params['vel'] = (
+                self.flow_rate
+                / self.coolant.density
+                / self.total_area['coolant_int'])
+            # Bundle Reynolds number
+            self.coolant_params['Re'] = (
+                self.flow_rate
+                * self._params['de']
+                / self.coolant.viscosity
+                / self.total_area['coolant_int'])
+            # Friction factor
+            if self.coolant_params['Re'] < 2200.0:  # Laminar
+                self.coolant_params['ff'] = \
+                    64 / self.coolant_params['Re']
+            else:  # Turbulent or transition
+                a = self._params['eps'] / self._params['de'] / 3.7
+                b = 4.518 / self.coolant_params['Re']
+                c = 6.9 / self.coolant_params['Re']
+                f = (-0.5 / np.log10(a - b * np.log10(c + a**1.11)))**2
+                if self.coolant_params['Re'] < 3000.0:  # Turbulent
+                    f2200 = 64.0 / 2200.0
+                    x = 3.75 - 8250.0 / self.coolant_params['Re']
+                    f = f2200 + x * (f - f2200)
+                self.coolant_params['ff'] = f
+
+        # Reset inlet temperature
+        self.coolant.temperature = t_inlet
+
 
 ########################################################################
 

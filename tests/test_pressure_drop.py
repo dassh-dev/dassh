@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-11-01
+date: 2022-12-06
 author: matz
 Test various aspects of the DASSH pressure drop calculations
 """
@@ -41,6 +41,7 @@ def test_rodded_reg_dp(c_shield_rr_params):
     fr = 0.50
     rr = dassh.region_rodded.make_rr_asm(input, 'testboi', mat, fr)
     T_in = 623.15
+    rr._init_static_correlated_params(T_in)
     dz = 0.01
     dp = 0.0
     ff = []
@@ -146,6 +147,7 @@ def test_unrodded_reg_dp(c_shield_rr_params):
     input['use_low_fidelity_model'] = True
     ur = dassh.region_unrodded.make_ur_asm('testboi', input, mat, fr)
     T_in = 623.15
+    ur._init_static_correlated_params(T_in)
     dz = 0.01
     dp_ur = 0.0
     ff = []
@@ -178,21 +180,30 @@ def test_unrodded_reg_dp(c_shield_rr_params):
 
 def test_dp_agreement_between_unrodded_rodded_regs(c_shield_rr_params):
     """Test that the pressure drop calculation gives the same result
-    in RR and UR objects"""
+    in RR and UR objects
+
+    Notes
+    -----
+    In this test, the friction factor in the UR object should be the
+    same as that in the RR object. Therefore, the two should have the
+    same pressure drop.
+
+    """
     input, mat = c_shield_rr_params
     mat['coolant'] = dassh.Material('sodium')  # get dynamic proeprties
     fr = 0.50
+    T_in = 623.15
+    dz = 0.01
 
     # Make rodded region
     rr = dassh.region_rodded.make_rr_asm(input, 'dummy', mat, fr)
+    rr._init_static_correlated_params(T_in)
 
     # Make unrodded region; manually set UR params
     input['use_low_fidelity_model'] = True
-    input['convection_factor'] = 'calculate'
     ur = dassh.region_unrodded.make_ur_asm('testboi', input, mat, fr)
+    ur._init_static_correlated_params(T_in)
 
-    T_in = 623.15
-    dz = 0.01
     dp_rr = 0.0
     dp_ur = 0.0
     for i in range(50):
@@ -210,7 +221,15 @@ def test_dp_agreement_between_unrodded_rodded_regs(c_shield_rr_params):
 
 
 def test_dp_agreement_between_unrodded_rodded_equiv_regs(testdir):
-    """Test that the RR equivalent UR returns the same pressure drop"""
+    """Test that the RR equivalent UR returns the same pressure drop
+
+    Notes
+    -----
+    This test is similar to the previous in that the UR object is using
+    a friction factor obtained from an RR object; therefore, the pressure
+    drop difference between the UR and RR should be low.
+
+    """
     # Get answer for comparison
     path_ans = os.path.join(
         testdir, 'test_data', 'test_single_asm', 'dassh_reactor.pkl')
@@ -240,49 +259,4 @@ def test_dp_agreement_between_unrodded_rodded_equiv_regs(testdir):
 
     # Compare them
     diff = (res - ans) / ans
-    assert np.max(np.abs(diff)) < 1e-3
-
-
-def test_dp_agreement_between_unrodded_rodded_regs_from_rx(testdir):
-    """Test that the pressure drop calculation for the unrodded region
-    is similar to that of the pin bundle when comparable parameters
-    are used"""
-    # Get answer to compare with
-    path_ans = os.path.join(
-        testdir, 'test_data', 'test_single_asm', 'dassh_reactor.pkl')
-    if os.path.exists(path_ans):
-        r_ans = dassh.reactor.load(path_ans)
-    else:
-        inpath = os.path.join(testdir, 'test_inputs', 'input_single_asm.txt')
-        outpath = os.path.join(testdir, 'test_results', 'test_single_asm')
-        inp = dassh.DASSH_Input(inpath)
-        r_ans = dassh.Reactor(inp, path=outpath, write_output=True)
-        r_ans.temperature_sweep()
-    # Just want pressure drop per unit length of rod bundle region
-    asm = r_ans.assemblies[0]
-    ans = asm.rodded.pressure_drop
-    ans /= asm.region_bnd[2] - asm.region_bnd[1]
-
-    # Get result to compare
-    inpath = os.path.join(testdir, 'test_inputs', 'input_single_asm_lf.txt')
-    outpath = os.path.join(testdir, 'test_results', 'test_single_asm_lf-2')
-    inp = dassh.DASSH_Input(inpath)
-    k = ('Assembly', 'fuel', 'AxialRegion', 'lower_refl')
-    inp.data[k[0]][k[1]][k[2]][k[3]]['hydraulic_diameter'] = \
-        asm.rodded.bundle_params['de']
-    inp.data[k[0]][k[1]][k[2]][k[3]]['vf_coolant'] = \
-        (asm.rodded.bundle_params['area']
-         / (0.5 * np.sqrt(3) * asm.rodded.duct_ftf[0][0]**2))
-    r_res = dassh.Reactor(inp, path=outpath, write_output=True)
-    r_res.temperature_sweep()
-    asm = r_res.assemblies[0]
-    res = asm.region[0].pressure_drop
-    res /= asm.region_bnd[1] - asm.region_bnd[0]
-
-    # Compare the answer and the result
-    print('ans', ans)
-    print('res', res)
-    # Compare them - accept 5% difference
-    diff = (res - ans) / ans
-    print('rel diff', diff)
-    assert abs(diff) < 0.05
+    assert np.max(np.abs(diff)) < 1e-4

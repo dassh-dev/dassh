@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-11-01
+date: 2022-12-06
 author: matz
 Pytest fixtures and related test utilities for the whole shebang
 """
@@ -605,6 +605,7 @@ def simple_asm(assembly_default_params, small_core_power):
         avg_power,
         small_core_power.z_finemesh,
         rod_zbnds)
+    asm.rodded._init_static_correlated_params(623.15)
     return asm
 
 
@@ -701,7 +702,7 @@ def simple_ctrl_asm(simple_ctrl_params, simple_ctrl_rr, small_core_power):
         avg_power,
         small_core_power.z_finemesh,
         rod_zbnds)
-    print(asm.rodded.byp_flow_rate)
+    asm.rodded._init_static_correlated_params(623.15)
     return asm
 
 
@@ -800,7 +801,7 @@ def c_lrefl_simple(c_fuel_params, c_fuel_rr):
     z_lo = 0.0
     z_hi = 1.25
     vf_coolant = 0.25
-    return dassh.SingleNodeHomogeneous(
+    ur = dassh.SingleNodeHomogeneous(
         'test_simple_reg',
         z_lo, z_hi,
         c_fuel_rr.duct_ftf[-1],
@@ -809,6 +810,8 @@ def c_lrefl_simple(c_fuel_params, c_fuel_rr):
         c_fuel_params[1]['coolant'],
         c_fuel_params[1]['duct'],
         c_fuel_params[0]['htc_params_duct'])
+    ur._init_static_correlated_params(623.15)
+    return ur
 
 
 @pytest.fixture
@@ -824,6 +827,7 @@ def shield_ur_mnh():
     mnh = dassh.MultiNodeHomogeneous('test_mnh_reg', z_low, z_high, dftf,
                                      vfc, fr, coolant_mat, duct_mat,
                                      htc_params=None)
+    mnh._init_static_correlated_params(623.15)
     return activate_rodded_region(mnh, 623.15)
 
 
@@ -939,6 +943,8 @@ def c_shield_asm(assembly_default_params, small_core_power):
                                        small_core_power.z_finemesh,
                                        kbnds, scale=0.0031)
     asm.power = apower
+    for reg in asm.region:
+        reg._init_static_correlated_params(698.15)
     return asm
 
 
