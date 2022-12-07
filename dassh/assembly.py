@@ -86,24 +86,24 @@ class Assembly(LoggedClass):
         # Create the rod bundle region - if totally unrodded, make an
         # unrodded region using the bundle parameters
         if asm_input.get('use_low_fidelity_model'):
-            self.region = [region_unrodded.make_ur_asm(
+            self.region = [region_unrodded.make(
                 self.name, asm_input, mat_dict, flow_rate, se2geo)
             ]
         else:
             self.region = [
-                region_rodded.make_rr_asm(asm_input,
-                                          self.name,
-                                          mat_dict,
-                                          flow_rate,
-                                          se2geo,
-                                          param_update_tol)
+                region_rodded.make(asm_input,
+                                   self.name,
+                                   mat_dict,
+                                   flow_rate,
+                                   se2geo,
+                                   param_update_tol)
             ]
 
         # Create other requested unrodded regions
         for reg in asm_input['AxialRegion']:
             if reg != 'rods':
                 self.region.append(
-                    region_unrodded.make_ur_axialregion(
+                    region_unrodded.make_axialregion(
                         asm_input, reg, mat_dict, flow_rate))
 
         # Keep track of what regions are where - sort them

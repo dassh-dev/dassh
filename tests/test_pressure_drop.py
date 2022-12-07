@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-12-06
+date: 2022-12-07
 author: matz
 Test various aspects of the DASSH pressure drop calculations
 """
@@ -39,7 +39,7 @@ def test_rodded_reg_dp(c_shield_rr_params):
     input, mat = c_shield_rr_params
     mat['coolant'] = dassh.Material('sodium')
     fr = 0.50
-    rr = dassh.region_rodded.make_rr_asm(input, 'testboi', mat, fr)
+    rr = dassh.region_rodded.make(input, 'testboi', mat, fr)
     T_in = 623.15
     rr._init_static_correlated_params(T_in)
     dz = 0.01
@@ -145,7 +145,7 @@ def test_unrodded_reg_dp(c_shield_rr_params):
     fr = 0.50
     # Make unrodded region; manually set UR params and sweep
     input['use_low_fidelity_model'] = True
-    ur = dassh.region_unrodded.make_ur_asm('testboi', input, mat, fr)
+    ur = dassh.region_unrodded.make('testboi', input, mat, fr)
     T_in = 623.15
     ur._init_static_correlated_params(T_in)
     dz = 0.01
@@ -196,12 +196,12 @@ def test_dp_agreement_between_unrodded_rodded_regs(c_shield_rr_params):
     dz = 0.01
 
     # Make rodded region
-    rr = dassh.region_rodded.make_rr_asm(input, 'dummy', mat, fr)
+    rr = dassh.region_rodded.make(input, 'dummy', mat, fr)
     rr._init_static_correlated_params(T_in)
 
     # Make unrodded region; manually set UR params
     input['use_low_fidelity_model'] = True
-    ur = dassh.region_unrodded.make_ur_asm('testboi', input, mat, fr)
+    ur = dassh.region_unrodded.make('testboi', input, mat, fr)
     ur._init_static_correlated_params(T_in)
 
     dp_rr = 0.0

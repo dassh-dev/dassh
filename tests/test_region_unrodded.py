@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-12-06
+date: 2022-12-07
 author: matz
 Test the behavior and attributes of unrodded DASSH Region instances
 """
@@ -48,7 +48,7 @@ def test_ur_reg_instantiation_fancy(testdir):
            'duct': dassh.Material('ht9')}
 
     # Test fully unrodded assembly
-    ur1 = dassh.region_unrodded.make_ur_asm(
+    ur1 = dassh.region_unrodded.make(
         'testboi', inp.data['Assembly']['fuel'], mat, 1.0)
     print(ur1.mratio)
     print(ur1._mratio)
@@ -57,12 +57,12 @@ def test_ur_reg_instantiation_fancy(testdir):
     assert ur1.mratio != 1.0
 
     # Test default in unrodded axial regions
-    ur2 = dassh.region_unrodded.make_ur_axialregion(
+    ur2 = dassh.region_unrodded.make_axialregion(
         inp.data['Assembly']['control'], 'empty_cr', mat, 1.0)
     assert ur2.mratio == 1.0
 
     # Test nondefault in unrodded axial regions
-    ur2 = dassh.region_unrodded.make_ur_axialregion(
+    ur2 = dassh.region_unrodded.make_axialregion(
         inp.data['Assembly']['control'], 'upper_cr', mat, 1.0)
     assert ur2.mratio == 0.8
 

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-12-06
+date: 2022-12-07
 author: matz
 Pytest fixtures and related test utilities for the whole shebang
 """
@@ -769,7 +769,7 @@ def c_fuel_params(assembly_default_params):
 def c_fuel_rr(c_fuel_params):
     """DASSH RoddedRegion object for conceptual fuel asm"""
     flowrate = 25.0
-    rr = dassh.region_rodded.make_rr_asm(
+    rr = dassh.region_rodded.make(
         c_fuel_params[0], 'conceptual_fuel', c_fuel_params[1], flowrate)
     return activate_rodded_region(rr, 623.15)
 

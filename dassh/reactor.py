@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-11-30
+date: 2022-12-07
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -1185,65 +1185,6 @@ class Reactor(LoggedClass):
                 self.assemblies[i].step0(gap_temp,
                                          gap_htc,
                                          self._is_adiabatic)
-
-    def axial_step_parallel(self, z, dz, worker_pool):
-        """Parallelized version of axial_step; NOT FUNCTIONAL
-
-        Parameters
-        ----------
-        z : float
-            Absolute axial position (m)
-        dz : float
-            Axial mesh size (m)
-        verbose (optional) : bool
-            Indicate whether to print step summary
-        worker_pool : multiprocessing Pool object
-            Workers to perform parallel tasks
-
-        """
-        # First, some administrative stuff: figure out whether you're
-        # dumping temperatures at this axial step
-        dump_step = self._determine_whether_to_dump_data(z, dz)
-
-        # 1. Calculate gap coolant temperatures at the j+1 level
-        #    based on duct wall temperatures at the j level.
-        if self.core.model is not None:
-            # worker_pool = mp.Pool()
-            t_duct = []
-            for asm in self.assemblies:
-                t_duct.append(
-                    worker_pool.apply_async(
-                        approximate_temps,
-                        args=(asm.x_pts,
-                              asm.duct_outer_surf_temp,
-                              self.core.x_pts,
-                              asm._lstsq_params, )
-                    )
-                )
-            t_duct = np.array([td.get() for td in t_duct])
-            self.core.calculate_gap_temperatures(dz, t_duct)
-            # worker_pool.close()
-            # worker_pool.join()
-        # 2. Calculate assembly coolant and duct temperatures.
-        #    Different treatment depending on whether in the
-        #    heterogeneous or homogeneous region; varies assembly to
-        #    assembly, handled in the same method.
-        updated_asm = []
-        # worker_pool = mp.Pool()
-        for asm in self.assemblies:
-            updated_asm.append(
-                worker_pool.apply_async(
-                    self._calculate_asm_temperatures,
-                    args=(asm, z, dz, dump_step, ),
-                    error_callback=err_cb))
-        self.assemblies = [a.get() for a in updated_asm]
-        # worker_pool.close()
-        # worker_pool.join()
-
-        # Write the results
-        if dump_step:
-            for asm in self.assemblies:
-                asm.write(self._options['dump']['files'], None)
 
     def _determine_whether_to_dump_data(self, z, dz):
         """Dump data to CSV if interval length is reached or if at

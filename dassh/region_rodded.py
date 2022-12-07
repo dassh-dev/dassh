@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-12-06
+date: 2022-12-07
 author: matz
 Methods to describe the components of hexagonal fuel typical of
 liquid metal fast reactors
@@ -39,14 +39,39 @@ _sqrt3 = np.sqrt(3)
 _inv_sqrt3 = 1 / _sqrt3
 _sqrt3over3 = np.sqrt(3) / 3
 # Surface of pins in contact with each type of subchannel
-# q_p2sc = {1: 0.166666666666667, 2: 0.25, 3: 0.166666666666667}
 q_p2sc = np.array([0.166666666666667, 0.25, 0.166666666666667])
 
-module_logger = logging.getLogger('dassh.assembly')
+module_logger = logging.getLogger('dassh.region_rodded')
 
 
-def make_rr_asm(inp, name, mat, fr, se2geo=False, update_tol=0.0):
-    """Create RoddedRegion object within DASSH Assembly"""
+def make(inp, name, mat, fr, se2geo=False, update_tol=0.0):
+    """Create RoddedRegion object within DASSH Assembly
+
+    Parameters
+    ----------
+    inp : dict
+        DASSH "Assembly" input dictionary
+        dassh_input.data['Assembly'][...]
+    name : str
+        Name of this assembly (e.g. 'fuel')
+    mat : dict
+        Dictionary of DASSH material objects (coolant, duct)
+    fr : float
+        Coolant mass flow rate [kg/s]
+    se2geo (optional) : boolean
+        Indicate whether to use the (incorrect) geometry setup from
+        SE2ANL. Note: this was created for developer comparison with
+        SE2ANL and is not intended for general use (default=False)
+    update_tol (optional) : float
+        Tolerance in the change in coolant temp-dependent material
+        properties that triggers correlated parameter recalculation
+        (default=0.0; recalculate at every step)
+
+    Returns
+    -------
+    DASSH RoddedRegion object
+
+    """
     rr = RoddedRegion(name,
                       inp['num_rings'],
                       inp['pin_pitch'],
@@ -337,8 +362,6 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         self._setup_region()
         self._setup_flowrate(flow_rate)
         self._setup_ht_constants()
-        # if self.n_ring == 1:
-        #     self._cleanup_1pin()
         self._setup_correlations(corr_friction, corr_flowsplit,
                                  corr_mixing, corr_nusselt,
                                  corr_shapefactor)
@@ -410,68 +433,6 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         x_bnds[-1] = 6 / np.sqrt(3) * self.duct_ftf[-1][1]
         return x_bnds
 
-    def calculate_xbnds2(self):
-        edge_sc_per_side = int(self.subchannel.n_sc['duct']['edge'] / 6)
-        x_bnds = np.zeros(edge_sc_per_side + 1)
-        typ = self.subchannel.type[
-            -self.subchannel.n_sc['duct']['total']:].copy()
-        typ -= 3
-        typ = np.roll(typ, 1)
-        dx = np.array([self.pin_pitch, 2 * self.d['wcorner'][-1, 1]])
-        tmp = np.cumsum(dx[typ]) - 0.5 * dx[1]
-        x_bnds = tmp[:x_bnds.shape[0]]
-        P_hex = self.duct_ftf[-1][1] / np.sqrt(3)
-        x_bnds /= P_hex
-        x_bnds[0] = 0
-        x_bnds[-1] = 1
-        return x_bnds
-
-    def _cleanup_1pin(self):
-        """Clean up the parameters generated in a 1-pin assembly
-
-        Notes
-        -----
-        The methods in __init__ produce some incorrect parameter values
-        when applied to a 1-pin assembly. They shouldn't be accessible
-        because the "subchannel" attribute counts no interior/edge-type
-        subchannels, but eliminating those values that are incorrect
-        will help avoid headaches and confusion later
-
-        The following attributes are unaffected:
-        - bundle_params
-        - duct_params
-
-        The affected values are generally negative/inf/nan and are set
-        to zero below.
-
-        """
-        # Single values
-        self.d['pin-pin'] = 0.0
-        self.bypass_params['de'][:, 0] = 0.0
-
-        # Dicts with lists: first two values should be zero
-        for attr in ['bare_params', 'params']:
-            tmp_attr = getattr(self, attr)
-            for key in tmp_attr:
-                if key != 'theta':
-                    # Last value is always corner, keep it
-                    for idx in range(len(tmp_attr[key]) - 1):
-                        tmp_attr[key][idx] = 0.0
-            setattr(self, attr, tmp_attr)
-
-        # Lists of lists - pick indices that point corners -> corners
-        ij_pairs = [(2, 2), (2, 4), (4, 2), (4, 6), (6, 4)]
-        for attr in ['L', 'ht_consts']:
-            tmp_attr = getattr(self, attr)
-            for i in range(len(tmp_attr)):
-                for j in range(len(tmp_attr[i])):
-                    if not (i, j) in ij_pairs:
-                        if type(tmp_attr[i][j]) == list:
-                            tmp_attr[i][j] = [0.0] * len(tmp_attr[i][j])
-                        else:
-                            tmp_attr[i][j] = 0.0
-            setattr(self, attr, tmp_attr)
-
     def _setup_flowrate(self, flowrate):
         """Setup method to define the Assembly flowrate"""
         # What I will know is the total flow rate given to the
@@ -515,44 +476,6 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         self._mfrc = (self.params['area']
                       * self.int_flow_rate
                       / self.bundle_params['area'])
-
-    def _iterate_bypass_flowrate(self, z0, z1, k_seal=[0]):
-        # diff in dP between bundle and bypass
-        self._k_byp_seal = np.array(k_seal)
-        dz = z1 - z0
-        diff = np.ones(self.n_bypass)
-        # while np.sum(np.abs(diff)) > 1e-6:
-        print('{:4s} {:>8s} {:>8s} {:>8s} {:>8s} {:>8s}'
-              .format('iter', 'Int FR', 'Byp FR', 'Int dP', 'Byp dP', 'Diff'))
-        A_duct = self.duct_ftf[-1][0]**2 * _sqrt3 / 2
-        v_tot = self.total_flow_rate / self.coolant.density / A_duct
-        seal_loss = self._k_byp_seal * self.coolant.density * v_tot**2 / 2
-        for i in range(20):
-            self._update_coolant_int_params(self.avg_coolant_int_temp)
-            self._update_coolant_byp_params(self.avg_coolant_byp_temp)
-            # to_print.append(self.coolant_int_params['ff'])
-            # to_print.append(self.coolant_byp_params['ff'])
-
-            dP_int = self.calculate_pressure_drop(dz)
-            dP_byp = self.calculate_byp_pressure_drop(dz)
-            dP_byp += seal_loss
-            diff = dP_byp - dP_int
-            print('{:<4d} {:>8.3f} {:>8.3f} {:>8.1f} {:>8.1f} {:>8.3f}'
-                  .format(i, self.int_flow_rate, self.byp_flow_rate[0],
-                          dP_int, dP_byp[0], diff[0]))
-
-            dP_target = np.average([dP_int, np.average(dP_byp)])
-
-            v_byp_target = np.sqrt(2 * self.bypass_params['total de']
-                                   * (dP_target - seal_loss)
-                                   / self.coolant_byp_params['ff']
-                                   / dz
-                                   / self.coolant.density)
-            self.byp_flow_rate = (v_byp_target
-                                  * self.bypass_params['total area']
-                                  * self.coolant.density)
-            self.int_flow_rate = (self.total_flow_rate
-                                  - np.sum(self.byp_flow_rate))
 
     def _setup_ht_constants(self):
         """Setup heat transfer constants in numpy arrays"""
@@ -755,15 +678,6 @@ class RoddedRegion(LoggedClass, DASSH_Region):
 
         # Reset inlet temperature
         self.coolant.temperature = t_inlet
-
-    def _determine_byp_flow_rate(self):
-        """Calculate the bypass flow rate by estimating pressure drop
-        in the bundle and determining what flow rate is required to
-        achieve equal pressure drop in the bypass"""
-        # Start by assuming "area-based split"
-        self._update_coolant_int_params(self.avg_coolant_int_temp)
-
-        return
 
     def clone(self, new_flowrate=None, new_avg_temp=None):
         """Clone the rodded region into another assembly object;

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-11-30
+date: 2022-12-07
 author: matz
 Methods for unrodded axial regions; to be used within Assembly objects
 """
@@ -34,7 +34,7 @@ from dassh.logged_class import LoggedClass
 _sqrt3 = np.sqrt(3)
 
 
-def make_ur_asm(name, asm_input, mat_dict, flow_rate, se2geo=False):
+def make(name, asm_input, mat_dict, flow_rate, se2geo=False):
     """Process DASSH Assembly input to obtain un-rodded region input
     parameters; to be used when instantiating un-rodded region objects
     in DASSH Assembly object"""
@@ -64,7 +64,7 @@ def make_ur_asm(name, asm_input, mat_dict, flow_rate, se2geo=False):
         return SingleNodeHomogeneous(*args, **kwargs)
 
 
-def make_ur_axialregion(asm_input, reg, mat_dict, flow_rate):
+def make_axialregion(asm_input, reg, mat_dict, flow_rate):
     """Process DASSH Assembly AxialRegion input to obtain un-rodded
     region input parameters; to be used when instantiating un-rodded
     region objects as axial regions in DASSH Assembly object"""
