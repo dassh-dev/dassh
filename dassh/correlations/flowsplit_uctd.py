@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-11-30
+date: 2022-12-07
 author: matz
 Upgraded Cheng-Todreas correlation for flow split (2018)
 """
@@ -26,7 +26,7 @@ from . import flowsplit_ctd as fs_ctd
 applicability = fr_uctd.applicability
 
 
-def calculate_flow_split(asm_obj, regime=None):
+def calculate_flow_split(asm_obj, grid=False, regime=None):
     """Calculate the flow split into the different types of
     subchannels based on the Upgraded Cheng-Todreas model
 
@@ -34,6 +34,9 @@ def calculate_flow_split(asm_obj, regime=None):
     ----------
     asm_obj : DASSH Assembly object
         Contains the geometric description of the assembly
+    grid (optional) : boolean
+        Indicate whether the region also uses spacer grids
+        (default = False)
     regime : str or NoneType
         Indicate flow regime for which to calculate flow split
         {'turbulent', 'laminar', None}; default = None
@@ -62,15 +65,25 @@ def calculate_flow_split(asm_obj, regime=None):
     except (KeyError, AttributeError):
         Cf = fr_uctd.calculate_subchannel_friction_factor_const(asm_obj)
 
-    if regime is not None:
-        return fs_ctd._calculate_flow_split(asm_obj, Cf, regime)
-    elif asm_obj.coolant_int_params['Re'] <= Re_bnds[0]:
-        return fs_ctd._calculate_flow_split(asm_obj, Cf, 'laminar')
-    elif asm_obj.coolant_int_params['Re'] >= Re_bnds[1]:
-        return fs_ctd._calculate_flow_split(asm_obj, Cf, 'turbulent')
+    # If spacer grids are used, an iterative method is required to
+    # determine the flow split regardless of the flow regime.
+    if grid:
+        return fs_ctd._calc_bundle_plus_grid_flow_split(asm_obj, Cf)
+
+    # If no spacer grids are used, return the bundle-only flow split.
     else:
-        return fs_ctd._calculate_flow_split(
-            asm_obj, Cf, 'transition', Re_bnds)
+        if regime is not None:
+            return fs_ctd._calc_bundle_flow_split(
+                asm_obj, Cf, regime, Re_bnds)
+        elif asm_obj.coolant_int_params['Re'] <= Re_bnds[0]:
+            return fs_ctd._calc_bundle_flow_split(
+                asm_obj, Cf, 'laminar')
+        elif asm_obj.coolant_int_params['Re'] >= Re_bnds[1]:
+            return fs_ctd._calc_bundle_flow_split(
+                asm_obj, Cf, 'turbulent')
+        else:
+            return fs_ctd._calc_bundle_flow_split(
+                asm_obj, Cf, 'transition', Re_bnds)
 
 
 def calc_constants(asm_obj):

@@ -508,9 +508,11 @@ class Assembly(LoggedClass):
         # if necessary
         self.active_region.calculate(dz, power_j, t_gap, h_gap,
                                      adiabatic, ebal)
-        if hasattr(self.active_region, '_spacer_grid'):
+        try:
             self.active_region.calculate_spacergrid_pressure_drop(
                 self._z, dz)
+        except AttributeError:
+            pass
 
         # Update peak coolant and duct temperatures
         self._update_peak_coolant_temps()

@@ -650,9 +650,15 @@ class RoddedRegion(LoggedClass, DASSH_Region):
             Inputs for spacer grid pressure loss params from DASSH input
 
         """
-        self._spacer_grid = {'z': input_grid['axial_positions']}
+        axial_positions = input_grid['axial_positions']
+        print(axial_positions)
+        n_positions = len(axial_positions)
+        self.corr_constants['grid'] = {}
+        self.corr_constants['grid']['z'] = axial_positions
+        self.corr_constants['grid']['n'] = n_positions
         if input_grid['loss_coeff']:
-            self._spacer_grid['loss_coeff'] = input_grid['loss_coeff']
+            self.corr_constants['grid']['loss_coeff'] = \
+                input_grid['loss_coeff']
             return
         else:
             # Pull the spacer grid solidity: the ratio of the grid
@@ -660,25 +666,26 @@ class RoddedRegion(LoggedClass, DASSH_Region):
             if not input_grid['solidity']:
                 # Empirical relationship for solidity based on "practical
                 # grid design" from CDD correlation paper
-                self._spacer_grid['solidity'] = \
+                self.corr_constants['grid']['solidity'] = \
                     0.6957 - 162.8 * self.d['pin-pin']
             else:
-                self._spacer_grid['solidity'] = input_grid['solidity']
+                self.corr_constants['grid']['solidity'] = \
+                    input_grid['solidity']
             # Store the correlation function that will be used to
             # evaluate the loss coefficient
             if input_grid['corr'] == 'REH':
                 import dassh.correlations.grid_rehme as gridcorr
-                self._spacer_grid['corr'] = gridcorr.calc_loss_coeff
-                self._spacer_grid['corr_coeff'] = None
+                self.corr['grid'] = gridcorr.calc_loss_coeff
+                self.corr_constants['grid']['corr_coeff'] = None
             else:
                 assert input_grid['corr'] == 'CDD'
                 import dassh.correlations.grid_cdd as gridcorr
-                self._spacer_grid['corr'] = gridcorr.calc_loss_coeff
+                self.corr['grid'] = gridcorr.calc_loss_coeff
                 if not input_grid['corr_coeff']:
-                    self._spacer_grid['corr_coeff'] = \
+                    self.corr_constants['grid']['corr_coeff'] = \
                         gridcorr._DEFAULT_COEFFS
                 else:
-                    self._spacer_grid['corr_coeff'] = \
+                    self.corr_constants['grid']['corr_coeff'] = \
                         input_grid['corr_coeff']
 
     def _init_static_correlated_params(self, t):
@@ -710,9 +717,37 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         self.coolant_int_params['Re'] = \
             mfr_over_area * self.bundle_params['de'] / self.coolant.viscosity
 
+        # Spacer grid, if present
+        if 'grid' in self.corr_constants.keys():
+            try:
+                self.coolant_int_params['grid_loss_coeff'] = \
+                    self.corr_constants['grid']['loss_coeff']
+            except (KeyError, TypeError):
+                # DO I USE BUNDLE RE OR SUBCHANNEL RE ???
+                # Re_sc = self.coolant.density * \
+                #     self.coolant_int_params['vel'] * \
+                #     self.coolant_int_params['fs'] * \
+                #     self.params['de'] / \
+                #     self.coolant.viscosity
+                # self.coolant_int_params['grid_loss_coeff'] = \
+                #     self.corr['grid'](
+                #         Re_sc
+                #         self.corr_constants['grid']['solidity'],
+                #         self.corr_constants['grid']['corr_coeff'])
+                self.coolant_int_params['grid_loss_coeff'] = \
+                    self.corr['grid'](
+                        self.coolant_int_params['Re'],
+                        self.corr_constants['grid']['solidity'],
+                        self.corr_constants['grid']['corr_coeff'])
+
         # Flow split parameters
         if self.corr['fs'] is not None:
-            self.coolant_int_params['fs'] = self.corr['fs'](self)
+            if 'grid' in self.corr.keys():
+                self.coolant_int_params['fs'] = \
+                    self.corr['fs'](self, grid=True)
+            else:
+                self.coolant_int_params['fs'] = \
+                    self.corr['fs'](self)
 
         # Friction factor
         if self.corr['ff'] is not None:
@@ -752,6 +787,11 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                                   self.corr_names['nu'],
                                   self.corr_names['sf'],
                                   warn=False)
+        for attr in ('corr_constants', 'corr'):
+            if 'grid' in getattr(self, attr).keys():
+                getattr(clone, attr)['grid'] = \
+                    copy.deepcopy(getattr(self, attr)['grid'])
+
         if new_flowrate is not None:
             # Define new flow rate attribute in clone
             clone._setup_flowrate(new_flowrate)
@@ -1006,21 +1046,14 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         """Calculate pressure losses due to spacer grid if crossed
         in current step"""
         # Note: z = z_old + dz
-        if any(_z > z - dz and _z < z for _z in self._spacer_grid['z']):
-            print('I AM RUNNING!', z)
-            try:
+        if 'grid' not in self.corr_constants.keys():
+            return
+        else:
+            if any(_z > z - dz and _z < z for _z in
+                    self.corr_constants['grid']['z']):
+                print('hi')
                 self._pressure_drop['spacer_grid'] += \
-                    self._spacer_grid['loss_coeff'] \
-                    * self.coolant.density \
-                    * self.coolant_int_params['vel']**2 \
-                    / 2.0
-            except (KeyError, TypeError):
-                loss_coeff = self._spacer_grid['corr'](
-                    self.coolant_int_params['Re'],
-                    self._spacer_grid['solidity'],
-                    self._spacer_grid['corr_coeff'])
-                self._pressure_drop['spacer_grid'] += \
-                    loss_coeff \
+                    self.coolant_int_params['grid_loss_coeff'] \
                     * self.coolant.density \
                     * self.coolant_int_params['vel']**2 \
                     / 2.0
