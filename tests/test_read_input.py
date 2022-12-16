@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-07-07
+date: 2022-12-19
 author: matz
 Test the DASSH read_input module and DASSH_input object
 """
@@ -734,3 +734,27 @@ def test_warning_bare_rod_kc_corr(testdir, caplog):
           'turbulent mixing but specified nonzero wire diameter.'
     print(caplog.text)
     assert msg in caplog.text
+
+
+def test_dasshpower_incomplete_input(testdir, caplog):
+    """dassh_power access point allows for some missing inputs that
+    are otherwise required by DASSH - check the fill behavior"""
+    with pytest.raises(SystemExit):
+        dassh.DASSH_Input(
+            os.path.join(
+                testdir,
+                'test_inputs',
+                'input_dasshpower.txt'))
+    msg = '"coolant_inlet_temp" key in section "Core" failed validation'
+    assert msg in caplog.text
+
+    # Should cause no failure
+    dasshpower_input = dassh.DASSHPower_Input(
+        os.path.join(
+            testdir,
+            'test_inputs',
+            'input_dasshpower.txt'))
+    assert dasshpower_input.data['Assignment']['ByPosition'][0][2] == \
+        {'flowrate': 5.0}
+    assert dasshpower_input.data['Core']['coolant_material'] == 'sodium'
+    assert dasshpower_input.data['Core']['coolant_inlet_temp'] == 773.15

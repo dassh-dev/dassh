@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-08-17
+date: 2022-12-19
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -447,13 +447,14 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
 
     Notes
     -----
-    DASSH input files contain 4 main sections and 2 optional sections:
-    1. File paths to ARC files: [ARC]
+    DASSH input files contain 4 main sections and 3 optional sections:
+    1. Power distribution details: [Power]
     2. Core parameters: [Core]
     3. Assembly details: [Assembly]
     4. Assembly assignments: [Assignment]
     5. (optional) Problem setup: [Setup]
     6. (optional) Custom material properties: [Materials]
+    7. (optional) Orificing optimization inputs: [Orificing]
 
     This object reads these inputs using the ConfigObj package,
     performs additional checks on those inputs beyond what is
@@ -462,7 +463,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
 
     """
 
-    def __init__(self, infile, empty4c=False):
+    def __init__(self, infile, empty4c=False, power_only=False):
         """Read and check the input data"""
         LoggedClass.__init__(self, 4, 'dassh.read_input.DASSH_Input')
         DASSH_Assignment.__init__(self)
@@ -511,7 +512,8 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         self.check_correlations()
         # Assignment
         self.check_assignment_assembly_agreement()
-        self.check_assignment_boundary_conditions()
+        if not power_only:  # Can ignore BC if called through dassh_power
+            self.check_assignment_boundary_conditions()
         self.check_assignment_against_geodst(empty4c)
         self.convert_assn_deltaT_to_outletT()
         # Core
@@ -1192,11 +1194,11 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                             'bundle dimensions.')
                     self.log('error', msg)
             if self.data['Assembly'][asm]['corr_mixing'] == 'KC-BARE':
-                 if self.data['Assembly'][asm]['wire_diameter'] > 0.0:
-                     msg = 'WARNING: ' + pre
-                     msg += 'Using bare-rod correlation for turbulent ' \
-                            'mixing but specified nonzero wire diameter.'
-                     self.log('warning', msg)
+                if self.data['Assembly'][asm]['wire_diameter'] > 0.0:
+                    msg = 'WARNING: ' + pre
+                    msg += 'Using bare-rod correlation for turbulent ' \
+                           'mixing but specified nonzero wire diameter.'
+                    self.log('warning', msg)
 
     def check_assignment_assembly_agreement(self):
         """Make sure all assigned assemblies are specified"""
@@ -1223,6 +1225,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         """Confirm that all boundary conditions (flow rate or outlet
         temperature) are non-negative"""
         for i in range(len(self.data['Assignment']['ByPosition'])):
+            msg = f'ERROR: Assignment section line {i}: '
             assn = self.data['Assignment']['ByPosition'][i]
             if assn == []:
                 continue
@@ -1234,15 +1237,13 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                     bc = key
                     nkwarg += 1
             if nkwarg == 0:
-                self.log('error', f'Assignment section line {i}: '
-                                  'missing boundary condition')
+                self.log('error', msg + 'missing boundary condition')
             if nkwarg > 1:
-                self.log('error', f'Assignment section line {i}: '
-                                  'too many boundary conditions given')
+                self.log('error', msg + 'too many boundary conditions given')
 
             # Check that value is nonnegative
-            msg = (f'Assignment section line {i}: \"{bc}\" must be '
-                   f'positive but was given {assn[2][bc]}')
+            msg = (msg + f'\"{bc}\" must be positive but '
+                   f'was given {assn[2][bc]}')
             self._check_nonzero(assn[2][bc], msg)
 
     def convert_assn_deltaT_to_outletT(self):
@@ -2267,3 +2268,77 @@ def convert_mass_flow_rate(data):
                                   ['ByPosition']
                                   [i][2]['flowrate']))
     return data
+
+
+########################################################################
+
+
+class DASSHPower_Input(DASSH_Input, LoggedClass):
+    """Object for processing DASSH input files for pin power
+    integration only.
+
+    Parameters
+    ----------
+    infile : str
+        Path to DASSH input file
+
+    Notes
+    -----
+    The standard DASSH input file requires information that is not
+    relevant for pin power integration (e.g. mass flow rates). This
+    object allows the user to specify a partial DASSH input file and
+    fills in the missing information with dummy values so that the
+    standard DASSH infrastructure can be used.
+
+    """
+    def __init__(self, infile):
+        # Initial object setup and inheritance
+        LoggedClass.__init__(self, 4, 'dassh.read_input.DASSHPower_Input')
+        DASSH_Assignment.__init__(self)
+        self.path = os.path.split(infile)[0]
+
+        # Fill out potentially missing sections.
+        with open(infile, 'r') as f:
+            infile_str = f.read()
+
+        # Since most DASSH inputs have defaults or are optional,
+        # the only required inputs that could be missing (if only
+        # the necessary information is given) are in the [Core]
+        # input section
+        # Add dummy for "coolant_inlet_temp"; units don't matter
+        # because no temperature calculations are performed.
+        if 'coolant_inlet_temp' not in infile_str:
+            str_to_add = '\n    coolant_inlet_temp = 500.0'
+            tag = infile_str.find('[Core]')
+            tag = infile_str.find('\n', tag)
+            infile_str = infile_str[:tag] + str_to_add + infile_str[tag:]
+        # Add dummy for "coolant_material"
+        if 'coolant_material' not in infile_str:
+            str_to_add = '\n    coolant_material = sodium'
+            tag = infile_str.find('[Core]')
+            tag = infile_str.find('\n', tag)
+            infile_str = infile_str[:tag] + str_to_add + infile_str[tag:]
+
+        # Write new input to temp input file
+        path, fname = os.path.split(infile)
+        tmp = os.path.join(path, '.' + fname)
+        with open(tmp, 'w') as f:
+            f.write(infile_str)
+
+        # Activate standard DASSH_Input object and remove temp input file
+        DASSH_Input.__init__(self, tmp, power_only=True)
+        os.remove(tmp)
+
+        # Add dummy conditions to Assignment section if missing
+        # (Attributes were added by inheriting the DASSH_Input object)
+        k1 = 'Assignment'
+        k2 = 'ByPosition'
+        for i in range(len(self.data[k1][k2])):
+            # Skip if empty
+            if self.data[k1][k2][i]:
+                # Proceed only if missing the assignment condition
+                if not self.data[k1][k2][i][2]:
+                    # Assign arbitrary flow rate condition; not
+                    # concerned about units or constraints because
+                    # there will be no sweep.
+                    self.data[k1][k2][i][2] = {'flowrate': 5.0}
