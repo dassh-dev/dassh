@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-04-27
+date: 2022-12-19
 author: matz
 Test container for general execution
 """
@@ -202,3 +202,31 @@ def test_ebal_with_ur(testdir, wdir_setup):
     cp = r.assemblies[0].active_region.coolant.heat_capacity  # constant
     q_dt = mfr * cp * dt
     assert np.abs(np.sum(q_in) - np.sum(q_dt)) < 2e-8
+
+
+def test_dasshpower_exec(testdir, wdir_setup):
+    """Test energy conservation in 'dassh_power' execution"""
+    inpath = os.path.join(
+        testdir,
+        'test_inputs',
+        'input_seven_asm_dasshpower_exec.txt')
+    outpath = os.path.join(
+        testdir,
+        'test_results',
+        'dasshpower_exec')
+    path_to_tmp_infile = wdir_setup(inpath, outpath)
+    args = [path_to_tmp_infile, '--save_reactor']
+    execute_dassh(args, entrypoint="dassh_power")
+
+    # Check that energy was conserved
+    # 1. Total power stored in DASSH Reactor object
+    r = dassh.reactor.load(os.path.join(outpath, 'dassh_reactor.pkl'))
+    assert r.total_power == pytest.approx(1e7)
+
+    # 2. Sum of powers in all DASSH Assembly objects
+    assert sum(a.total_power for a in r.assemblies) == pytest.approx(1e7)
+
+    # 3. Sum of pin powers written to output CSV
+    with open(os.path.join(outpath, 'total_pin_power.csv'), 'r') as f:
+        pin_power = np.loadtxt(f, delimiter=',')
+    assert np.sum(pin_power[1:]) == pytest.approx(1e7)
