@@ -15,21 +15,12 @@ on:
 
 jobs:
 
-  python-3.6:
-    runs-on: ${{ matrix.os.runs-on }}
+  python3.6:
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
-        python-version: "3.6"
-        os:
-          -   name: Linux
-              runs-on: ubuntu-20.04
-              python_platform: linux
-          #-   name: Windows
-          #    runs-on: windows-latest
-          #    python_platform: win32
-          -   name: macOS
-              runs-on: macos-latest
-              python_platform: darwin
+        python-version: ["3.6"]
+
     name: "Python ${{ matrix.python-version }}"
     steps:
       - uses: actions/checkout@v2
@@ -58,21 +49,12 @@ jobs:
           files: coverage_${{ matrix.python-version }}.xml
           token: ${{ secrets.CODECOV_TOKEN }}
 
-  python-3.7+:
-    runs-on: ${{ matrix.os.runs-on }}
+  python3.7+:
+    runs-on: ubuntu-latest
     strategy:
       matrix:
         python-version: ["3.7", "3.8"]
-        os:
-          -   name: Linux
-              runs-on: ubuntu-latest
-              python_platform: linux
-          #-   name: Windows
-          #    runs-on: windows-latest
-          #    python_platform: win32
-          -   name: macOS
-              runs-on: macos-latest
-              python_platform: darwin
+
     name: "Python ${{ matrix.python-version }}"
     steps:
       - uses: actions/checkout@v2
