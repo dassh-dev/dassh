@@ -20,16 +20,16 @@ jobs:
     strategy:
       matrix:
         python-version: 3.6
-          os:
-            -   name: Linux
-                runs-on: ubuntu-20.04
-                python_platform: linux
-            #-   name: Windows
-            #    runs-on: windows-latest
-            #    python_platform: win32
-            -   name: macOS
-                runs-on: macos-latest
-                python_platform: darwin
+        os:
+          -   name: Linux
+              runs-on: ubuntu-20.04
+              python_platform: linux
+          #-   name: Windows
+          #    runs-on: windows-latest
+          #    python_platform: win32
+          -   name: macOS
+              runs-on: macos-latest
+              python_platform: darwin
     name: "Python ${{ matrix.python-version }}"
     steps:
       - uses: actions/checkout@v2
@@ -63,16 +63,16 @@ jobs:
     strategy:
       matrix:
         python-version: [3.6]
-          os:
-            -   name: Linux
-                runs-on: ubuntu-latest
-                python_platform: linux
-            #-   name: Windows
-            #    runs-on: windows-latest
-            #    python_platform: win32
-            -   name: macOS
-                runs-on: macos-latest
-                python_platform: darwin
+        os:
+          -   name: Linux
+              runs-on: ubuntu-latest
+              python_platform: linux
+          #-   name: Windows
+          #    runs-on: windows-latest
+          #    python_platform: win32
+          -   name: macOS
+              runs-on: macos-latest
+              python_platform: darwin
     name: "Python ${{ matrix.python-version }}"
     steps:
       - uses: actions/checkout@v2
