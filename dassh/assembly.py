@@ -207,7 +207,6 @@ class Assembly(LoggedClass):
         # Update pin temp array identifiers
         if self.has_rodded and hasattr(self.rodded, 'pin_model'):
             new_regs[self._rodded_idx].pin_temps[:, 0] = clone.id
-            # new_regs[self._rodded_idx].pin_temps[:, 1] = clone.dif3d_id
 
         # Update peak temperature object
         clone._peak = copy.deepcopy(self._peak)
