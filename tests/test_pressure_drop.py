@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-12-07
+date: 2022-12-20
 author: matz
 Test various aspects of the DASSH pressure drop calculations
 """
@@ -42,15 +42,18 @@ def test_rodded_reg_dp(c_shield_rr_params):
     rr = dassh.region_rodded.make(input, 'testboi', mat, fr)
     T_in = 623.15
     rr._init_static_correlated_params(T_in)
+    z = 0.0
     dz = 0.01
     dp = 0.0
     ff = []
     rho = []
     vel = []
     for i in range(50):
+        z += dz
         T = T_in + i
         rr._update_coolant_int_params(T)
-        dp += rr.calculate_pressure_drop(dz)
+        rr.calculate_pressure_drop(z, dz)
+        dp = rr.pressure_drop
         ff.append(rr.coolant_int_params['ff'])
         rho.append(rr.coolant.density)
         vel.append(rr.coolant_int_params['vel'])
@@ -127,9 +130,9 @@ def test_pressure_drop_output_table(testdir):
     r.postprocess()
     with open(os.path.join(outpath, 'dassh.out'), 'r') as f:
         out = f.read()
-    to_find = """Asm.        Name        Loc.       Total    Friction  SpacerGrid    Region 1
-----------------------------------------------------------------------------
-   1      driver     ( 1, 1)  2.4332E-01  1.8604E-01  5.7281E-02  2.4332E-01"""
+    to_find = """Asm.        Name        Loc.       Total    Friction  SpacerGrid     Gravity    Region 1
+----------------------------------------------------------------------------------------
+   1      driver     ( 1, 1)  2.4332E-01  1.8604E-01  5.7281E-02         ---  2.4332E-01"""
     assert to_find in out
 
 
@@ -148,15 +151,18 @@ def test_unrodded_reg_dp(c_shield_rr_params):
     ur = dassh.region_unrodded.make('testboi', input, mat, fr)
     T_in = 623.15
     ur._init_static_correlated_params(T_in)
+    z = 0.0
     dz = 0.01
     dp_ur = 0.0
     ff = []
     rho = []
     vel = []
     for i in range(50):
+        z += dz
         T = T_in + i
         ur._update_coolant_params(T)
-        dp_ur += ur.calculate_pressure_drop(dz)
+        ur.calculate_pressure_drop(z, dz)
+        dp_ur = ur.pressure_drop
         ff.append(ur.coolant_params['ff'])
         rho.append(ur.coolant.density)
         vel.append(ur._rr_equiv.coolant_int_params['vel'])
@@ -193,6 +199,7 @@ def test_dp_agreement_between_unrodded_rodded_regs(c_shield_rr_params):
     mat['coolant'] = dassh.Material('sodium')  # get dynamic proeprties
     fr = 0.50
     T_in = 623.15
+    z = 0.0
     dz = 0.01
 
     # Make rodded region
@@ -207,11 +214,14 @@ def test_dp_agreement_between_unrodded_rodded_regs(c_shield_rr_params):
     dp_rr = 0.0
     dp_ur = 0.0
     for i in range(50):
+        z += dz
         T = T_in + i
         rr._update_coolant_int_params(T)
         ur._update_coolant_params(T)
-        dp_rr += rr.calculate_pressure_drop(dz)
-        dp_ur += ur.calculate_pressure_drop(dz)
+        rr.calculate_pressure_drop(z, dz)
+        dp_rr = rr.pressure_drop
+        ur.calculate_pressure_drop(z, dz)
+        dp_ur = ur.pressure_drop
 
     print('dp_rr:', dp_rr)
     print('dp_ur:', dp_ur)
@@ -260,3 +270,55 @@ def test_dp_agreement_between_unrodded_rodded_equiv_regs(testdir):
     # Compare them
     diff = (res - ans) / ans
     assert np.max(np.abs(diff)) < 1e-4
+
+
+########################################################################
+# OTHER PRESSURE DROP TESTS
+########################################################################
+
+
+def test_pressure_drop_w_gravity(testdir):
+    """Test a sweep with both friction and gravity losses"""
+    inpath = os.path.join(
+        testdir,
+        'test_inputs',
+        'input_seven_asm_gravity.txt')
+    outpath = os.path.join(testdir, 'test_results', 'seven_asm_gravity')
+    inp = dassh.DASSH_Input(inpath)
+    r = dassh.Reactor(inp, path=outpath, write_output=True)
+    r.temperature_sweep()
+    r.postprocess()
+    r.save()
+
+    # Check results using Reactor object attributes
+    # Gravity pressure head loss = rho * g * h
+    g = 9.80665
+    # CHECK 1: Each region
+    for a in r.assemblies:
+        for reg in a.region:
+            res = reg._pressure_drop['gravity']
+            ans = reg.coolant.density * g * (reg.z[1] - reg.z[0])
+            diff = ans - res
+            pass_test = (abs(diff) < 1e-9)
+            if not pass_test:
+                print('Assembly:', a.id, a.name)
+                print('Region:', reg.name)
+                print('Result:', res)
+                print('Answer:', ans)
+                print('Diff:', diff)
+                print(reg.coolant.density)
+
+            assert pass_test
+    # CHECK 2: All assemblies have same gravity head loss because
+    # the core height is the same for all
+    ref = sum(reg._pressure_drop['gravity'] for reg in r.assemblies[0].region)
+    for a in r.assemblies[1:]:
+        ans = sum(reg._pressure_drop['gravity'] for reg in a.region)
+        diff = ans - ref
+        pass_test = (abs(diff) < 1e-9)
+        if not pass_test:
+            print('Assembly:', a.id, a.name)
+            print('Result:', res)
+            print('Answer:', ans)
+            print('Diff:', diff)
+        assert pass_test
