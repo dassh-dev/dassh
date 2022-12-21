@@ -19,7 +19,7 @@ jobs:
     runs-on: ${{ matrix.os.runs-on }}
     strategy:
       matrix:
-        python-version: [3.6]
+        python-version: 3.6
           os:
             -   name: Linux
                 runs-on: ubuntu-20.04
