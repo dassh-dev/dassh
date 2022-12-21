@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-12-07
+date: 2022-12-20
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -203,6 +203,8 @@ class Reactor(LoggedClass):
         self._options['se2geo'] = inp.data['Setup']['se2geo']
         self._options['param_update_tol'] = \
             inp.data['Setup']['param_update_tol']
+        self._options['include_gravity'] = \
+            inp.data['Setup']['include_gravity_head_loss']
 
         if 'AssemblyTables' in inp.data['Setup'].keys():
             self._options['AssemblyTables'] = \
@@ -398,7 +400,8 @@ class Reactor(LoggedClass):
                 self.inlet_temp,
                 mfrx,
                 se2geo=self._options['se2geo'],
-                param_update_tol=self._options['param_update_tol'])
+                param_update_tol=self._options['param_update_tol'],
+                gravity=self._options['include_gravity'])
 
         # Store as attribute b/c used later to write summary output
         self.asm_templates = asm_templates

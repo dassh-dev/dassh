@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-12-07
+date: 2022-12-20
 author: matz
 Methods for unrodded axial regions; to be used within Assembly objects
 """
@@ -34,7 +34,7 @@ from dassh.logged_class import LoggedClass
 _sqrt3 = np.sqrt(3)
 
 
-def make(name, asm_input, mat_dict, flow_rate, se2geo=False):
+def make(name, asm_input, mat_dict, flow_rate, se2geo=False, gravity=False):
     """Process DASSH Assembly input to obtain un-rodded region input
     parameters; to be used when instantiating un-rodded region objects
     in DASSH Assembly object"""
@@ -51,9 +51,12 @@ def make(name, asm_input, mat_dict, flow_rate, se2geo=False):
             mat_dict['coolant'],
             mat_dict['duct'],
             asm_input['htc_params_duct']]
-    kwargs = {'eps': 0.0,
-              'rr_equiv': _RREquivalent(asm_input, mat_dict,
-                                        flow_rate, se2geo)}
+    kwargs = {
+        'eps': 0.0,
+        'rr_equiv': _RREquivalent(
+            asm_input, mat_dict, flow_rate, se2geo),
+        'gravity': gravity
+    }
     if asm_input.get('convection_factor'):
         kwargs['convection_factor'] = asm_input['convection_factor']
     else:
@@ -64,7 +67,7 @@ def make(name, asm_input, mat_dict, flow_rate, se2geo=False):
         return SingleNodeHomogeneous(*args, **kwargs)
 
 
-def make_axialregion(asm_input, reg, mat_dict, flow_rate):
+def make_axialregion(asm_input, reg, mat_dict, flow_rate, gravity=False):
     """Process DASSH Assembly AxialRegion input to obtain un-rodded
     region input parameters; to be used when instantiating un-rodded
     region objects as axial regions in DASSH Assembly object"""
@@ -82,7 +85,8 @@ def make_axialregion(asm_input, reg, mat_dict, flow_rate):
         'eps': asm_input['AxialRegion'][reg]['epsilon'],
         'de': asm_input['AxialRegion'][reg]['hydraulic_diameter'],
         'convection_factor':
-            asm_input['AxialRegion'][reg]['convection_factor']}
+            asm_input['AxialRegion'][reg]['convection_factor'],
+        'gravity': gravity}
     if model == 'simple':
         return SingleNodeHomogeneous(*args, **kwargs)
     elif model == '6node':
@@ -135,15 +139,33 @@ class SingleNodeHomogeneous(LoggedClass, DASSH_Region):
         fraction of structure is given by (1 - vf_cool).
     flow_rate: float
         Total coolant flow rate through the assembly
-    coolant : DASSH Material object
+    coolant_mat : DASSH Material object
         Contains coolant material properties
-    duct : DASSH Material object
+    duct_mat : DASSH Material object
         Contains duct wall material properties
-
+    htc_params : list
+        Parameters for coolant-duct heat transfer coefficient eval
+    eps (optional) : float
+        xxx
+    de (optional) : float
+        User-specified hydraulic diameter
+    convection_factor (optional) : float
+        Factor to boost coolant-duct HTC
+    rr_equiv (optional) : DASSH _RREquivalent object
+        Used to mock characteristics of the DASSH RoddedRegion object
+        (default=None)
+    lowflow (optional) : boolean
+        Use coolant-duct convection approximation to transfer heat by
+        combined convection/conduction to the duct midwall to reduce
+        axial step size requirement (default: False)
+    gravity (optional) : boolean
+        Indicates whether gravity head losses should be included in
+        pressure drop calculation (default: False)
     """
     def __init__(self, name, z_lo, z_hi, duct_ftf, vf_cool, flow_rate,
                  coolant_mat, duct_mat, htc_params, eps=0.0, de=0.0,
-                 convection_factor=None, rr_equiv=None, lowflow=False):
+                 convection_factor=None, rr_equiv=None, lowflow=False,
+                 gravity=False):
         """Create a porous media region"""
         # Instantiate Logger
         LoggedClass.__init__(self, 4, 'dassh.SingleNodeHomogeneousRegion')
@@ -214,6 +236,11 @@ class SingleNodeHomogeneous(LoggedClass, DASSH_Region):
         if convection_factor is not None:
             self._mratio = convection_factor
 
+        # Pressure drop dictionary; indicate whether to ever calculate
+        # gravity losses
+        self._pressure_drop = {'friction': 0.0, 'gravity': 0.0}
+        self._gravity = gravity
+
     def calculate_xbnds(self):
         """Calculate boundaries between duct elements
 
@@ -236,6 +263,7 @@ class SingleNodeHomogeneous(LoggedClass, DASSH_Region):
         clone.temp = copy.deepcopy(self.temp)
         clone.ebal = copy.deepcopy(self.ebal)
         clone.coolant_params = copy.deepcopy(self.coolant_params)
+        clone._pressure_drop = copy.deepcopy(self._pressure_drop)
         if new_flowrate is not None:
             clone.flow_rate = new_flowrate
             if self._rr_equiv is not None:
@@ -254,6 +282,12 @@ class SingleNodeHomogeneous(LoggedClass, DASSH_Region):
             return 1.0
         else:
             return self._mratio
+
+    @property
+    def pressure_drop(self):
+        """Combination of friction and gravity losses"""
+        return self._pressure_drop['friction'] \
+            + self._pressure_drop['gravity']
 
     def _update_coolant_params(self, temp, use_mat_tracker=True):
         """Update correlated bundle coolant parameters based
@@ -334,14 +368,34 @@ class SingleNodeHomogeneous(LoggedClass, DASSH_Region):
         self.coolant_params['htc'] = k * nu / self._params['de']
         self.coolant_params['htc'] *= self.mratio
 
-    def calculate_pressure_drop(self, dz):
-        """Calculate pressure drop attribute across current step"""
+    def calculate_pressure_drop(self, z, dz):
+        """Calculate pressure drop accross current step
+
+        Notes
+        -----
+        "z" is an unused argument for the unrodded region pressure
+        drop but is included because this method is called in the
+        same way that the rodded region pressure drop is called.
+
+        """
+        self._pressure_drop['friction'] += \
+            self.calculate_friction_pressure_drop(dz)
+        if self._gravity:
+            self._pressure_drop['gravity'] += \
+                self.calculate_gravity_pressure_drop(dz)
+
+    def calculate_friction_pressure_drop(self, dz):
+        """Calculate friction pressure drop across current step"""
         dp = (self.coolant_params['ff'] * dz * self.coolant.density
               * self.coolant_params['vel']**2 / 2)
         if self._rr_equiv is not None:
             return dp / self._rr_equiv.bundle_params['de']
         else:
             return dp / self._params['de']
+
+    def calculate_gravity_pressure_drop(self, dz):
+        """Calculate head losses associated with vertical upward flow"""
+        return self.coolant.density * 9.80665 * dz
 
     def calculate(self, dz, power, t_gap, htc_gap,
                   adiabatic_duct=False, ebal=False):
@@ -377,12 +431,6 @@ class SingleNodeHomogeneous(LoggedClass, DASSH_Region):
 
         # Update coolant properties for the duct wall calculation
         self._update_coolant_params(self.temp['coolant_int'][0])
-
-        # # Duct temperatures: calculate with new coolant properties
-        # self._calc_duct_temp(t_gap, htc_gap, adiabatic_duct)
-
-        # Update pressure drop (now that correlations are updated)
-        self._pressure_drop += self.calculate_pressure_drop(dz)
 
     def activate(self, previous_reg, t_gap, h_gap, adiabatic):
         """Activate region by averaging coolant temperatures from
@@ -623,14 +671,15 @@ class MultiNodeHomogeneous(SingleNodeHomogeneous, DASSH_Region):
 
     def __init__(self, name, z_lo, z_hi, duct_ftf, vf_cool, flow_rate,
                  coolant_mat, duct_mat, htc_params, eps=0.0, de=0.0,
-                 convection_factor=1.0, rr_equiv=None, lowflow=False):
+                 convection_factor=1.0, rr_equiv=None, lowflow=False,
+                 gravity=False):
         """Create the MultiNodeHomogeneous region object"""
         # Inherit from SingleNodeHomogeneous; overwrite some methods
         SingleNodeHomogeneous.__init__(
             self, name, z_lo, z_hi, duct_ftf, vf_cool, flow_rate,
             coolant_mat, duct_mat, htc_params, eps=eps, de=de,
             convection_factor=convection_factor, rr_equiv=rr_equiv,
-            lowflow=lowflow)
+            lowflow=lowflow, gravity=gravity)
         self.model = '6node'
 
         # Use pinlattice and subchannel objects to get subchannel
@@ -695,8 +744,7 @@ class MultiNodeHomogeneous(SingleNodeHomogeneous, DASSH_Region):
             clone._scfr = new_flowrate / 6
         return clone
 
-    def calculate(self, dz, power, t_gap, htc_gap,
-                  adiabatic_duct=False, ebal=False):
+    def calculate(self, dz, power, t_gap, htc_gap, adiab=False, ebal=False):
         """Calculate new coolant and duct temperatures and pressure
         drop across axial step
 
@@ -709,7 +757,7 @@ class MultiNodeHomogeneous(SingleNodeHomogeneous, DASSH_Region):
         t_gap : numpy.ndarray
             Gap temperatures in the interassembly coolant around the
             assembly (array len = number of duct meshes)
-        adiabatic_duct : boolean (optional)
+        adiab : boolean (optional)
             Indicate whether outer duct has adiabatic BC
         ebal : boolean (optional)
             Indicate whether to update energy balance tallies
@@ -720,11 +768,8 @@ class MultiNodeHomogeneous(SingleNodeHomogeneous, DASSH_Region):
 
         """
         self.temp['coolant_int'] += \
-            self._calc_coolant_temp(dz, power, adiabatic_duct, ebal)
-        self._calc_duct_temp(t_gap, htc_gap, adiabatic_duct)
-
-        # Update pressure drop
-        self._pressure_drop += self.calculate_pressure_drop(dz)
+            self._calc_coolant_temp(dz, power, adiab, ebal)
+        self._calc_duct_temp(t_gap, htc_gap, adiab)
 
     def _calc_coolant_temp(self, dz, power, adiabatic=False, ebal=False):
         """Calculate single node coolant temperature with Q=mCpdT

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-11-01
+date: 2022-12-20
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -55,17 +55,22 @@ class Assembly(LoggedClass):
         Inlet temperature of the coolant entering the assembly (K)
     flow_rate : float
         User-specified bulk mass flow rate (kg/s) in the assembly
-    origin : tuple
-        X-Y coordinates of the assembly centroid
-    se2geo : bool
+    origin : tuple (optional)
+        X-Y coordinates of the assembly centroid (default=(0.0, 0.0))
+    se2geo : bool (optional)
         Indicate whether to use DASSH or SE2 bundle geometry definitions
-        (use only when comparing DASSH and SE2)
+        (use only when comparing DASSH and SE2; default=False)
+    param_update_tol : float (optional)
+        Threshold change in material properties that triggers correlation
+        recalculation (default=0.0; calculate at every step)
+    gravity : bool (optional)
+        Include gravity head loss in pressure drop (default=False)
 
     """
 
     def __init__(self, name, loc, asm_input, mat_dict, inlet_temp,
                  flow_rate, origin=(0.0, 0.0), se2geo=False,
-                 param_update_tol=0.0):
+                 param_update_tol=0.0, gravity=False):
         """Instantiate Assembly object."""
         # Instantiate Logger
         LoggedClass.__init__(self, 4, 'dassh.Assembly')
@@ -87,7 +92,7 @@ class Assembly(LoggedClass):
         # unrodded region using the bundle parameters
         if asm_input.get('use_low_fidelity_model'):
             self.region = [region_unrodded.make(
-                self.name, asm_input, mat_dict, flow_rate, se2geo)
+                self.name, asm_input, mat_dict, flow_rate, se2geo, gravity)
             ]
         else:
             self.region = [
@@ -96,7 +101,8 @@ class Assembly(LoggedClass):
                                    mat_dict,
                                    flow_rate,
                                    se2geo,
-                                   param_update_tol)
+                                   param_update_tol,
+                                   gravity)
             ]
 
         # Create other requested unrodded regions
@@ -104,7 +110,7 @@ class Assembly(LoggedClass):
             if reg != 'rods':
                 self.region.append(
                     region_unrodded.make_axialregion(
-                        asm_input, reg, mat_dict, flow_rate))
+                        asm_input, reg, mat_dict, flow_rate, gravity))
 
         # Keep track of what regions are where - sort them
         sorted_region = []
@@ -492,27 +498,20 @@ class Assembly(LoggedClass):
         if z is not None:
             self._z = z
             z_mp = z - 0.5 * dz
-            power_j = self.power.get_power_sweep(z=z_mp)
+            pow_j = self.power.get_power_sweep(z=z_mp)
         else:
             self._z += dz
-            power_j = self.power.get_power_sweep()
+            pow_j = self.power.get_power_sweep()
 
         # Calculate power at this axial level (j), calculate
         # temperatures and pin powers (if applicable)
-        for k in power_j.keys():
-            if power_j[k] is not None:
-                self._power_delivered[k] += dz * np.sum(power_j[k])
+        for k in pow_j.keys():
+            if pow_j[k] is not None:
+                self._power_delivered[k] += dz * np.sum(pow_j[k])
 
-        # Calculate coolant and duct temperatures, pressure drop; then
-        # acccount for pressure drop due to spacer grid on this step,
-        # if necessary
-        self.active_region.calculate(dz, power_j, t_gap, h_gap,
-                                     adiabatic, ebal)
-        try:
-            self.active_region.calculate_spacergrid_pressure_drop(
-                self._z, dz)
-        except AttributeError:
-            pass
+        # Calculate coolant and duct temperatures, pressure drop
+        self.active_region.calculate(dz, pow_j, t_gap, h_gap, adiabatic, ebal)
+        self.active_region.calculate_pressure_drop(self._z, dz)
 
         # Update peak coolant and duct temperatures
         self._update_peak_coolant_temps()
@@ -520,8 +519,7 @@ class Assembly(LoggedClass):
 
         # If applicable, calculate pin temperatures
         if hasattr(self.active_region, 'pin_model'):
-            self.active_region.calculate_pin_temperatures(
-                dz, power_j['pins'])
+            self.active_region.calculate_pin_temperatures(dz, pow_j['pins'])
             self._update_peak_pin_temps()
 
     def check_region_update(self, z):
