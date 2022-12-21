@@ -20,6 +20,7 @@
         gap_fine = boolean(default=False)
         average = boolean(default=False)
         maximum = boolean(default=False)
+        pressure_drop = boolean(default=False)
         interval = float(min=0.0, default=None)
     [[Units]]
         temperature = string(default='kelvin')

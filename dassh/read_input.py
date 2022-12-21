@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-11-01
+date: 2022-12-20
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -1497,7 +1497,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
     def check_dump(self):
         """Check specifications for dumping temperatures"""
         keys = ['all', 'coolant', 'duct', 'pins', 'gap',
-                'average', 'maximum', 'gap_fine']
+                'average', 'maximum', 'gap_fine', 'pressure_drop']
         warn = False
         for k in self.data['Setup']['Dump'].keys():
             if k == 'interval':

@@ -987,11 +987,16 @@ class Reactor(LoggedClass):
             self._options['dump']['names'].append('maximum')
             self.log('info', _msg.format('maximum coolant and pin',
                                          'temp_maximum.csv'))
+        if self._options['dump']['pressure_drop']:
+            self._options['dump']['names'].append('pressure_drop')
+            self.log('info', _msg.format('pressure drop', 'pressure_drop.csv'))
 
         # Set up dictionary of paths to data
         self._options['dump']['paths'] = {}
         for f in self._options['dump']['names']:
-            name = f'temp_{f}'
+            name = f
+            if f != 'pressure_drop':
+                name = f'temp_{f}'
             fullname = f'{name}.csv'
             if os.path.exists(os.path.join(self.path, fullname)):
                 os.remove(os.path.join(self.path, fullname))
@@ -1002,6 +1007,7 @@ class Reactor(LoggedClass):
         self._options['dump']['cols'] = {}
         self._options['dump']['cols']['average'] = 10
         self._options['dump']['cols']['maximum'] = 7
+        self._options['dump']['cols']['pressure_drop'] = 7
         self._options['dump']['cols']['coolant_int'] = 3 + max(
             [a.rodded.subchannel.n_sc['coolant']['total']
              if a.has_rodded else 1 for a in self.assemblies])

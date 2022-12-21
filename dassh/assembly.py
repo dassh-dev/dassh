@@ -242,8 +242,8 @@ class Assembly(LoggedClass):
         self._write['coolant_byp'] = np.zeros((1, ncols['coolant_byp']))
         self._write['maximum'] = np.zeros((1, ncols['maximum']))
         self._write['average'] = np.zeros((1, ncols['average']))
-        # self._write['coolant_gap'] = np.zeros((1, 10))
         self._write['coolant_gap'] = np.zeros((1, ncols['coolant_gap']))
+        self._write['pressure_drop'] = np.zeros((1, ncols['pressure_drop']))
 
         # Fill in the assembly ID data
         for key in self._write.keys():
@@ -259,7 +259,8 @@ class Assembly(LoggedClass):
                'duct_mw': 4,
                'average': 3,
                'maximum': 3,
-               'pin': 3}
+               'pin': 3,
+               'pressure_drop': 3}
         self._fillcols = {}
         for key in self._write.keys():
             self._fillcols[key] = np.zeros(len(self.region), dtype=int)
@@ -511,7 +512,7 @@ class Assembly(LoggedClass):
 
         # Calculate coolant and duct temperatures, pressure drop
         self.active_region.calculate(dz, pow_j, t_gap, h_gap, adiabatic, ebal)
-        self.active_region.calculate_pressure_drop(self._z, dz)
+        self.active_region.calculate_pressure_drop(self.z, dz)
 
         # Update peak coolant and duct temperatures
         self._update_peak_coolant_temps()
@@ -727,6 +728,21 @@ class Assembly(LoggedClass):
             np.savetxt(dfiles['coolant_gap'],
                        write_step['coolant_gap'],
                        delimiter=',')
+
+        # Pressure drop update
+        if 'pressure_drop' in dfiles.keys():
+            write_step['pressure_drop'][0, 3] = self.pressure_drop
+            _dp = {'friction': 0.0, 'spacer_grid': 0.0, 'gravity': 0.0}
+            for reg in self.region:
+                for k in reg._pressure_drop.keys():
+                    _dp[k] += reg._pressure_drop[k]
+            write_step['pressure_drop'][0, 4] = _dp['friction']
+            write_step['pressure_drop'][0, 5] = _dp['spacer_grid']
+            write_step['pressure_drop'][0, 6] = _dp['gravity']
+            np.savetxt(dfiles['pressure_drop'],
+                       write_step['pressure_drop'],
+                       delimiter=',')
+
 
 ########################################################################
 
