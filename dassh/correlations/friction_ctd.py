@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-09
+date: 2022-11-23
 author: matz
 Cheng-Todreas Detailed original correlations (1986)
 """
@@ -197,11 +197,9 @@ def _calc_sc_ff_const(asm, wd, ws):
             Cf[r][1] *= (1 + (ws[r] * (wproj[1] / b_area[1])
                               * np.tan(asm.params['theta'])**2))**_exp
             # Corner
-
             Cf[r][2] = Cfb[r][2]
-            Cf[r][2] *= (1 + (
-                ws[r] * (wproj[2] / b_area[2])
-                * np.tan(asm.params['theta'])**2))**_exp
+            Cf[r][2] *= (1 + (ws[r] * (wproj[2] / b_area[2])
+                         * np.tan(asm.params['theta'])**2))**_exp
     return Cf
 
 
@@ -406,7 +404,6 @@ def _calc_bundle_ff(asm_obj, cfb):
     else:
         # Transition regime intermittency factor
         x = calc_intermittency_factor(asm_obj, Re_bl, Re_bt)
-        # print(x)
         return (f['laminar'] * (1 - x)**(1 / 3.0)
                 + f['turbulent'] * x**(1 / 3.0))
 
