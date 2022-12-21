@@ -280,7 +280,7 @@ def plot():
     dassh_logger.log(_log_info, 'DASSH_PLOT execution complete')
 
 
-def integrate_pin_power(args):
+def integrate_pin_power(args=None):
     """Set up DASSH Reactor object, integrate pin power, and write to CSV"""
     # Get input file from command line arguments
     parser = argparse.ArgumentParser(description='Process DASSH cmd')
