@@ -1,7 +1,7 @@
 ########################################################################
 # author: Milos Atz
-# date: 2022-11-01
-# comment: DASSH input example
+# date: 2022-12-20
+# comment: DASSH input example with spacer grids and gravity
 ########################################################################
 
 [Setup]

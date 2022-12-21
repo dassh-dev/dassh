@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-12-07
+date: 2022-12-20
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -203,6 +203,8 @@ class Reactor(LoggedClass):
         self._options['se2geo'] = inp.data['Setup']['se2geo']
         self._options['param_update_tol'] = \
             inp.data['Setup']['param_update_tol']
+        self._options['include_gravity'] = \
+            inp.data['Setup']['include_gravity_head_loss']
 
         if 'AssemblyTables' in inp.data['Setup'].keys():
             self._options['AssemblyTables'] = \
@@ -398,7 +400,8 @@ class Reactor(LoggedClass):
                 self.inlet_temp,
                 mfrx,
                 se2geo=self._options['se2geo'],
-                param_update_tol=self._options['param_update_tol'])
+                param_update_tol=self._options['param_update_tol'],
+                gravity=self._options['include_gravity'])
 
         # Store as attribute b/c used later to write summary output
         self.asm_templates = asm_templates
@@ -984,11 +987,16 @@ class Reactor(LoggedClass):
             self._options['dump']['names'].append('maximum')
             self.log('info', _msg.format('maximum coolant and pin',
                                          'temp_maximum.csv'))
+        if self._options['dump']['pressure_drop']:
+            self._options['dump']['names'].append('pressure_drop')
+            self.log('info', _msg.format('pressure drop', 'pressure_drop.csv'))
 
         # Set up dictionary of paths to data
         self._options['dump']['paths'] = {}
         for f in self._options['dump']['names']:
-            name = f'temp_{f}'
+            name = f
+            if f != 'pressure_drop':
+                name = f'temp_{f}'
             fullname = f'{name}.csv'
             if os.path.exists(os.path.join(self.path, fullname)):
                 os.remove(os.path.join(self.path, fullname))
@@ -999,6 +1007,7 @@ class Reactor(LoggedClass):
         self._options['dump']['cols'] = {}
         self._options['dump']['cols']['average'] = 10
         self._options['dump']['cols']['maximum'] = 7
+        self._options['dump']['cols']['pressure_drop'] = 7
         self._options['dump']['cols']['coolant_int'] = 3 + max(
             [a.rodded.subchannel.n_sc['coolant']['total']
              if a.has_rodded else 1 for a in self.assemblies])

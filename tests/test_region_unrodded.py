@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-12-07
+date: 2022-12-20
 author: matz
 Test the behavior and attributes of unrodded DASSH Region instances
 """
@@ -106,6 +106,7 @@ def test_simple_unrodded_reg_zero_power(c_lrefl_simple):
     t_gap = np.ones(6) * c_lrefl_simple.avg_duct_mw_temp
     c_lrefl_simple.calculate(
         0.1, {'refl': 0.0}, t_gap, 0.0, adiabatic_duct=True)
+    c_lrefl_simple.calculate_pressure_drop(0.1, 0.1)
     assert c_lrefl_simple.temp['coolant_int'] == pytest.approx(in_temp)
     assert c_lrefl_simple.pressure_drop > 0.0
 
@@ -116,6 +117,7 @@ def test_simple_unrodded_reg_none_power(c_lrefl_simple):
     t_gap = np.ones(6) * c_lrefl_simple.avg_duct_mw_temp
     c_lrefl_simple.calculate(
         0.1, {'refl': None}, t_gap, 0.0, adiabatic_duct=True)
+    c_lrefl_simple.calculate_pressure_drop(0.1, 0.1)
     assert c_lrefl_simple.temp['coolant_int'] == pytest.approx(in_temp)
     assert c_lrefl_simple.pressure_drop > 0.0
 
@@ -184,8 +186,8 @@ def test_mnh_ur_ebal_adiabatic(shield_ur_mnh):
     gap_temp = np.arange(625, 775, 25)  # [625, 650, 675, 700, 725, 750]
     fake_htc = np.ones(6) * 2e4
     for i in range(n_steps):
-        shield_ur_mnh.calculate(dz, power, gap_temp, fake_htc,
-                                ebal=True, adiabatic_duct=True)
+        shield_ur_mnh.calculate(
+            dz, power, gap_temp, fake_htc, ebal=True, adiab=True)
     assert np.sum(shield_ur_mnh.ebal['duct']) == 0.0
     # Check power added real quick
     tot_power_added = n_steps * dz * power['refl']

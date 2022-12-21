@@ -10,6 +10,7 @@
     param_update_tol = float(min=0.0, max=1.0, default=0.0)
     parallel = boolean(default=False)
     n_cpu = integer(min=1, default=None)
+    include_gravity_head_loss = boolean(default=False)
     [[Dump]]
         all = boolean(default=False)
         coolant = boolean(default=False)
@@ -19,6 +20,7 @@
         gap_fine = boolean(default=False)
         average = boolean(default=False)
         maximum = boolean(default=False)
+        pressure_drop = boolean(default=False)
         interval = float(min=0.0, default=None)
     [[Units]]
         temperature = string(default='kelvin')
