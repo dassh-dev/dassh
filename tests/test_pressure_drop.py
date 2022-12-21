@@ -322,3 +322,34 @@ def test_pressure_drop_w_gravity(testdir):
             print('Answer:', ans)
             print('Diff:', diff)
         assert pass_test
+
+
+def test_pressure_drop_csv(testdir):
+    """Test the generation of pressure drop CSV file"""
+    inpath = os.path.join(
+        testdir,
+        'test_inputs',
+        'input_seven_asm_gravity.txt')
+    outpath = os.path.join(testdir, 'test_results', 'seven_asm_gravity')
+    csvpath = os.path.join(outpath, 'pressure_drop.csv')
+    if not os.path.exists(csvpath):
+        inp = dassh.DASSH_Input(inpath)
+        r = dassh.Reactor(inp, path=outpath, write_output=True)
+        r.temperature_sweep()
+        r.postprocess()
+        r.save()
+    else:
+        r = dassh.reactor.load(os.path.join(outpath, 'dassh_reactor.pkl'))
+
+    # Load the CSV
+    dp = np.loadtxt(csvpath, delimiter=',')
+
+    # Check that all columns (friction, spacer grid, and gravity) sum
+    # to total at each step
+    diff = dp[:, 3] - np.sum(dp[:, 4:], axis=1)
+    assert np.max(np.abs(diff)) < 1e-9
+    # Check the final values for each assembly
+    for i in range(7):
+        total_dp = r.assemblies[i].pressure_drop
+        final_dp_in_csv = dp[-(7 - i), 3]
+        assert abs(total_dp - final_dp_in_csv) < 1e-9

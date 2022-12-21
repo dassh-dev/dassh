@@ -11,7 +11,9 @@
         temperature    = Celsius
         length         = cm
         mass_flow_rate = kg/s
-
+    [[Dump]]
+        pressure_drop = True
+        interval = 5.0
 
 ########################################################################
 # POWER DISTRIBUTIONS
