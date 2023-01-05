@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-11-24
+date: 2023-01-05
 author: matz
 Cladding and pin heat transfer model
 """
@@ -167,8 +167,9 @@ class PinModel(LoggedClass):
                                            - self.fuel['r'][:, 0]**2)
         # Distances between mesh boundaries (Eq. 3.3-17 - 3.3-19)
         self.fuel['dr'] = self.fuel['r'][:, 1] - self.fuel['r'][:, 0]
-        # Fuel cross-sectional area
+        # Fuel cross-sectional area; account for annulus if present
         self.fuel['area'] = np.pi * radius_out_fuel**2
+        self.fuel['area'] -= np.pi * self.fuel['r'][0, 0]**2
 
         # Radial node midpoints: this is where we know the fuel
         # conductivity parameters specified in the input and define
