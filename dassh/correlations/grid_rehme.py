@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-11-01
+date: 2023-01-05
 author: matz
 Grid spacer pressure drop via Rehme correlation
 """
@@ -26,16 +26,18 @@ import numpy as np
 # from Figure 3 for triangular array. Meets the stated observation
 # that for Re > 5e4, Cv between 6 and 7.
 Cv = np.array([
-    [4.00E+03, 13.0],
-    [6.00E+03, 10.0],
-    [8.00E+03, 9.0],
-    [1.00E+04, 8.5],
-    [2.00E+04, 7.6],
-    [4.00E+04, 7.1],
-    [6.00E+04, 6.8],
-    [8.00E+04, 6.7],
-    [1.00E+05, 6.5],
-    [2.00E+05, 6.2]])
+    [1.00E+02, 142.0],
+    [4.00E+03, 12.51],
+    [6.00E+03, 10.13],
+    [8.00E+03, 9.213],
+    [1.00E+04, 8.703],
+    [2.00E+04, 7.645],
+    [4.00E+04, 6.985],
+    [6.00E+04, 6.717],
+    [8.00E+04, 6.572],
+    [1.00E+05, 6.485],
+    [2.00E+05, 6.352],
+    [1.00E+06, 6.053]])
 
 
 def calc_loss_coeff(Re_b, solidity, corr_coeff=None):

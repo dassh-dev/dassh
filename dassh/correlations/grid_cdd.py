@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-10-31
+date: 2023-01-05
 author: matz
 Grid spacer pressure drop via Cigarini and Dalle Donne correlation
 """
@@ -26,7 +26,7 @@ _DEFAULT_COEFFS = [3.5, 73.14, -0.264, 2.79e10, -2.79, 2.0, 2.0]
 
 def calc_loss_coeff(Re_b, solidity, c=_DEFAULT_COEFFS):
     """Calculate the pressure loss coefficient from a grid spacer
-    using the Cigarini and Dalle Donne correlation (1988)
+    using the Cigarini and Dalle Donne correlation (1988; Eq 71)
 
     Parameters
     ----------

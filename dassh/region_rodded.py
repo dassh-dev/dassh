@@ -658,17 +658,6 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                 self.coolant_int_params['grid_loss_coeff'] = \
                     self.corr_constants['grid']['loss_coeff']
             except (KeyError, TypeError):
-                # DO I USE BUNDLE RE OR SUBCHANNEL RE ???
-                # Re_sc = self.coolant.density * \
-                #     self.coolant_int_params['vel'] * \
-                #     self.coolant_int_params['fs'] * \
-                #     self.params['de'] / \
-                #     self.coolant.viscosity
-                # self.coolant_int_params['grid_loss_coeff'] = \
-                #     self.corr['grid'](
-                #         Re_sc
-                #         self.corr_constants['grid']['solidity'],
-                #         self.corr_constants['grid']['corr_coeff'])
                 self.coolant_int_params['grid_loss_coeff'] = \
                     self.corr['grid'](
                         self.coolant_int_params['Re'],
