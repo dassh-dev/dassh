@@ -28,16 +28,22 @@ import numpy as np
 import pytest
 import dassh
 from dassh.__main__ import main as dassh_main
+from dassh.__main__ import integrate_pin_power as dassh_power
 
 
-def execute_dassh(args):
-    """Execute DASSH (separate process if Python < 3.6)"""
+def execute_dassh(args, entrypoint="dassh"):
+    """Execute DASSH (separate process if Python = 3.6)"""
     if sys.version_info < (3, 7):
-        return_code = subprocess.call(["dassh"] + list(args))
+        return_code = subprocess.call([entrypoint] + list(args))
         if return_code == 1:
             sys.exit(1)
     else:
-        dassh_main(args)
+        if entrypoint == "dassh":
+            dassh_main(args)
+        elif entrypoint == "dassh_power":
+            dassh_power(args)
+        else:
+            sys.exit(1)
 
 
 @pytest.fixture(scope='session')
