@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-11-30
+date: 2023-01-10
 author: matz
 Upgraded Cheng-Todreas correlation for flow split (2018)
 """
@@ -57,20 +57,13 @@ def calculate_flow_split(asm_obj, regime=None):
     except (KeyError, AttributeError):
         Re_bnds = fr_uctd.calculate_Re_bounds(asm_obj)
 
-    try:
-        Cf = asm_obj.corr_constants['fs']['Cf_sc']
-    except (KeyError, AttributeError):
-        Cf = fr_uctd.calculate_subchannel_friction_factor_const(asm_obj)
-
-    if regime is not None:
-        return fs_ctd._calculate_flow_split(asm_obj, Cf, regime)
-    elif asm_obj.coolant_int_params['Re'] <= Re_bnds[0]:
-        return fs_ctd._calculate_flow_split(asm_obj, Cf, 'laminar')
-    elif asm_obj.coolant_int_params['Re'] >= Re_bnds[1]:
-        return fs_ctd._calculate_flow_split(asm_obj, Cf, 'turbulent')
+    Re_bundle = asm_obj.coolant_int_params['Re']
+    if regime == 'laminar' or Re_bundle <= Re_bnds[0]:
+        return asm_obj.corr_constants['fs']['fs']['laminar']
+    elif regime == 'turbulent' or Re_bundle >= Re_bnds[1]:
+        return asm_obj.corr_constants['fs']['fs']['turbulent']
     else:
-        return fs_ctd._calculate_flow_split(
-            asm_obj, Cf, 'transition', Re_bnds)
+        return fs_ctd._calc_transition_flowsplit(asm_obj, _lambda=7)
 
 
 def calc_constants(asm_obj):

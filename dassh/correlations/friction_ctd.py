@@ -157,12 +157,6 @@ def _calc_sc_ff_const(asm, wd, ws):
     # Calculate bare rod friction factors
     Cfb = {}
     for r in ['laminar', 'turbulent']:
-        # Cfb[r] = np.zeros(3)
-        # Cfb[r][0] = np.sum(a1[r][0]
-        #                    * np.array([1.0, p2d_m1, p2d_m1**2]))
-        # Cfb[r][1:] = np.sum(a23[r][1:]
-        #                     * np.array([1.0, w2d_m1, w2d_m1**2]),
-        #                     axis=1)
         Cfb[r] = np.zeros(3)
         Cfb[r][0] = (a1[r][0, 0] + a1[r][0, 1] * p2d_m1
                      + a1[r][0, 2] * p2d_m1**2)
