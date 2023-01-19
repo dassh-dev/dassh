@@ -1242,6 +1242,15 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                         msg += 'Spacer grid solidity (A_grid / A_flow) ' \
                                'is undefined; using default value'
                         self.log('warning', msg)
+                        # Confirm that default relationship gives
+                        # meaningful result
+                        g = asm_input['pin_pitch'] - asm_input['pin_diameter']
+                        s = 0.6957 - 162.8 * g
+                        if s < 0.0 or s > 1.0:
+                            msg = f'ERROR: {pre}'
+                            msg += 'Default solidity relationship gives ' \
+                                f'result outside acceptable range (0-1): {s}'
+                            self.log('error')
                     # If CDD correlation is used, check coefficients
                     if asm_input['SpacerGrid']['corr'].lower() == 'cdd' \
                             and asm_input['SpacerGrid']['corr_coeff']:

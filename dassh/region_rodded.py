@@ -600,7 +600,7 @@ class RoddedRegion(LoggedClass, DASSH_Region):
             # cross-sectional area to the unrestricted flow area
             if not input_grid['solidity']:
                 # Empirical relationship for solidity based on "practical
-                # grid design" from CDD correlation paper
+                # grid design" from CDD correlation paper (Eq. 70)
                 self.corr_constants['grid']['solidity'] = \
                     0.6957 - 162.8 * self.d['pin-pin']
             else:
