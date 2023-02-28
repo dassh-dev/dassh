@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-11-01
+date: 2023-02-28
 author: matz
 Test the DASSH read_input module and DASSH_input object
 """
@@ -766,9 +766,27 @@ def test_spacergrid_solidity_warning_and_coeff_error(testdir, caplog):
                 testdir,
                 'test_inputs',
                 'x_spacergrid_corr.txt'))
-    # Check warning
+    # Check warnings
+    msg = 'Bundle has both wire wrap and spacer grids'
+    assert msg in caplog.text
     msg = 'Spacer grid solidity (A_grid / A_flow) is undefined'
     assert msg in caplog.text
     # Check error
     msg = '"CDD" correlation requires 7 coefficients; found 6'
+    assert msg in caplog.text
+
+
+def test_spacergrid_solidity_error(testdir, caplog):
+    """Test DASSH error when default solidity gives bad result"""
+    with pytest.raises(SystemExit):
+        dassh.DASSH_Input(
+            os.path.join(
+                testdir,
+                'test_inputs',
+                'x_spacergrid_solidity.txt'))
+    # Check warning
+    msg = 'Spacer grid solidity (A_grid / A_flow) is undefined'
+    assert msg in caplog.text
+    # Check error
+    msg = 'Default solidity relationship gives result outside '
     assert msg in caplog.text

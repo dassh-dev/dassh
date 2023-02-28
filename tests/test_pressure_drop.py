@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-12-20
+date: 2023-02-28
 author: matz
 Test various aspects of the DASSH pressure drop calculations
 """
@@ -132,7 +132,7 @@ def test_pressure_drop_output_table(testdir):
         out = f.read()
     to_find = """Asm.        Name        Loc.       Total    Friction  SpacerGrid     Gravity    Region 1
 ----------------------------------------------------------------------------------------
-   1      driver     ( 1, 1)  2.4332E-01  1.8604E-01  5.7281E-02         ---  2.4332E-01"""
+   1      driver     ( 1, 1)  2.4246E-01  1.8604E-01  5.6430E-02         ---  2.4246E-01"""
     assert to_find in out
 
 

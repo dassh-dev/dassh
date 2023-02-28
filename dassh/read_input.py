@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-12-20
+date: 2023-02-28
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -1245,12 +1245,15 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                         # Confirm that default relationship gives
                         # meaningful result
                         g = asm_input['pin_pitch'] - asm_input['pin_diameter']
-                        s = 0.6957 - 162.8 * g
+                        # Get conversion method to convert to m
+                        conv = utils.get_length_conversion(
+                            self.data['Setup']['Units']['length'], 'm')
+                        s = 0.6957 - 162.8 * conv(g)
                         if s < 0.0 or s > 1.0:
                             msg = f'ERROR: {pre}'
                             msg += 'Default solidity relationship gives ' \
                                 f'result outside acceptable range (0-1): {s}'
-                            self.log('error')
+                            self.log('error', msg)
                     # If CDD correlation is used, check coefficients
                     if asm_input['SpacerGrid']['corr'].lower() == 'cdd' \
                             and asm_input['SpacerGrid']['corr_coeff']:
