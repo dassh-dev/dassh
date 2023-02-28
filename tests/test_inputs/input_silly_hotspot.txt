@@ -99,6 +99,11 @@
             zr_frac       = 0.10, 0.10, 0.10
             porosity      = 0.10, 0.12, 0.18
         [[[Hotspot]]]
+            [[[[coolant]]]]
+                temperature  = coolant
+                input_sigma  = 3
+                output_sigma = 2
+                subfactors   = ../test_data/hcf_input_clad.csv
             [[[[clad_id]]]]
                 temperature  = clad_id
                 input_sigma  = 3

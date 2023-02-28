@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-12-20
+date: 2023-02-28
 author: matz
 Objects and methods to print ASCII tables in Python
 """
@@ -1233,10 +1233,12 @@ class CoolantTempTable(LoggedClass, DASSH_Table):
     title = "COOLANT TEMPERATURE SUMMARY" + "\n"
     notes = """Column heading definitions
     Power - Total assembly power
-    Bulk outlet - Mixed-mean coolant temp. at the assembly outlet
-    Peak outlet - Maximum coolant subchannel temp. at the assembly outlet
-    Peak total - Axial-maximum coolant subchannel temp. in the assembly
-    Height - Axial height at which "Peak total" temp. occurs
+    Bulk outlet - Mixed-mean coolant temperature at the assembly outlet
+    Peak outlet - Maximum coolant subchannel temperature at the assembly outlet
+    Peak total - Axial-maximum coolant subchannel temperature in the assembly
+    Peak + Unc. - "Peak total" coolant temperature plus HCF uncertainty
+    Peak height - Axial height at which "Peak total" temperature occurs
+
 """
 
     def __init__(self, col_width=12, col0_width=4, sep=' '):
@@ -1246,19 +1248,33 @@ class CoolantTempTable(LoggedClass, DASSH_Table):
         # Float formatting option
         self._ffmt = '{' + f':.{self.dp}e' + '}'
         self._ffmt2 = '{' + f':.{2}f' + '}'
+        self._namefmt = '{:>' + str(col_width - 1) + '}'
 
         # Inherit from DASSH_Table
-        DASSH_Table.__init__(self, 7, col_width, col0_width, sep)
+        DASSH_Table.__init__(self, 8, col_width, col0_width, sep)
 
-    def make(self, r_obj):
+    def make(self, r_obj, hotspot_data=None):
         """Create the table
 
         Parameters
         ----------
         reactor_obj : DASSH Reactor object
             Contains the assembly data to print
+        hotspot_data (optional) : tuple
+            dict containing numpy.ndarray of N-sigma hotspot temps; keys
+                indicate corresponding regions (e.g. "coolant", "fuel_cl")
+            list of corresponding asm IDs
+            path to subfactors used in the calculation
+            input and output "sigma" values
 
         """
+        # Figure out whether to include hotspot data
+        if hotspot_data is not None and \
+                'coolant' in hotspot_data[0].keys():
+            msg = _make_hotspot_msg(r_obj, 'coolant')
+        else:
+            msg = """Peak temperatures plus uncertainty are not calculated."""
+        self.notes += msg
         # Erase any existing data in the table
         self.clear()
         # Process units from input_obj: temp, length, mfr
@@ -1275,24 +1291,22 @@ class CoolantTempTable(LoggedClass, DASSH_Table):
                           'Bulk outlet',
                           'Peak outlet',
                           'Peak total',
-                          'Peak ht.'])
-        self.add_row('Asm.', ['Loc.',
-                              '(W)',
-                              f'({fr_unit})',
-                              f'({fmttd_temp_unit})',
-                              f'({fmttd_temp_unit})',
-                              f'({fmttd_temp_unit})',
-                              f'({len_unit})'])
+                          'Peak + Unc.',
+                          'Peak height'])
+        self.add_row('Asm', ['Name',
+                             '(W)',
+                             f'({fr_unit})',
+                             f'({fmttd_temp_unit})',
+                             f'({fmttd_temp_unit})',
+                             f'({fmttd_temp_unit})',
+                             f'({fmttd_temp_unit})',
+                             f'({len_unit})'])
         self.add_horizontal_line()
 
         for i in range(len(r_obj.assemblies)):
             a = r_obj.assemblies[i]
 
-            # Here again, the first column in the dump file is the
-            # DASSH ID, so we need to use the assembly.ID attribute
-            # to locate the rows we want to search
-
-            # Coolant temperatures
+            # Outlet and peak coolant temperatures
             tc_avg = self.temp_conv(a.avg_coolant_temp)
             tc_max_out = self.temp_conv(
                 np.max(a.region[-1].temp['coolant_int']))
@@ -1305,14 +1319,28 @@ class CoolantTempTable(LoggedClass, DASSH_Table):
                 tc_max_ht = self._ffmt2.format(len_conv(tc_max_ht))
             tc_max_tot = self.temp_conv(tc_max_tot)
 
-            data = [_fmt_pos(a.loc),
+            # Peak temperature plus uncertainty
+            # Note: hotspot_data == (t_hotspot, asm_ids)
+            tc_max_unc = '-----'
+            if not hotspot_data \
+                    or 'coolant' not in hotspot_data[0].keys() \
+                    or a.id not in hotspot_data[1]['coolant']:
+                pass
+            else:
+                idx = hotspot_data[1]['coolant'].index(a.id)
+                tc_max_unc = self._ffmt2.format(
+                    self.temp_conv(
+                        hotspot_data[0]['coolant'][idx][0]))
+
+            # Collect the data in a row and append
+            data = [self._namefmt.format(a.name),
                     '{:.5E}'.format(a.total_power),
                     '{:.5E}'.format(mfr_conv(a.flow_rate)),
                     self._ffmt2.format(tc_avg),
                     self._ffmt2.format(tc_max_out),
                     self._ffmt2.format(tc_max_tot),
+                    tc_max_unc,
                     tc_max_ht]
-            # self.add_row(_fmt_idx(a.id), data)
             self.add_row(_fmt_idx(i), data)
 
 
@@ -1543,9 +1571,9 @@ temperatures are those calculated directly by DASSH.
                 self._lookup in hotspot_data[0].keys():
             # any(self._lookup in hotspot_data[0][a].values
             #     for a in hotspot_data[0].keys()):
-            msg = self._make_hotspot_msg(r_obj)
+            msg = _make_hotspot_msg(r_obj, self._lookup)
         else:
-            msg = """Two-sigma peak temperatures are not calculated."""
+            msg = """Peak temperatures plus uncertainty are not calculated."""
         self.notes = self._notes.format(self._component, self._region, msg)
 
         # Erase any existing data in the table
@@ -1576,17 +1604,17 @@ temperatures are those calculated directly by DASSH.
                fmtter.format('Height'),
                fmtter.format('Power'),
                '|' + ' ' * (self.col_width - 1),  # Coolant
-               fmtter.format('Clad'),  # OD
-               fmtter.format('Clad'),  # MW
-               fmtter.format('Clad'),  # ID
-               fmtter.format('Fuel'),  # OD
-               fmtter.format('Fuel'),  # CL
+               fmtter.format('Clad'),             # OD
+               fmtter.format('Clad'),             # MW
+               fmtter.format('Clad'),             # ID
+               fmtter.format('Fuel'),             # OD
+               fmtter.format('Fuel'),             # CL
                '|' + ' ' * (self.col_width - 1),  # Coolant
-               fmtter.format('Clad'),  # OD
-               fmtter.format('Clad'),  # MW
-               fmtter.format('Clad'),  # ID
-               fmtter.format('Fuel'),  # OD
-               fmtter.format('Fuel')]  # CL
+               fmtter.format('Clad'),             # OD
+               fmtter.format('Clad'),             # MW
+               fmtter.format('Clad'),             # ID
+               fmtter.format('Fuel'),             # OD
+               fmtter.format('Fuel')]             # CL
         row = row[:(self.n_col)]
         self.add_row('Asm', row)
 
@@ -1671,32 +1699,37 @@ temperatures are those calculated directly by DASSH.
                 pass
             return t_hotspot
 
-    def _make_hotspot_msg(self, r_obj):
-        """ x """
-        msg = """Hot spot temperatures are calculated based on:
+
+########################################################################
+
+
+def _make_hotspot_msg(r_obj, region_lookup):
+    """ x """
+    msg = """Hot spot temperatures are calculated based on:
 - user input for hot channel factors (built-in or user-specified);
 - the degree of uncertainty in the provided statistical factors; and
 - the degree of uncertainty desired in the output hotspot temperatures.
 
 Assembly        Input unc.   Output unc.  Hotspot subfactors
 """
-        msg += '- ' * 50 + '\n'
-        for a in r_obj._options['hotspot'].keys():
-            # Skip if no hotspot temperatures for this assembly type
-            if self._lookup not in r_obj._options['hotspot'][a].keys():
-                continue
-            # Otherwise add a line for this assembly type
-            tmp = r_obj._options['hotspot'][a][self._lookup]
-            line = []
-            line.append(a[:14])
-            line.append(" " * (14 - len(line[0])) + "  ")
-            line.append(f"{tmp['input_sigma']}-sigma")
-            line.append(" " * (11 - len(line[-1])) + "  ")
-            line.append(f"{tmp['output_sigma']}-sigma")
-            line.append(" " * (11 - len(line[-1])) + "  ")
-            line.append(tmp['subfactors'])
-            line = "".join(line)
-            msg += line + "\n"
-        return msg
+    msg += '- ' * 50 + '\n'
+    for a in r_obj._options['hotspot'].keys():
+        # Skip if no hotspot temperatures for this assembly type
+        if region_lookup not in r_obj._options['hotspot'][a].keys():
+            continue
+        # Otherwise add a line for this assembly type
+        tmp = r_obj._options['hotspot'][a][region_lookup]
+        line = []
+        line.append(a[:14])
+        line.append(" " * (14 - len(line[0])) + "  ")
+        line.append(f"{tmp['input_sigma']}-sigma")
+        line.append(" " * (11 - len(line[-1])) + "  ")
+        line.append(f"{tmp['output_sigma']}-sigma")
+        line.append(" " * (11 - len(line[-1])) + "  ")
+        line.append(tmp['subfactors'])
+        line = "".join(line)
+        msg += line + "\n"
+    return msg
+
 
 ########################################################################

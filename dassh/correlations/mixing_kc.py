@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-07-06
+date: 2023-02-08
 author: matz
 Bare rod turbulent mixing correlation from Kim and Chung (2001)
 """
@@ -46,6 +46,39 @@ def calculate_mixing_params(rr):
         Tuple of two floats: (1) the diffusivity enhancement due to
         turbulent mixing, and (2) 0.0, because there is no swirl
 
+    Notes
+    -----
+    The diffusivity enhancement produced by this function needs to be
+    equivalent to the eddy diffusivity from the SE2 / CTD correlations.
+    The 2016 ANTEO+ paper by Lodi provides the necessary information.
+
+    The eddy diffusivity is used to define a "mixing exchange rate"
+    [kg / m / s] in Equation 42 as follows:
+
+        W_ij = density * eddy * (P-D) / eta
+            eddy = eddy diffusivity [m / s^2]
+            eta = centroid-centroid distance [m]
+
+    The correlations for eddy diffusivity produce a dimensionless
+    value which is dimensionalized by multiplying by the centroid-
+    centroid distance and the axial velocity.
+
+        eddy = eddy_dimless * velocity * eta
+
+    The "mixing exchange rate" parameter is defined for bare rod
+    bundles experiencing turbulent mixing in Equation 36 as:
+
+        W_ij = density * velocity * St_g * (P-D)
+            St_g = gap Stanton number, per Equation 37
+
+    Relating these two values and solving for eddy diffusivity:
+        density * eddy * (P-D) / eta = density * velocity * St_g * (P-D)
+        eddy / eta = velocity * St_g
+        eddy = velocity * eta * St_g
+
+    This shows how St_g is actually equivalent to the dimensionless
+    eddy diffusivity and can be treated the same way.
+
     """
     # Try to pull in pre-calculated constants
     try:
@@ -59,6 +92,7 @@ def calculate_mixing_params(rr):
     # Re = rr.coolant_int_params['Re']
     Re = rr.coolant_int_params['Re_sc'][0]
     Stg = _calculate_stg(Pr, Re, C1, C2, C3, C4)
+    #
     return Stg * rr.L[0][0], 0.0
 
 

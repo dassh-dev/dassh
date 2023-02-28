@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-12-20
+date: 2023-02-28
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -1320,7 +1320,7 @@ class Reactor(LoggedClass):
 
         # Coolant temperatures
         coolant_table = dassh.table.CoolantTempTable()
-        out += coolant_table.generate(self)
+        out += coolant_table.generate(self, hotspot_data)
 
         # Duct temperatures
         duct_table = dassh.table.DuctTempTable()
