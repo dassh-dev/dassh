@@ -25,9 +25,10 @@ Test various aspects of the DASSH pressure drop calculations
 
 
 import os
+import sys
 import numpy as np
 import dassh
-
+from .test_reactor import save_reactor_pytest
 
 ########################################################################
 # RODDED REGION PRESSURE DROP TESTS
@@ -82,7 +83,7 @@ def test_pressure_drop_w_spacer_grid(testdir):
     inp = dassh.DASSH_Input(inpath)
     r = dassh.Reactor(inp, path=outpath, write_output=True)
     r.temperature_sweep()
-    r.save()
+    save_reactor_pytest(r)
 
     # Check results using Reactor object attributes
     dh = r.assemblies[0].rodded.bundle_params['de']
@@ -126,7 +127,14 @@ def test_pressure_drop_w_spacer_grid(testdir):
 def test_pressure_drop_output_table(testdir):
     """Test output table generation"""
     outpath = os.path.join(testdir, 'test_results', 'single_spacer')
-    r = dassh.reactor.load(os.path.join(outpath, 'dassh_reactor.pkl'))
+    if sys.version_info < (3, 7):
+        inp = dassh.DASSH_Input(
+            os.path.join(
+                testdir, 'test_inputs', 'input_single_spacer.txt'))
+        r = dassh.Reactor(inp, path=outpath, write_output=True)
+        r.temperature_sweep()
+    else:
+        r = dassh.reactor.load(os.path.join(outpath, 'dassh_reactor.pkl'))
     r.postprocess()
     with open(os.path.join(outpath, 'dassh.out'), 'r') as f:
         out = f.read()
@@ -288,11 +296,12 @@ def test_pressure_drop_w_gravity(testdir):
     r = dassh.Reactor(inp, path=outpath, write_output=True)
     r.temperature_sweep()
     r.postprocess()
-    r.save()
+    save_reactor_pytest(r)
 
     # Check results using Reactor object attributes
     # Gravity pressure head loss = rho * g * h
     g = 9.80665
+
     # CHECK 1: Each region
     for a in r.assemblies:
         for reg in a.region:
@@ -307,8 +316,8 @@ def test_pressure_drop_w_gravity(testdir):
                 print('Answer:', ans)
                 print('Diff:', diff)
                 print(reg.coolant.density)
-
             assert pass_test
+
     # CHECK 2: All assemblies have same gravity head loss because
     # the core height is the same for all
     ref = sum(reg._pressure_drop['gravity'] for reg in r.assemblies[0].region)
@@ -332,12 +341,12 @@ def test_pressure_drop_csv(testdir):
         'input_seven_asm_gravity.txt')
     outpath = os.path.join(testdir, 'test_results', 'seven_asm_gravity')
     csvpath = os.path.join(outpath, 'pressure_drop.csv')
-    if not os.path.exists(csvpath):
+    if not os.path.exists(csvpath) or sys.version_info < (3, 7):
         inp = dassh.DASSH_Input(inpath)
         r = dassh.Reactor(inp, path=outpath, write_output=True)
         r.temperature_sweep()
         r.postprocess()
-        r.save()
+        save_reactor_pytest(r)
     else:
         r = dassh.reactor.load(os.path.join(outpath, 'dassh_reactor.pkl'))
 
