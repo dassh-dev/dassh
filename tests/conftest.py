@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-12-07
+date: 2023-01-05
 author: matz
 Pytest fixtures and related test utilities for the whole shebang
 """
@@ -28,16 +28,22 @@ import numpy as np
 import pytest
 import dassh
 from dassh.__main__ import main as dassh_main
+from dassh.__main__ import integrate_pin_power as dassh_power
 
 
-def execute_dassh(args):
-    """Execute DASSH (separate process if Python < 3.6)"""
+def execute_dassh(args, entrypoint="dassh"):
+    """Execute DASSH (separate process if Python = 3.6)"""
     if sys.version_info < (3, 7):
-        return_code = subprocess.call(["dassh"] + list(args))
+        return_code = subprocess.call([entrypoint] + list(args))
         if return_code == 1:
             sys.exit(1)
     else:
-        dassh_main(args)
+        if entrypoint == "dassh":
+            dassh_main(args)
+        elif entrypoint == "dassh_power":
+            dassh_power(args)
+        else:
+            sys.exit(1)
 
 
 @pytest.fixture(scope='session')
@@ -1142,6 +1148,23 @@ def pin(c_fuel_rr):
     p2d = c_fuel_rr.pin_pitch / c_fuel_rr.pin_diameter
     htcp = [p2d**3.8 * 0.01**0.86 / 3.0, 0.86, 0.86, 4.0 + 0.16 * p2d**5]
     fuel_params = {'r_frac': [0.0, 0.33333333, 0.66666667],
+                   'zr_frac': [0.1, 0.1, 0.1],
+                   'pu_frac': [0.2, 0.2, 0.2],
+                   'porosity': [0.25, 0.25, 0.25],
+                   'gap_thickness': 0.0,
+                   'htc_params_clad': htcp}
+    return dassh.PinModel(0.00628142,
+                          0.00050292,
+                          dassh.Material('ht9_se2anl'),
+                          fuel_params)
+
+
+@pytest.fixture
+def pin_annular(c_fuel_rr):
+    """Conceptual fuel pin object"""
+    p2d = c_fuel_rr.pin_pitch / c_fuel_rr.pin_diameter
+    htcp = [p2d**3.8 * 0.01**0.86 / 3.0, 0.86, 0.86, 4.0 + 0.16 * p2d**5]
+    fuel_params = {'r_frac': [0.25, 0.5, 0.75],
                    'zr_frac': [0.1, 0.1, 0.1],
                    'pu_frac': [0.2, 0.2, 0.2],
                    'porosity': [0.25, 0.25, 0.25],

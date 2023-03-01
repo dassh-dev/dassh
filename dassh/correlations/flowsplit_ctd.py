@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-12-07
+date: 2023-02-28
 author: matz
 Cheng-Todreas correlation for flow split (1986)
 """
@@ -68,7 +68,6 @@ def calculate_flow_split(asm_obj, grid=False, regime=None):
         Re_bnds = asm_obj.corr_constants['fs']['Re_bnds']
     except (KeyError, AttributeError):
         Re_bnds = ctd.calculate_Re_bounds(asm_obj)
-
     try:
         Cf = asm_obj.corr_constants['fs']['Cf_sc']
     except (KeyError, AttributeError):
@@ -80,18 +79,16 @@ def calculate_flow_split(asm_obj, grid=False, regime=None):
         return _calc_bundle_plus_grid_flow_split(asm_obj, Cf)
 
     # If no spacer grids are used, return the bundle-only flow split.
+    Re_bundle = asm_obj.coolant_int_params['Re']
+    if regime == 'laminar' or Re_bundle <= Re_bnds[0]:
+        return asm_obj.corr_constants['fs']['fs']['laminar']
+    elif regime == 'turbulent' or Re_bundle >= Re_bnds[1]:
+        return asm_obj.corr_constants['fs']['fs']['turbulent']
     else:
-        if regime is not None:
-            return _calc_bundle_flow_split(asm_obj, Cf, regime, Re_bnds)
-        elif asm_obj.coolant_int_params['Re'] <= Re_bnds[0]:
-            return _calc_bundle_flow_split(asm_obj, Cf, 'laminar')
-        elif asm_obj.coolant_int_params['Re'] >= Re_bnds[1]:
-            return _calc_bundle_flow_split(asm_obj, Cf, 'turbulent')
-        else:
-            return _calc_bundle_flow_split(asm_obj, Cf, 'transition', Re_bnds)
+        return _calc_transition_flowsplit(asm_obj)
 
 
-def _calc_bundle_plus_grid_flow_split(rr, Cf_dict):
+def _calc_bundle_plus_grid_flow_split(rr, Cf_dict, _lambda=None):
     """Worker function to calculate the flow split into the
     different types of subchannels based on the Cheng-Todreas
     model accounting for spacer grid pressure losses
@@ -103,6 +100,9 @@ def _calc_bundle_plus_grid_flow_split(rr, Cf_dict):
     Cf_dict : dict
         Dictionary containing subchannel friction factor constants;
         keys: ['laminar', 'turbulent']
+    _lambda (optional) : float
+        Exponent fitted from data, necessary only for UCTD (default=None)
+        See notes in CTD "calc_transition_flowsplit" method.
 
     Returns
     -------
@@ -151,50 +151,13 @@ def _calc_bundle_plus_grid_flow_split(rr, Cf_dict):
                  rr.corr_constants['ff']['Cf_sc']['laminar'],
                  rr.corr_constants['ff']['Cf_sc']['turbulent'],
                  GLC_i=grid_total_lc,
-                 L=rr.z[1] - rr.z[0])
+                 L=rr.z[1] - rr.z[0],
+                 lam=_lambda)
     x = np.array(x)
     return x
 
 
-def _calc_bundle_flow_split(rr, Cf_dict, regime, Re_bnds=None):
-    """Worker function to calculate the flow split into the
-    different types of subchannels based on the Cheng-Todreas
-    model.
-
-    Parameters
-    ----------
-    rr : DASSH RoddedRegion object
-        Contains the geometric description of the assembly
-    Cf_dict : dict
-        Dictionary containing subchannel friction factor constants;
-        keys: ['laminar', 'turbulent']
-    regime : str {'laminar', 'turbulent', 'transition'}
-        Flow regime with which to evaluate flow split ratios
-    Re_bnds : list (optional)
-        Reynolds number flow regime boundaries for calculating
-        intermittency factor in transition regime
-
-    Returns
-    -------
-    numpy.ndarray
-        Flow split between interior, edge, and corner coolant
-        subchannels
-
-    Notes
-    -----
-    This method is imported by the flow split model in the
-    Upgraded Cheng-Todreas correlation (flowsplit_uctd)
-
-    """
-
-    if regime == 'transition':
-        flow_split = _calc_transition_flowsplit(rr)
-    else:
-        flow_split = rr.corr_constants['fs']['fs'][regime]
-    return flow_split
-
-
-def _calc_transition_flowsplit(asm_obj):
+def _calc_transition_flowsplit(asm_obj, _lambda=None):
     """Calculate the flowsplit in transition conditions
 
     Notes
@@ -207,6 +170,12 @@ def _calc_transition_flowsplit(asm_obj):
     f2, and f3 (which depend on X1, X2, and X3). Then, X2
     is determined by Equation 30. The process is repeated
     until convergence is reached.
+
+    If _lambda is None, the transition regime friction factor is
+    calculated for CTD based on Eq. 9 in the Cheng-Todreas 1986
+    paper. If _lambda is not None, then the friction factor is
+    calculated for UCTD using the updated formulation in Eq. 4 in
+    the Chen-Todreas 2018 "Upgrade" paper.
 
     """
     try:
@@ -237,14 +206,16 @@ def _calc_transition_flowsplit(asm_obj):
                      Re_iL,
                      Re_iT,
                      asm_obj.corr_constants['ff']['Cf_sc']['laminar'],
-                     asm_obj.corr_constants['ff']['Cf_sc']['turbulent'])
+                     asm_obj.corr_constants['ff']['Cf_sc']['turbulent'],
+                     lam=_lambda)
         x = np.array(x)
     except StopIteration:
         x = _calc_transition_flowsplit_APPROX(asm_obj, beta=5.0)
     return x
 
 
-def _iterate(Re, s, De_i, De_b, Re_iL, Re_iT, Cf_iL, Cf_iT, GLC_i=None, L=1.0):
+def _iterate(Re, s, De_i, De_b, Re_iL, Re_iT, Cf_iL, Cf_iT,
+             GLC_i=None, L=1.0, lam=None):
     """Iterate to solve the system of nonlinear mass conservation and
     pressure drop equations
 
@@ -271,7 +242,8 @@ def _iterate(Re, s, De_i, De_b, Re_iL, Re_iT, Cf_iL, Cf_iT, GLC_i=None, L=1.0):
         Subchannel spacer grid loss coefficient (default=None)
     L (optional) : float
         Bundle length; only necessary if GLC is specified (default=1.0)
-
+    lam (optional) : float
+        Exponent fitted from data, necessary only for UCTD (default=None)
     """
     if GLC_i is None:
         GLC_i = np.zeros(3)
@@ -293,7 +265,7 @@ def _iterate(Re, s, De_i, De_b, Re_iL, Re_iT, Cf_iL, Cf_iT, GLC_i=None, L=1.0):
         INT_i[INT_i < 0.0] = 0.0
         ff_iL = Cf_iL / Re_i
         ff_iT = Cf_iT / Re_i**_M['turbulent']
-        ff = ff_iL * (1 - INT_i)**_GAMMA + ff_iT * INT_i**_GAMMA
+        ff = _calc_ffb_tr(ff_iL, ff_iT, INT_i, _GAMMA, lam)
         t = ff * L_over_Dei + GLC_i
         x1x2 = np.sqrt(t[1] / t[0])
         x3x2 = np.sqrt(t[1] / t[2])
@@ -307,6 +279,38 @@ def _iterate(Re, s, De_i, De_b, Re_iL, Re_iT, Cf_iL, Cf_iT, GLC_i=None, L=1.0):
             x2 = x2_new
             x3 = x3_new
     raise StopIteration(stop_msg)
+
+
+def _calc_ffb_tr(ff_iL, ff_iT, INT_i, gam=_GAMMA, lam=None):
+    """Calculate the transition regime bundle friction factor
+
+    Parameters
+    ----------
+    ff_iL : numpy.ndarray
+        Friction factor for each subchannel in the laminar regime
+    ff_iT : numpy.ndarray
+        Friction factor for each subchannel in the turbulent regime
+    INT_i : numpy.ndarray
+        Intermittency factors for each subchannel
+    gam (optional) : float
+        Exponent fitted from data (by default, equals 1/3)
+    lam (optional) : float
+        Exponent fitted from data (default=None)
+
+    Notes
+    -----
+    If lam (lambda) is None, the transition regime friction factor
+    is calculated based on Eq. 9 in the Cheng-Todreas 1986 paper.
+    If lam is not None, then the friction factor is calculated
+    using the updated formulation in Eq. 4 in the Chen-Todreas
+    2018 "Upgrade" paper.
+
+    """
+    ffb_tr = ff_iL * (1 - INT_i)**gam
+    if lam:
+        ffb_tr *= (1 - INT_i**lam)
+    ffb_tr += ff_iT * INT_i**gam
+    return ffb_tr
 
 
 def _calc_transition_flowsplit_APPROX(asm_obj, beta=5.0):

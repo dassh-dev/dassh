@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-01-20
+date: 2022-12-16
 author: Milos Atz
 """
 ########################################################################
@@ -130,7 +130,8 @@ if __name__ == "__main__":
                        'Operating System :: MacOS'],
           entry_points={'console_scripts': [
               'dassh = dassh.__main__:main',
-              'dassh_plot = dassh.__main__:plot']}
+              'dassh_plot = dassh.__main__:plot',
+              'dassh_power = dassh.__main__:integrate_pin_power']}
           )
 
 

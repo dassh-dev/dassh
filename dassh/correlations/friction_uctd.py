@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2020-06-09
+date: 2023-01-10
 author: matz
 Upgraded Cheng-Todreas Detailed correlations (2018)
 """
@@ -226,7 +226,7 @@ def calculate_bundle_friction_factor(asm_obj):
         return f['turbulent']
     else:
         # Transition regime intermittency factor
-        x = ctd.calc_intermittency_factor(asm_obj, Re_bt, Re_bl)
+        x = ctd.calc_intermittency_factor(asm_obj, Re_bl, Re_bt)
         # Different correlation for transition region than O.G. CTD
         return (f['laminar'] * (1 - x)**(1 / 3.0) * (1 - x**7.0)
                 + f['turbulent'] * x**(1 / 3.0))

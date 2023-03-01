@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-12-07
+date: 2023-02-28
 author: matz
 Upgraded Cheng-Todreas correlation for flow split (2018)
 """
@@ -59,7 +59,6 @@ def calculate_flow_split(asm_obj, grid=False, regime=None):
         Re_bnds = asm_obj.corr_constants['fs']['Re_bnds']
     except (KeyError, AttributeError):
         Re_bnds = fr_uctd.calculate_Re_bounds(asm_obj)
-
     try:
         Cf = asm_obj.corr_constants['fs']['Cf_sc']
     except (KeyError, AttributeError):
@@ -68,22 +67,18 @@ def calculate_flow_split(asm_obj, grid=False, regime=None):
     # If spacer grids are used, an iterative method is required to
     # determine the flow split regardless of the flow regime.
     if grid:
-        return fs_ctd._calc_bundle_plus_grid_flow_split(asm_obj, Cf)
+        return fs_ctd._calc_bundle_plus_grid_flow_split(
+            asm_obj, Cf, _lambda=7)
 
     # If no spacer grids are used, return the bundle-only flow split.
     else:
-        if regime is not None:
-            return fs_ctd._calc_bundle_flow_split(
-                asm_obj, Cf, regime, Re_bnds)
-        elif asm_obj.coolant_int_params['Re'] <= Re_bnds[0]:
-            return fs_ctd._calc_bundle_flow_split(
-                asm_obj, Cf, 'laminar')
-        elif asm_obj.coolant_int_params['Re'] >= Re_bnds[1]:
-            return fs_ctd._calc_bundle_flow_split(
-                asm_obj, Cf, 'turbulent')
+        Re_bundle = asm_obj.coolant_int_params['Re']
+        if regime == 'laminar' or Re_bundle <= Re_bnds[0]:
+            return asm_obj.corr_constants['fs']['fs']['laminar']
+        elif regime == 'turbulent' or Re_bundle >= Re_bnds[1]:
+            return asm_obj.corr_constants['fs']['fs']['turbulent']
         else:
-            return fs_ctd._calc_bundle_flow_split(
-                asm_obj, Cf, 'transition', Re_bnds)
+            return fs_ctd._calc_transition_flowsplit(asm_obj, _lambda=7)
 
 
 def calc_constants(asm_obj):

@@ -790,3 +790,27 @@ def test_spacergrid_solidity_error(testdir, caplog):
     # Check error
     msg = 'Default solidity relationship gives result outside '
     assert msg in caplog.text
+
+
+def test_dasshpower_incomplete_input(testdir, caplog):
+    """dassh_power access point allows for some missing inputs that
+    are otherwise required by DASSH - check the fill behavior"""
+    with pytest.raises(SystemExit):
+        dassh.DASSH_Input(
+            os.path.join(
+                testdir,
+                'test_inputs',
+                'input_dasshpower.txt'))
+    msg = '"coolant_inlet_temp" key in section "Core" failed validation'
+    assert msg in caplog.text
+
+    # Should cause no failure
+    dasshpower_input = dassh.DASSHPower_Input(
+        os.path.join(
+            testdir,
+            'test_inputs',
+            'input_dasshpower.txt'))
+    assert dasshpower_input.data['Assignment']['ByPosition'][0][2] == \
+        {'flowrate': 5.0}
+    assert dasshpower_input.data['Core']['coolant_material'] == 'sodium'
+    assert dasshpower_input.data['Core']['coolant_inlet_temp'] == 773.15

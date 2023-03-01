@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-04-20
+date: 2023-01-05
 author: matz
 Test the clad/fuel pin temperature model
 """
@@ -101,8 +101,28 @@ def test_energy_conservation(pin):
     print(pin.fuel['r'])
     print(pin.fuel['dr'])
     print(pin.fuel['rm'])
+    print(pin.fuel['area'])
     print(q_s)
     assert q_s[0, -1] == pytest.approx(q)
+
+
+def test_energy_conservation_annular(pin_annular):
+    """Test that energy is conserved when power is distributed
+    radially in the pellet"""
+    q = np.array([1000.0])  # W
+    dz = 0.025  # m
+    q_lin = q / dz  # W/m
+    q_dens = q_lin / pin_annular.fuel['area']  # W/m3
+    # Reintegrate to get W in each shell based on stored geometry
+    q_shell = np.zeros(pin_annular.fuel['r'].shape[0])
+    for i in reversed(range(pin_annular.fuel['r'].shape[0])):
+        r_sq = pin_annular.fuel['r'][i]**2
+        a_shell = np.pi * (r_sq[1] - r_sq[0])
+        q_shell[i] = q_dens * a_shell * dz
+    # Confirm that sumis equal to total power
+    print('Energy in each shell (W): ', q_shell)
+    print('Total (W): ', sum(q_shell))
+    assert sum(q_shell) == pytest.approx(q)
 
 
 def test_fuel_temp_calc_const_k(pin, se2anl_peaktemp_params):
