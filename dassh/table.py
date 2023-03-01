@@ -1274,6 +1274,7 @@ class CoolantTempTable(LoggedClass, DASSH_Table):
             msg = _make_hotspot_msg(r_obj, 'coolant')
         else:
             msg = """Peak temperatures plus uncertainty are not calculated."""
+            msg += "\n"
         self.notes += msg
         # Erase any existing data in the table
         self.clear()
