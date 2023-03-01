@@ -1,0 +1,84 @@
+########################################################################
+# author: Milos Atz
+# date: 2022-11-01
+# comment: DASSH input example
+########################################################################
+
+[Setup]
+    [[Units]]
+        length      = cm
+        temperature = C
+
+
+########################################################################
+# POWER DISTRIBUTIONS
+
+[Power]
+    [[ARC]]
+        coolant_heating    = sodium
+        fuel_material      = metal
+        fuel_alloy         = zr
+        pmatrx = ../test_data/single_asm_refl/PMATRX
+        geodst = ../test_data/single_asm_refl/GEODST
+        ndxsrf = ../test_data/single_asm_refl/NDXSRF
+        znatdn = ../test_data/single_asm_refl/ZNATDN
+        labels = ../test_data/single_asm_refl/LABELS
+        nhflux = ../test_data/single_asm_refl/NHFLUX
+        ghflux = ../test_data/single_asm_refl/GHFLUX
+
+
+########################################################################
+# CORE DETAILS: Describe characteristics of the reactor core
+
+[Core]
+    coolant_inlet_temp = 350.0
+    coolant_material   = sodium
+    length             = 375.0
+    assembly_pitch     = 12.0
+
+
+########################################################################
+# ASSEMBLY DETAILS: Describe a group of assemblies
+# NAME identifies a group of assemblies (e.g. "INNER_DRIVER")
+# Can be repeated for as many assemblies as required by the user.
+
+[Assembly]
+    [[driver]]
+        num_rings      = 9
+        pin_pitch      = 0.770
+        pin_diameter   = 0.260  # P/D too big, will give error
+        clad_thickness = 0.0500
+        wire_pitch     = 20.000
+        wire_diameter  = 0.110
+        duct_ftf       = 11.25, 11.75
+        duct_material  = HT9
+        [[[AxialRegion]]]
+            [[[[lower]]]]
+                z_lo = 0.0
+                z_hi = 100.0
+                vf_coolant = 0.2
+                hydraulic_diameter = 0.25
+            [[[[upper]]]]
+                z_lo = 275.0
+                z_hi = 375.0
+                vf_coolant = 0.2
+                hydraulic_diameter = 0.25
+        [[[SpacerGrid]]]
+            # Missing solidity (will warn and use default)
+            # Missing one of the 7 required coefficients
+            corr = REH
+            axial_positions = 150.0, 250.0
+
+
+########################################################################
+# ASSIGN assemblies to positions in the core; assign fixed
+# flow rates or temperature limits to one or multiple assemblies.
+# Indicate which assemblies must be grouped together in an orificing
+# calculation.
+
+[Assignment]
+    [[ByPosition]]
+        driver =    1, 1, 1, FLOWRATE, 15.0, GROUP, 1
+
+
+########################################################################

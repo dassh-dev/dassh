@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-11-30
+date: 2022-12-20
 author: matz
 Test the behavior and attributes of unrodded DASSH Region instances
 """
@@ -48,7 +48,7 @@ def test_ur_reg_instantiation_fancy(testdir):
            'duct': dassh.Material('ht9')}
 
     # Test fully unrodded assembly
-    ur1 = dassh.region_unrodded.make_ur_asm(
+    ur1 = dassh.region_unrodded.make(
         'testboi', inp.data['Assembly']['fuel'], mat, 1.0)
     print(ur1.mratio)
     print(ur1._mratio)
@@ -57,12 +57,12 @@ def test_ur_reg_instantiation_fancy(testdir):
     assert ur1.mratio != 1.0
 
     # Test default in unrodded axial regions
-    ur2 = dassh.region_unrodded.make_ur_axialregion(
+    ur2 = dassh.region_unrodded.make_axialregion(
         inp.data['Assembly']['control'], 'empty_cr', mat, 1.0)
     assert ur2.mratio == 1.0
 
     # Test nondefault in unrodded axial regions
-    ur2 = dassh.region_unrodded.make_ur_axialregion(
+    ur2 = dassh.region_unrodded.make_axialregion(
         inp.data['Assembly']['control'], 'upper_cr', mat, 1.0)
     assert ur2.mratio == 0.8
 
@@ -106,6 +106,7 @@ def test_simple_unrodded_reg_zero_power(c_lrefl_simple):
     t_gap = np.ones(6) * c_lrefl_simple.avg_duct_mw_temp
     c_lrefl_simple.calculate(
         0.1, {'refl': 0.0}, t_gap, 0.0, adiabatic_duct=True)
+    c_lrefl_simple.calculate_pressure_drop(0.1, 0.1)
     assert c_lrefl_simple.temp['coolant_int'] == pytest.approx(in_temp)
     assert c_lrefl_simple.pressure_drop > 0.0
 
@@ -116,6 +117,7 @@ def test_simple_unrodded_reg_none_power(c_lrefl_simple):
     t_gap = np.ones(6) * c_lrefl_simple.avg_duct_mw_temp
     c_lrefl_simple.calculate(
         0.1, {'refl': None}, t_gap, 0.0, adiabatic_duct=True)
+    c_lrefl_simple.calculate_pressure_drop(0.1, 0.1)
     assert c_lrefl_simple.temp['coolant_int'] == pytest.approx(in_temp)
     assert c_lrefl_simple.pressure_drop > 0.0
 
@@ -184,8 +186,8 @@ def test_mnh_ur_ebal_adiabatic(shield_ur_mnh):
     gap_temp = np.arange(625, 775, 25)  # [625, 650, 675, 700, 725, 750]
     fake_htc = np.ones(6) * 2e4
     for i in range(n_steps):
-        shield_ur_mnh.calculate(dz, power, gap_temp, fake_htc,
-                                ebal=True, adiabatic_duct=True)
+        shield_ur_mnh.calculate(
+            dz, power, gap_temp, fake_htc, ebal=True, adiab=True)
     assert np.sum(shield_ur_mnh.ebal['duct']) == 0.0
     # Check power added real quick
     tot_power_added = n_steps * dz * power['refl']
@@ -230,73 +232,3 @@ def test_mnh_ur_ebal(shield_ur_mnh):
     bal = total - e_temp_rise
     print('DIFFERENCE (W):', bal)
     assert bal <= 1e-7
-
-
-def test_ur_asm_pressure_drop(c_shield_rr_params):
-    """Test that the pressure drop calculation gives the same result
-    in RR and UR objects"""
-    input, mat = c_shield_rr_params
-    mat['coolant'] = dassh.Material('sodium')  # get dynamic proeprties
-    fr = 0.50
-
-    # Make rodded region
-    rr = dassh.region_rodded.make_rr_asm(input, 'dummy', mat, fr)
-    rr._init_static_correlated_params(623.15)
-
-    # Make unrodded region; manually set UR params
-    input['use_low_fidelity_model'] = True
-    input['convection_factor'] = 'calculate'
-    ur = dassh.region_unrodded.make_ur_asm('testboi', input, mat, fr)
-    ur._init_static_correlated_params(623.15)
-
-    T_in = 623.15
-    dz = 0.01
-    dp_rr = 0.0
-    dp_ur = 0.0
-    for i in range(50):
-        T = T_in + i
-        rr._update_coolant_int_params(T)
-        ur._update_coolant_params(T)
-        dp_rr += rr.calculate_pressure_drop(dz)
-        dp_ur += ur.calculate_pressure_drop(dz)
-
-    print('dp_rr:', dp_rr)
-    print('dp_ur:', dp_ur)
-    diff = dp_rr - dp_ur
-    print(diff)
-    assert np.abs(diff) < 1e-8
-
-
-def test_ur_dp_rr_equiv(testdir):
-    """Test that the RR equivalent UR returns the same pressure drop
-    as a regular RR object"""
-    # Get answer to compare with
-    path_ans = os.path.join(
-        testdir, 'test_data', 'test_single_asm', 'dassh_reactor.pkl')
-    if os.path.exists(path_ans):
-        r_ans = dassh.reactor.load(path_ans)
-    else:
-        inpath = os.path.join(testdir, 'test_inputs', 'input_single_asm.txt')
-        outpath = os.path.join(testdir, 'test_results', 'test_single_asm')
-        inp = dassh.DASSH_Input(inpath)
-        r_ans = dassh.Reactor(inp, path=outpath, write_output=True)
-        r_ans.temperature_sweep()
-    ans = np.zeros(4)
-    for i in range(len(r_ans.assemblies[0].region)):
-        ans[i] = r_ans.assemblies[0].region[i].pressure_drop
-    ans[-1] = r_ans.assemblies[0].pressure_drop
-
-    # Get result to compare
-    inpath = os.path.join(testdir, 'test_inputs', 'input_single_asm_lf.txt')
-    outpath = os.path.join(testdir, 'test_results', 'test_single_asm_lf')
-    inp = dassh.DASSH_Input(inpath)
-    r_res = dassh.Reactor(inp, path=outpath, write_output=True)
-    r_res.temperature_sweep()
-    res = np.zeros(4)
-    for i in range(len(r_res.assemblies[0].region)):
-        res[i] = r_res.assemblies[0].region[i].pressure_drop
-    res[-1] = r_res.assemblies[0].pressure_drop
-
-    # Compare them
-    diff = (res - ans) / ans
-    assert np.max(np.abs(diff)) < 1e-3

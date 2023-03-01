@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-12-19
+date: 2023-02-28
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -510,6 +510,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         self.check_fuel_model()
         self.check_pin_model()
         self.check_correlations()
+        self.check_spacergrid()
         # Assignment
         self.check_assignment_assembly_agreement()
         if not power_only:  # Can ignore BC if called through dassh_power
@@ -1200,6 +1201,71 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                            'mixing but specified nonzero wire diameter.'
                     self.log('warning', msg)
 
+    def check_spacergrid(self):
+        """Check for correct spacer grid inputs"""
+        for a in self.data['Assembly']:
+            pre = f'Asm \"{a}\"; '  # indicate asm for error msg
+            if any(self.data['Assembly'][a]['SpacerGrid'].values()):
+                asm_input = self.data['Assembly'][a]
+
+                # Warn if assembly also has wire wrap - it'd be weird
+                # to have both
+                if asm_input['wire_diameter'] > 0.0:
+                    msg = f'WARNING: {pre}'
+                    msg += 'Bundle has both wire wrap and spacer grids'
+                    self.log('warning', msg)
+
+                # Axial positions must be in pin bundle (rodded) region
+                bnds = [asm_input['AxialRegion']['rods']['z_lo'],
+                        asm_input['AxialRegion']['rods']['z_hi']]
+                z_to_keep = []
+                for z in asm_input['SpacerGrid']['axial_positions']:
+                    if z < bnds[0] or z > bnds[1]:
+                        msg = f'WARNING: {pre}'
+                        msg += f'Spacer grid axial position "{z}" ' \
+                               'is outside pin bundle region; skipping'
+                        self.log('warning', msg)
+                    else:
+                        z_to_keep.append(z)
+                asm_input['SpacerGrid']['axial_positions'] = z_to_keep
+
+                # Input must have values for "z" (axial position)
+                if not asm_input['SpacerGrid']['axial_positions'] or \
+                        asm_input['SpacerGrid']['axial_positions'] == []:
+                    msg = f'ERROR: {pre}'
+                    msg += 'No acceptable spacer grid axial positions'
+                    self.log('error', msg)
+
+                # Checks for correlation inputs
+                if asm_input['SpacerGrid']['corr'] is not None:
+                    # Warn if solidity is undefined
+                    if asm_input['SpacerGrid']['solidity'] is None:
+                        msg = f'WARNING: {pre}'
+                        msg += 'Spacer grid solidity (A_grid / A_flow) ' \
+                               'is undefined; using default value'
+                        self.log('warning', msg)
+                        # Confirm that default relationship gives
+                        # meaningful result
+                        g = asm_input['pin_pitch'] - asm_input['pin_diameter']
+                        # Get conversion method to convert to m
+                        conv = utils.get_length_conversion(
+                            self.data['Setup']['Units']['length'], 'm')
+                        s = 0.6957 - 162.8 * conv(g)
+                        if s < 0.0 or s > 1.0:
+                            msg = f'ERROR: {pre}'
+                            msg += 'Default solidity relationship gives ' \
+                                f'result outside acceptable range (0-1): {s}'
+                            self.log('error', msg)
+                    # If CDD correlation is used, check coefficients
+                    if asm_input['SpacerGrid']['corr'].lower() == 'cdd' \
+                            and asm_input['SpacerGrid']['corr_coeff']:
+                        nc = len(asm_input['SpacerGrid']['corr_coeff'])
+                        if nc != 7:
+                            msg = f'ERROR: {pre}'
+                            msg += '"CDD" correlation requires 7 '\
+                                   f'coefficients; found {nc}'
+                            self.log('error', msg)
+
     def check_assignment_assembly_agreement(self):
         """Make sure all assigned assemblies are specified"""
         # Make sure all specified assemblies are assigned to a position
@@ -1444,7 +1510,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
     def check_dump(self):
         """Check specifications for dumping temperatures"""
         keys = ['all', 'coolant', 'duct', 'pins', 'gap',
-                'average', 'maximum', 'gap_fine']
+                'average', 'maximum', 'gap_fine', 'pressure_drop']
         warn = False
         for k in self.data['Setup']['Dump'].keys():
             if k == 'interval':
@@ -2202,6 +2268,16 @@ def convert_length(data):
         if 'FuelModel' in data['Assembly'][a].keys():
             data['Assembly'][a]['FuelModel']['gap_thickness'] = \
                 conv(data['Assembly'][a]['FuelModel']['gap_thickness'])
+
+        if 'PinModel' in data['Assembly'][a].keys():
+            data['Assembly'][a]['PinModel']['gap_thickness'] = \
+                conv(data['Assembly'][a]['PinModel']['gap_thickness'])
+
+        if data['Assembly'][a]['SpacerGrid']['axial_positions']:
+            kz = 'axial_positions'
+            for i in range(len(data['Assembly'][a]['SpacerGrid'][kz])):
+                data['Assembly'][a]['SpacerGrid'][kz][i] = \
+                    conv(data['Assembly'][a]['SpacerGrid'][kz][i])
 
     # Convert requested axial plane solves
     if data['Setup']['axial_plane'] is not None:

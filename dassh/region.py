@@ -31,7 +31,7 @@ class DASSH_Region(object):
         self.temp = {}
         self.area = {}
         self.total_area = {}
-        self._pressure_drop = 0.0
+        self._pressure_drop = {'friction': 0.0, 'gravity': 0.0}
 
         # Primary "interior" coolant; neglects bypass
         self.temp['coolant_int'] = np.ones(n_node_coolant)

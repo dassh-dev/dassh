@@ -1,6 +1,40 @@
 
 
 
+COOLANT TEMPERATURE SUMMARY
+----------------------------
+Column heading definitions
+    Power - Total assembly power
+    Bulk outlet - Mixed-mean coolant temperature at the assembly outlet
+    Peak outlet - Maximum coolant subchannel temperature at the assembly outlet
+    Peak total - Axial-maximum coolant subchannel temperature in the assembly
+    Peak + Unc. - "Peak total" coolant temperature plus HCF uncertainty
+    Peak height - Axial height at which "Peak total" temperature occurs
+
+Hot spot temperatures are calculated based on:
+- user input for hot channel factors (built-in or user-specified);
+- the degree of uncertainty in the provided statistical factors; and
+- the degree of uncertainty desired in the output hotspot temperatures.
+
+Assembly        Input unc.   Output unc.  Hotspot subfactors
+- - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - - 
+fuel-2          3-sigma      2-sigma      TAG_HCF_INPUT_CLAD
+
+                         Power    Flow rate  Bulk outlet  Peak outlet   Peak total  Peak + Unc.  Peak height
+ Asm         Name          (W)       (kg/s)         (˚C)         (˚C)         (˚C)         (˚C)         (cm)
+------------------------------------------------------------------------------------------------------------
+   1         fuel  4.77028E+06  1.90000E+01       350.00       350.00       506.16        -----       325.00
+   2         fuel  4.68905E+06  1.40000E+01       350.00       350.00       506.16        -----       325.00
+   3         fuel  3.98384E+06  1.40000E+01       350.00       350.00       506.16        -----       325.00
+   4         fuel  3.47063E+06  1.40000E+01       350.00       350.00       506.16        -----       325.00
+   5         fuel  2.99174E+06  1.40000E+01       350.00       350.00       506.16        -----       325.00
+   6         fuel  2.27497E+06  1.40000E+01       350.00       350.00       506.16        -----       325.00
+   7         fuel  2.76347E+06  1.40000E+01       350.00       350.00       506.16        -----       325.00
+   8       fuel-2  2.40436E+06  6.25000E+00       350.00       350.00       506.16       548.39       325.00
+   9       fuel-2  2.65167E+06  6.25000E+00       350.00       350.00       506.16       548.39       325.00
+
+
+
 PEAK CLAD MW TEMPERATURES
 --------------------------
 The table shows radial pin temperatures in the pin and at the

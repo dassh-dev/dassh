@@ -10,6 +10,7 @@
     param_update_tol = float(min=0.0, max=1.0, default=0.0)
     parallel = boolean(default=False)
     n_cpu = integer(min=1, default=None)
+    include_gravity_head_loss = boolean(default=False)
     [[Dump]]
         all = boolean(default=False)
         coolant = boolean(default=False)
@@ -19,6 +20,7 @@
         gap_fine = boolean(default=False)
         average = boolean(default=False)
         maximum = boolean(default=False)
+        pressure_drop = boolean(default=False)
         interval = float(min=0.0, default=None)
     [[Units]]
         temperature = string(default='kelvin')
@@ -105,6 +107,12 @@
                 magic_knob = float(default=1.0)
                 htc_params = float_list(default=None)
                 convection_factor = float(min=0.000001, max=1.0, default=1.0)
+        [[[SpacerGrid]]]
+            corr = option('REH', 'CDD', default=None)
+            corr_coeff = float_list(default=None)
+            loss_coeff = float(min=0, default=None)
+            axial_positions = float_list(min=1, default=None)
+            solidity = float(min=0.0, max=1.0, default=None)
         [[[FuelModel]]]
             fcgap_thickness = float(min=0.0, default=0.0)
             gap_thickness = float(min=0.0, default=0.0)

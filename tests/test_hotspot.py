@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-10-26
+date: 2023-02-28
 author: matz
 comment: Unit tests for hot spot analysis methods
 """
@@ -296,7 +296,7 @@ def test_rx_hotspot_analysis_and_table_gen(testdir):
     pin_data = [0.0, 3.0, 0.0, 787.0, 795.4, 805.0, 815.2, 815.2, 1000]
     keys = ['clad_od', 'clad_mw', 'clad_id', 'fuel_od', 'fuel_cl']
     for i in range(len(r.assemblies)):
-        r.assemblies[i]._peak = {'pin': {}}
+        r.assemblies[i]._peak = {'pin': {}, 'cool': (779.31, 3.25)}
         for j in range(len(keys)):
             # tmp = np.array(pin_data)
             # tmp[3:] *= np.random.uniform(low=0.995, high=1.005)
@@ -318,6 +318,10 @@ def test_rx_hotspot_analysis_and_table_gen(testdir):
     # Generate output tables - this is the code used in the
     # DASSH Reactor object.
     out = ''
+    # Coolant temperatures
+    coolant_table = dassh.table.CoolantTempTable()
+    out += coolant_table.generate(r, hotspot_results)
+    # Peak pin temperatures
     include = [('clad', 'mw'), ('fuel', 'cl')]
     if 'clad_od' in hotspot_results[0].keys():
         # Put clad OD at the beginning

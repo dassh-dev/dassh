@@ -409,6 +409,7 @@ def make_rodded_region_fixture(name, bundle_params, mat_params, fr):
                               bundle_params['corr_mixing'],
                               bundle_params['corr_nusselt'],
                               bundle_params['corr_shapefactor'],
+                              bundle_params['SpacerGrid'],
                               bundle_params['bypass_gap_flow_fraction'],
                               bundle_params['bypass_gap_loss_coeff'],
                               bundle_params['wire_direction'],
@@ -429,7 +430,8 @@ def assembly_default_params():
             'bypass_gap_flow_fraction': 0.05,
             'bypass_gap_loss_coeff': None,
             'wire_direction': 'counterclockwise',
-            'shape_factor': 1.0}
+            'shape_factor': 1.0,
+            'SpacerGrid': None}
 
 
 @pytest.fixture(scope='module')
@@ -773,7 +775,7 @@ def c_fuel_params(assembly_default_params):
 def c_fuel_rr(c_fuel_params):
     """DASSH RoddedRegion object for conceptual fuel asm"""
     flowrate = 25.0
-    rr = dassh.region_rodded.make_rr_asm(
+    rr = dassh.region_rodded.make(
         c_fuel_params[0], 'conceptual_fuel', c_fuel_params[1], flowrate)
     return activate_rodded_region(rr, 623.15)
 

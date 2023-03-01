@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-10-27
+date: 2023-02-28
 author: matz
 comment: Hot spot analysis via the semistatistical horizontal method
 """
@@ -238,8 +238,7 @@ def calculate_temps(T_in, dT, hcf, IN_sigma=3, OUT_sigma=2):
 
 def _get_peak_dt(r_obj, asm_name, value):
     """x"""
-    idx = {'coolant': 4,
-           'clad_od': 5,
+    idx = {'clad_od': 5,
            'clad_mw': 6,
            'clad_id': 7,
            'fuel_od': 8,
@@ -249,41 +248,13 @@ def _get_peak_dt(r_obj, asm_name, value):
         if a.name == asm_name:
             assert 'pin' in a._peak.keys()
             tmp = [r_obj.inlet_temp]
-            tmp += a._peak['pin'][value][2][3:idx[value]]
+            if value == 'coolant':
+                tmp.append(a._peak['cool'][0])
+            else:
+                tmp += a._peak['pin'][value][2][3:idx[value]]
             t.append(tmp)
     t = np.array(t)
     dt = t[:, 1:] - t[:, :-1]
-    return dt
-
-
-def _get_clad_mw_peak_dt(r_obj, asm_name):
-    """Collect peak clad MW dT values for each assembly"""
-    t = []
-    for a in r_obj.assemblies:
-        if a.name == asm_name:
-            assert 'pin' in a._peak.keys()
-            tmp = [r_obj.inlet_temp]
-            tmp += a._peak['pin']['clad_mw'][2][3:6]
-            t.append(tmp)
-    t = np.array(t)
-    dt = t[:, 1:] - t[:, :-1]
-    return dt
-
-
-def _get_fuel_peak_dt(r_obj, asm_name):
-    """Collect peak fuel CL dT values for each assembly"""
-    t = []
-    for a in r_obj.assemblies:
-        if a.name == asm_name:
-            assert 'pin' in a._peak.keys()
-            tmp = [r_obj.inlet_temp]
-            tmp += a._peak['pin']['fuel_cl'][2][3:]
-            t.append(tmp)
-    t = np.array(t)
-    dt = t[:, 1:] - t[:, :-1]
-    # # Clad outer-MW and MW-inner are separate - combine
-    # dt[:, 2] += dt[:, 3]
-    # dt = dt[:, (0, 1, 2, 4, 5)]
     return dt
 
 
