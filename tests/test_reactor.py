@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-03-23
+date: 2022-11-30
 author: matz
 Test the temperature sweep across the core
 """
@@ -48,7 +48,7 @@ def test_instantiation(small_reactor):
 
         # Confirm that the power in all assemblies is positive
         p = a.power.get_power(0.0)
-        print(p)
+        # print(p)
         p = list(p.values())
         assert all([all(x >= 0) for x in p if x is not None])
 
@@ -65,15 +65,17 @@ def test_instantiation(small_reactor):
 
 def test_instantiation_unfilled_asm(testdir):
     """Test DASSH handling of unfilled assembly positions"""
-    inp = dassh.DASSH_Input(os.path.join(testdir,
-                                         'test_inputs',
-                                         'input_31a.txt'))
-    r = dassh.Reactor(inp, path=os.path.join(testdir,
-                                             'test_results',
-                                             'test_31a'))
-    # print(r.core.asm_adj.shape)
-    # print(r.core.asm_adj)
-    # assert 0
+    inp = dassh.DASSH_Input(
+        os.path.join(
+            testdir,
+            'test_inputs',
+            'input_31a.txt'))
+    r = dassh.Reactor(
+        inp,
+        path=os.path.join(
+            testdir,
+            'test_results',
+            'test_31a'))
 
     # Confirm only 31 assemblies
     assert len(r.assemblies) == 31
@@ -115,12 +117,17 @@ def test_instantiation_unfilled_asm(testdir):
 
 def test_instantiation_silly_core(testdir):
     """Test an absurd reactor configuration"""
-    inp = dassh.DASSH_Input(os.path.join(testdir,
-                                         'test_inputs',
-                                         'input_16a_silly.txt'))
-    r = dassh.Reactor(inp, path=os.path.join(testdir,
-                                             'test_results',
-                                             'test_16a_silly'))
+    inp = dassh.DASSH_Input(
+        os.path.join(
+            testdir,
+            'test_inputs',
+            'input_16a_silly.txt'))
+    r = dassh.Reactor(
+        inp,
+        path=os.path.join(
+            testdir,
+            'test_results',
+            'test_16a_silly'))
     save_reactor_pytest(r)
     r.write_summary()
 
@@ -165,15 +172,18 @@ def test_instantiation_silly_core(testdir):
 
 def test_setup_requested_ax(testdir, caplog):
     """Test that Reactor object ends up with requested ax planes"""
-    inp = dassh.DASSH_Input(os.path.join(testdir,
-                                         'test_inputs',
-                                         'input_single_asm.txt'))
+    inp = dassh.DASSH_Input(
+        os.path.join(
+            testdir,
+            'test_inputs',
+            'input_single_asm.txt'))
     assert 'ignoring' in caplog.text
-    r = dassh.Reactor(inp,
-                      path=os.path.join(
-                          testdir,
-                          'test_results',
-                          'test_reactor_setup_requested_ax'))
+    r = dassh.Reactor(
+        inp,
+        path=os.path.join(
+            testdir,
+            'test_results',
+            'test_reactor_setup_requested_ax'))
     ans = [0.3999992, 0.750011]
     for zi in ans:
         delta = np.abs(r.z - zi)
@@ -198,9 +208,10 @@ def test_asm_ordering(testdir):
     ans[0] = 'control'
     ans[2] = 'control'
 
-    inputfile = os.path.join(testdir,
-                             'test_inputs',
-                             'input_assignment_check.txt')
+    inputfile = os.path.join(
+        testdir,
+        'test_inputs',
+        'input_assignment_check.txt')
     outpath = os.path.join(testdir, 'test_results', 'indexing')
     inp = dassh.DASSH_Input(inputfile)
     r = dassh.Reactor(inp, path=outpath)
@@ -346,6 +357,7 @@ def test_multiregion_ebal(testdir):
     )
     r = dassh.Reactor(inp, path=outpath, write_output=True)
     r.temperature_sweep()
+    r.postprocess()
     save_reactor_pytest(r)
     assert 'dassh.out' in os.listdir(outpath)
     # Check output file for energy balance
@@ -447,12 +459,17 @@ def test_2asm_ebal(testdir):
 
 def test_silly_core_sweep(testdir):
     """Test an absurd core layout to confirm sweep"""
-    inp = dassh.DASSH_Input(os.path.join(testdir,
-                                         'test_inputs',
-                                         'input_16a_silly.txt'))
-    r = dassh.Reactor(inp, path=os.path.join(testdir,
-                                             'test_results',
-                                             'test_16a_silly'))
+    inp = dassh.DASSH_Input(
+        os.path.join(
+            testdir,
+            'test_inputs',
+            'input_16a_silly.txt'))
+    r = dassh.Reactor(
+        inp,
+        path=os.path.join(
+            testdir,
+            'test_results',
+            'test_16a_silly'))
     r.write_summary()
     r.temperature_sweep()
     r.write_output_summary()
@@ -855,6 +872,7 @@ def test_write_assembly_duct_tables(testdir):
     inp.data['Assembly']['fuel']['use_low_fidelity_model'] = False
     r = dassh.Reactor(inp, path=outpath, write_output=True)
     r.temperature_sweep()
+    r.postprocess()
     assert os.path.exists(filepath)
 
     # Get this for later
@@ -909,6 +927,7 @@ def test_write_assembly_pin_tables(testdir):
     inp = dassh.DASSH_Input(inpath)
     r = dassh.Reactor(inp, path=outpath, write_output=True)
     r.temperature_sweep()
+    r.postprocess()
     assert os.path.exists(filepath)
 
     # Get this for later

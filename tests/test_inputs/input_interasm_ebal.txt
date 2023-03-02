@@ -1,6 +1,6 @@
 ########################################################################
 # author: Milos Atz
-# date: 2021-11-24
+# date: 2022-07-14
 # comment: DASSH input example (all assemblies except one are unrodded)
 ########################################################################
 # SETUP: Problem setup, user options, etc
@@ -88,8 +88,8 @@
 
     [[control]]
         num_rings      = 3
-        pin_pitch      = 1.5753
-        pin_diameter   = 1.20
+        pin_pitch      = 1.80
+        pin_diameter   = 1.60
         clad_thickness = 0.132
         wire_pitch     = 20.320
         wire_diameter  = 0.0274

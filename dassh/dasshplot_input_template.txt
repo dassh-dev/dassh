@@ -21,3 +21,4 @@
         pin_alpha = float(min=0.0, max=1.0, default=1.0)
         data_label = boolean(default=True)
         omit_nonvalue_rings = boolean(default=False)
+        use_default_filename = boolean(default=False)

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-03-16
+date: 2022-12-19
 author: matz
 Generate power distributions in assembly components based on neutron
 flux; object to assign to individual assemblies
@@ -740,9 +740,6 @@ class AssemblyPower(object):
     temperatures.
 
     """
-
-    # def __init__(self, power_profiles, avg_power_profile, z_finemesh,
-    #              k_bnds, scale=1.0):
     def __init__(self, power_profiles, avg_power_profile, z_finemesh,
                  rod_bundle_zbnds, scale=1.0):
         """Instantiate the AssemblyPower object"""
@@ -831,27 +828,8 @@ class AssemblyPower(object):
             return p_lin
 
         else:
-            # zm = self.transform_z(kf, z)
-            # z_exp = np.power(zm, np.arange(self.n_terms))
-            # if self.pin_power is not None:
-            #     p_lin['pins'] = np.dot(self.pin_power[kf], z_exp) * 100
-            # if self.coolant_power is not None:
-            #     p_lin['cool'] = np.dot(self.coolant_power[kf], z_exp) * 100
-            # if self.duct_power is not None:
-            #     p_lin['duct'] = np.dot(self.duct_power[kf], z_exp) * 100
             p_lin = self._calculate_pdist(kf, z)
 
-        # At extremely low power, can get some negative values
-        # (~ -1e-6 W/m); want to filter these out as zeros.
-        for k in p_lin.keys():
-            # try:
-            #     p_lin[k] = p_lin[k].clip(0.0)
-            # except AttributeError:
-            #     continue
-            try:
-                p_lin[k][p_lin[k] < 0.0] = 0.0
-            except TypeError:
-                continue
         return p_lin
 
     def get_power_sweep(self, step=None, z=None):
@@ -1530,82 +1508,33 @@ def _integrate(pp_pins, pp_duct, pp_cool, n_terms):
     return avg_power[:, 1] - avg_power[:, 0]
 
 
-########################################################################
+def _integrate_pin_power(asm_power):
+    """Integrate the pin power distributions
 
-    # def renormalize(self, z, dz):
-    #     """Need to normalize the power based on the discretization that
-    #     DASSH will make during the sweep in order to accurately deliver
-    #     the correct power
-    #
-    #     Parameters
-    #     ----------
-    #     z : numpy.ndarray
-    #         Absolute axial points (m)
-    #     dz : numpy.ndarray
-    #         Mesh step sizes (m)
-    #
-    #     Returns
-    #     -------
-    #     numpy.ndarray
-    #         Array of correction factors for each fine mesh interval
-    #
-    #     """
-    #     # Preprocess the axial mesh points
-    #     z = z[1:] * 100  # m --> cm
-    #     z = z - 0.5 * dz  # get the axial mesh midpoints
-    #     # Get the fine mesh intervals and the transformed z values for
-    #     # each of the axial mesh points where power is evaluated.
-    #     # kf = get_kfint2(self, z)
-    #     # zm = transform_z2(self, kf, z)
-    #     kf = self.get_kfint2(z)
-    #     zm = self.transform_z2(kf, z)
-    #     zm = np.expand_dims(zm, 1)
-    #
-    #     # Raise those transformed z values to the monomial exponent
-    #     z_exp = np.power(zm, np.arange(self.n_terms))
-    #     z_exp = np.expand_dims(z_exp, 1)
-    #
-    #     # Multiply the coefficients through and sum to get the total
-    #     # power in each axial step: do this for pins, duct, and coolant
-    #     mult_terms = self.pin_power[kf] * z_exp
-    #     sum_terms = np.sum(mult_terms, axis=(1, 2))
-    #     mult_terms = self.duct_power[kf] * z_exp
-    #     sum_terms += np.sum(mult_terms, axis=(1, 2))
-    #     mult_terms = self.coolant_power[kf] * z_exp
-    #     sum_terms += np.sum(mult_terms, axis=(1, 2))
-    #
-    #     # Dimension is equal to n_step x 1; equals total in each step
-    #     sum_terms = sum_terms * 100  # W/cm --> W/m
-    #
-    #     # Normalize each step linear power by step size
-    #     dz_fint = self.z_finemesh[1:] - self.z_finemesh[:-1]
-    #     dz_fint = dz_fint[kf]  # cm
-    #     sum_terms = sum_terms * dz / dz_fint  # W/m * m / cm = W/cm
-    #
-    #     # Determine the corrective factor in each kfint
-    #     x = np.zeros(len(self.z_finemesh) - 1)
-    #     for i in range(len(x)):
-    #         # self.avg_power has units of W/cm; so does sum_terms
-    #         x[i] = self.avg_power[i] / np.sum(sum_terms[kf == i])
-    #         # x[i] = self.avg_power[i] * 100 / np.average(sum_terms[kf == i])
-    #     return x
+    Parameters
+    ----------
+    asm_power : DASSH AssemblyPower object
 
+    Returns
+    -------
+    numpy.ndarray
+        Total power in each pin
+
+    """
+    z_bnds = np.array([-0.5, 0.5])
+    z_bnds = z_bnds.reshape(2, 1)
+    int_exponents = np.arange(1, asm_power.n_terms + 1)
+    z_int = np.power(z_bnds, int_exponents)
+    # Integrate in each region, evaluate at lower/upper bound
+    # shape is n_region x n_pin x 2 (upper/lower bound)
+    integrated = np.dot(asm_power.pin_power / int_exponents, z_int.T)
+    # Take the difference across the region
+    # shape is n_region x n_pin
+    diff_across_region = integrated[:, :, 1] - integrated[:, :, 0]
+    # multiply linear power by z-bounds and sum to get total power
+    # in each pin
+    dz_finemesh = asm_power.z_finemesh[1:] - asm_power.z_finemesh[:-1]
+    power_per_pin = np.dot(dz_finemesh, diff_across_region)
+    return power_per_pin
 
 ########################################################################
-# Old
-# def calculate_total_power(self):
-#     """Calculate the total power (W) produced by the assembly using
-#     the linear power (W/m) shape functions."""
-#
-#     dz = [self.z_finemesh[k] - self.z_finemesh[k - 1]
-#           for k in range(1, len(self.z_finemesh))]
-#     p_total = 0.0
-#     for k in range(len(dz)):
-#         zc = self.z_finemesh[k] + dz[k] / 2  # center of mesh cell
-#         if k < self.k_bnds[0] or k >= self.k_bnds[1]:
-#             p_total += dz[k] * self.get_refl_power(zc)
-#         else:
-#             p_total += dz[k] * (np.sum(self.get_pin_power(zc))
-#                                 + np.sum(self.get_duct_power(zc))
-#                                 + np.sum(self.get_coolant_power(zc)))
-#     return p_total

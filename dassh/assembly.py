@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-03-23
+date: 2022-12-20
 author: matz
 Methods to describe the components of hexagonal fuel typical of liquid
 metal fast reactors.
@@ -55,16 +55,22 @@ class Assembly(LoggedClass):
         Inlet temperature of the coolant entering the assembly (K)
     flow_rate : float
         User-specified bulk mass flow rate (kg/s) in the assembly
-    origin : tuple
-        X-Y coordinates of the assembly centroid
-    se2geo : bool
+    origin : tuple (optional)
+        X-Y coordinates of the assembly centroid (default=(0.0, 0.0))
+    se2geo : bool (optional)
         Indicate whether to use DASSH or SE2 bundle geometry definitions
-        (use only when comparing DASSH and SE2)
+        (use only when comparing DASSH and SE2; default=False)
+    param_update_tol : float (optional)
+        Threshold change in material properties that triggers correlation
+        recalculation (default=0.0; calculate at every step)
+    gravity : bool (optional)
+        Include gravity head loss in pressure drop (default=False)
+
     """
 
     def __init__(self, name, loc, asm_input, mat_dict, inlet_temp,
                  flow_rate, origin=(0.0, 0.0), se2geo=False,
-                 param_update_tol=0.0):
+                 param_update_tol=0.0, gravity=False):
         """Instantiate Assembly object."""
         # Instantiate Logger
         LoggedClass.__init__(self, 4, 'dassh.Assembly')
@@ -85,25 +91,26 @@ class Assembly(LoggedClass):
         # Create the rod bundle region - if totally unrodded, make an
         # unrodded region using the bundle parameters
         if asm_input.get('use_low_fidelity_model'):
-            self.region = [region_unrodded.make_ur_asm(
-                self.name, asm_input, mat_dict, flow_rate, se2geo)
+            self.region = [region_unrodded.make(
+                self.name, asm_input, mat_dict, flow_rate, se2geo, gravity)
             ]
         else:
             self.region = [
-                region_rodded.make_rr_asm(asm_input,
-                                          self.name,
-                                          mat_dict,
-                                          flow_rate,
-                                          se2geo,
-                                          param_update_tol)
+                region_rodded.make(asm_input,
+                                   self.name,
+                                   mat_dict,
+                                   flow_rate,
+                                   se2geo,
+                                   param_update_tol,
+                                   gravity)
             ]
 
         # Create other requested unrodded regions
         for reg in asm_input['AxialRegion']:
             if reg != 'rods':
                 self.region.append(
-                    region_unrodded.make_ur_axialregion(
-                        asm_input, reg, mat_dict, flow_rate))
+                    region_unrodded.make_axialregion(
+                        asm_input, reg, mat_dict, flow_rate, gravity))
 
         # Keep track of what regions are where - sort them
         sorted_region = []
@@ -161,8 +168,7 @@ class Assembly(LoggedClass):
         # a bit more stuff in order to seek out the right value
         if any(k in asm_input.keys() for k in ('FuelModel', 'PinModel')):
             self._peak['pin'] = {}
-            keys = ['clad_od', 'clad_mw', 'clad_id',
-                    'fuel_od', 'fuel_cl']
+            keys = ['clad_od', 'clad_mw', 'clad_id', 'fuel_od', 'fuel_cl']
             for i in range(len(keys)):
                 # Items in the list:
                 # (1) the peak temperature value
@@ -208,7 +214,6 @@ class Assembly(LoggedClass):
         # Update pin temp array identifiers
         if self.has_rodded and hasattr(self.rodded, 'pin_model'):
             new_regs[self._rodded_idx].pin_temps[:, 0] = clone.id
-            # new_regs[self._rodded_idx].pin_temps[:, 1] = clone.dif3d_id
 
         # Update peak temperature object
         clone._peak = copy.deepcopy(self._peak)
@@ -237,8 +242,8 @@ class Assembly(LoggedClass):
         self._write['coolant_byp'] = np.zeros((1, ncols['coolant_byp']))
         self._write['maximum'] = np.zeros((1, ncols['maximum']))
         self._write['average'] = np.zeros((1, ncols['average']))
-        # self._write['coolant_gap'] = np.zeros((1, 10))
         self._write['coolant_gap'] = np.zeros((1, ncols['coolant_gap']))
+        self._write['pressure_drop'] = np.zeros((1, ncols['pressure_drop']))
 
         # Fill in the assembly ID data
         for key in self._write.keys():
@@ -254,7 +259,8 @@ class Assembly(LoggedClass):
                'duct_mw': 4,
                'average': 3,
                'maximum': 3,
-               'pin': 3}
+               'pin': 3,
+               'pressure_drop': 3}
         self._fillcols = {}
         for key in self._write.keys():
             self._fillcols[key] = np.zeros(len(self.region), dtype=int)
@@ -493,28 +499,28 @@ class Assembly(LoggedClass):
         if z is not None:
             self._z = z
             z_mp = z - 0.5 * dz
-            power_j = self.power.get_power_sweep(z=z_mp)
+            pow_j = self.power.get_power_sweep(z=z_mp)
         else:
             self._z += dz
-            power_j = self.power.get_power_sweep()
+            pow_j = self.power.get_power_sweep()
 
         # Calculate power at this axial level (j), calculate
         # temperatures and pin powers (if applicable)
-        for k in power_j.keys():
-            if power_j[k] is not None:
-                self._power_delivered[k] += dz * np.sum(power_j[k])
+        for k in pow_j.keys():
+            if pow_j[k] is not None:
+                self._power_delivered[k] += dz * np.sum(pow_j[k])
 
-        # Calculate coolant and duct temperatures
-        self.active_region.calculate(dz, power_j, t_gap,
-                                     h_gap, adiabatic, ebal)
+        # Calculate coolant and duct temperatures, pressure drop
+        self.active_region.calculate(dz, pow_j, t_gap, h_gap, adiabatic, ebal)
+        self.active_region.calculate_pressure_drop(self.z, dz)
 
         # Update peak coolant and duct temperatures
-        self._update_peak_coolant_duct()
+        self._update_peak_coolant_temps()
+        self._update_peak_duct_temps()
 
         # If applicable, calculate pin temperatures
         if hasattr(self.active_region, 'pin_model'):
-            self.active_region.calculate_pin_temperatures(
-                dz, power_j['pins'])
+            self.active_region.calculate_pin_temperatures(dz, pow_j['pins'])
             self._update_peak_pin_temps()
 
     def check_region_update(self, z):
@@ -603,27 +609,34 @@ class Assembly(LoggedClass):
         else:
             return bisect.bisect_left(self.region_bnd, z) - 1
 
-    def _update_peak_coolant_duct(self):
+    def _update_peak_coolant_temps(self):
         """Update peak coolant and duct temperatures, if necessary"""
         max_cool = np.max(self.temp_coolant)
         if max_cool > self._peak['cool'][0]:
             self._peak['cool'] = (max_cool, self.z)
+
+    def _update_peak_duct_temps(self):
+        """Update peak coolant and duct temperatures, if necessary"""
         max_duct = np.max(self.temp_duct_mw, axis=1)
-        for i in range(max_duct.shape[0]):
-            idx_to_write = len(self._peak['duct']) - max_duct.shape[0] + i
-            if max_duct[i] > self._peak['duct'][idx_to_write][0]:
-                self._peak['duct'][idx_to_write] = (max_duct[i], self.z)
+        if max_duct.shape[0] == 1:
+            idx_to_write = -1
+            if max_duct[0] > self._peak['duct'][idx_to_write][0]:
+                self._peak['duct'][idx_to_write] = (max_duct[0], self.z)
+        else:
+            for i in range(max_duct.shape[0]):
+                idx_to_write = len(self._peak['duct']) - max_duct.shape[0] + i
+                if max_duct[i] > self._peak['duct'][idx_to_write][0]:
+                    self._peak['duct'][idx_to_write] = (max_duct[i], self.z)
 
     def _update_peak_pin_temps(self):
         """Check whether peak pin temperatures need to be updated
         and do so if necessary"""
+        t_pin = self.pin_temp_array
         for k in self._peak['pin'].keys():
-            idx = np.argmax(self.pin_temp_array[:, self._peak['pin'][k][1]])
-            if (self.pin_temp_array[idx, self._peak['pin'][k][1]]
-                    > self._peak['pin'][k][0]):
-                self._peak['pin'][k][0] = \
-                    self.pin_temp_array[idx, self._peak['pin'][k][1]]
-                self._peak['pin'][k][2] = list(self.pin_temp_array[idx])
+            idx = np.argmax(t_pin[:, self._peak['pin'][k][1]])
+            if (t_pin[idx, self._peak['pin'][k][1]] > self._peak['pin'][k][0]):
+                self._peak['pin'][k][0] = t_pin[idx, self._peak['pin'][k][1]]
+                self._peak['pin'][k][2] = list(t_pin[idx])
 
     ####################################################################
     # Write data to CSV
@@ -715,6 +728,21 @@ class Assembly(LoggedClass):
             np.savetxt(dfiles['coolant_gap'],
                        write_step['coolant_gap'],
                        delimiter=',')
+
+        # Pressure drop update
+        if 'pressure_drop' in dfiles.keys():
+            write_step['pressure_drop'][0, 3] = self.pressure_drop
+            _dp = {'friction': 0.0, 'spacer_grid': 0.0, 'gravity': 0.0}
+            for reg in self.region:
+                for k in reg._pressure_drop.keys():
+                    _dp[k] += reg._pressure_drop[k]
+            write_step['pressure_drop'][0, 4] = _dp['friction']
+            write_step['pressure_drop'][0, 5] = _dp['spacer_grid']
+            write_step['pressure_drop'][0, 6] = _dp['gravity']
+            np.savetxt(dfiles['pressure_drop'],
+                       write_step['pressure_drop'],
+                       delimiter=',')
+
 
 ########################################################################
 

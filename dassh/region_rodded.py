@@ -14,10 +14,10 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-03-22
+date: 2022-12-20
 author: matz
-Methods to describe the components of hexagonal fuel typical of liquid
-metal fast reactors.
+Methods to describe the components of hexagonal fuel typical of
+liquid metal fast reactors
 """
 ########################################################################
 import re
@@ -39,70 +39,97 @@ _sqrt3 = np.sqrt(3)
 _inv_sqrt3 = 1 / _sqrt3
 _sqrt3over3 = np.sqrt(3) / 3
 # Surface of pins in contact with each type of subchannel
-# q_p2sc = {1: 0.166666666666667, 2: 0.25, 3: 0.166666666666667}
 q_p2sc = np.array([0.166666666666667, 0.25, 0.166666666666667])
 
-module_logger = logging.getLogger('dassh.assembly')
+module_logger = logging.getLogger('dassh.region_rodded')
 
 
-def make_rr_asm(asm_input, name, mat_dict, flow_rate, se2geo=False,
-                param_update_tol=0.0):
-    """Create RoddedRegion object within DASSH Assembly"""
+def make(inp, name, mat, fr, se2geo=False, update_tol=0.0, gravity=False):
+    """Create RoddedRegion object within DASSH Assembly
+
+    Parameters
+    ----------
+    inp : dict
+        DASSH "Assembly" input dictionary
+        dassh_input.data['Assembly'][...]
+    name : str
+        Name of this assembly (e.g. 'fuel')
+    mat : dict
+        Dictionary of DASSH material objects (coolant, duct)
+    fr : float
+        Coolant mass flow rate [kg/s]
+    se2geo (optional) : boolean
+        Indicate whether to use the (incorrect) geometry setup from
+        SE2ANL. Note: this was created for developer comparison with
+        SE2ANL and is not intended for general use (default=False)
+    update_tol (optional) : float
+        Tolerance in the change in coolant temp-dependent material
+        properties that triggers correlated parameter recalculation
+        (default=0.0; recalculate at every step)
+    gravity : bool (optional)
+        Include gravity head loss in pressure drop (default=False)
+
+    Returns
+    -------
+    DASSH RoddedRegion object
+
+    """
     rr = RoddedRegion(name,
-                      asm_input['num_rings'],
-                      asm_input['pin_pitch'],
-                      asm_input['pin_diameter'],
-                      asm_input['wire_pitch'],
-                      asm_input['wire_diameter'],
-                      asm_input['clad_thickness'],
-                      asm_input['duct_ftf'],
-                      flow_rate,
-                      mat_dict['coolant'],
-                      mat_dict['duct'],
-                      asm_input['htc_params_duct'],
-                      asm_input['corr_friction'],
-                      asm_input['corr_flowsplit'],
-                      asm_input['corr_mixing'],
-                      asm_input['corr_nusselt'],
-                      asm_input['bypass_gap_flow_fraction'],
-                      asm_input['bypass_gap_loss_coeff'],
-                      asm_input['wire_direction'],
-                      asm_input['shape_factor'],
+                      inp['num_rings'],
+                      inp['pin_pitch'],
+                      inp['pin_diameter'],
+                      inp['wire_pitch'],
+                      inp['wire_diameter'],
+                      inp['clad_thickness'],
+                      inp['duct_ftf'],
+                      fr,
+                      mat['coolant'],
+                      mat['duct'],
+                      inp['htc_params_duct'],
+                      inp['corr_friction'],
+                      inp['corr_flowsplit'],
+                      inp['corr_mixing'],
+                      inp['corr_nusselt'],
+                      inp['corr_shapefactor'],
+                      inp['SpacerGrid'],
+                      inp['bypass_gap_flow_fraction'],
+                      inp['bypass_gap_loss_coeff'],
+                      inp['wire_direction'],
+                      inp['shape_factor'],
                       se2geo,
-                      param_update_tol)
+                      update_tol,
+                      gravity)
 
     # Add z lower/upper boundaries
-    rr.z = [asm_input['AxialRegion']['rods']['z_lo'],
-            asm_input['AxialRegion']['rods']['z_hi']]
+    rr.z = [inp['AxialRegion']['rods']['z_lo'],
+            inp['AxialRegion']['rods']['z_hi']]
 
     # Add fuel pin model, if requested
-    if 'FuelModel' in asm_input.keys():
-        if asm_input['FuelModel']['htc_params_clad'] is None:
-            p2d = (asm_input['pin_pitch']
-                   / asm_input['pin_diameter'])
-            asm_input['FuelModel']['htc_params_clad'] = \
+    if 'FuelModel' in inp.keys():
+        if inp['FuelModel']['htc_params_clad'] is None:
+            p2d = inp['pin_pitch'] / inp['pin_diameter']
+            inp['FuelModel']['htc_params_clad'] = \
                 [p2d**3.8 * 0.01**0.86 / 3.0,
                  0.86, 0.86, 4.0 + 0.16 * p2d**5]
-        rr.pin_model = PinModel(asm_input['pin_diameter'],
-                                asm_input['clad_thickness'],
-                                mat_dict['clad'],
-                                fuel_params=asm_input['FuelModel'],
-                                gap_mat=mat_dict['gap'])
-    elif 'PinModel' in asm_input.keys():
-        if asm_input['PinModel']['htc_params_clad'] is None:
-            p2d = (asm_input['pin_pitch']
-                   / asm_input['pin_diameter'])
-            asm_input['PinModel']['htc_params_clad'] = \
+        rr.pin_model = PinModel(inp['pin_diameter'],
+                                inp['clad_thickness'],
+                                mat['clad'],
+                                fuel_params=inp['FuelModel'],
+                                gap_mat=mat['gap'])
+    elif 'PinModel' in inp.keys():
+        if inp['PinModel']['htc_params_clad'] is None:
+            p2d = inp['pin_pitch'] / inp['pin_diameter']
+            inp['PinModel']['htc_params_clad'] = \
                 [p2d**3.8 * 0.01**0.86 / 3.0,
                  0.86, 0.86, 4.0 + 0.16 * p2d**5]
-        asm_input['PinModel']['pin_material'] = \
-            [x.clone() for x in mat_dict['pin']]
-        print(asm_input['PinModel'])
-        rr.pin_model = PinModel(asm_input['pin_diameter'],
-                                asm_input['clad_thickness'],
-                                mat_dict['clad'],
-                                pin_params=asm_input['PinModel'],
-                                gap_mat=mat_dict['gap'])
+        inp['PinModel']['pin_material'] = \
+            [x.clone() for x in mat['pin']]
+        print(inp['PinModel'])
+        rr.pin_model = PinModel(inp['pin_diameter'],
+                                inp['clad_thickness'],
+                                mat['clad'],
+                                pin_params=inp['PinModel'],
+                                gap_mat=mat['gap'])
     else:
         pass
 
@@ -156,6 +183,10 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         Correlation for subchannel mixing params; "CTD" is recommended
     corr_nusselt : str (optional) {'DB'}
         Correlation for Nu; "DB" (Dittus-Boelter) is recommended
+    corr_shapefactor : str (optional) {'CT'}
+        Correlation for conduction shape factor
+    spacer_grid : dict (optional) {None}
+        Input parameters for spacer grid pressure losses
     byp_ff : float (optional)
         Unused
     byp_k : float (optional)
@@ -167,6 +198,12 @@ class RoddedRegion(LoggedClass, DASSH_Region):
     se2 : bool
         Indicate whether to use DASSH or SE2 bundle geometry definitions
         (use only when comparing DASSH and SE2)
+    param_update_tol (optional) : float
+        Fractional change in material properties required to trigger
+        correlation recalculation
+    gravity (optional) : boolean
+        Indicates whether gravity head losses should be included in
+        pressure drop calculation (default: False)
 
     Attributes
     ----------
@@ -184,7 +221,7 @@ class RoddedRegion(LoggedClass, DASSH_Region):
     Notes
     -----
     RoddedRegion instances have many descriptive parameters. Useful
-    references for the equations used here can be found in:
+    references for the geometry equations used here can be found in:
     [1] N. Todreas and M. Kazimi. "Nuclear Systems II - Elements of
         Thermal Hydraulic Design". Taylor & Francis (1990).
         (specifically Appendix J)
@@ -192,14 +229,15 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         correlations for bare and wire-wrapped hexagonal rod bundles
         - bundle friction factors, subchannel friction factors and
         mixing parameters". Nuclear Engineering and Design 92 (1986).
-    """
 
+    """
     def __init__(self, name, n_ring, pin_pitch, pin_diam, wire_pitch,
                  wire_diam, clad_thickness, duct_ftf, flow_rate,
                  coolant_mat, duct_mat, htc_params_duct, corr_friction,
-                 corr_flowsplit, corr_mixing, corr_nusselt, byp_ff=None,
+                 corr_flowsplit, corr_mixing, corr_nusselt,
+                 corr_shapefactor, spacer_grid=None, byp_ff=None,
                  byp_k=None, wwdir='clockwise', sf=1.0, se2=False,
-                 param_update_tol=0.0):
+                 param_update_tol=0.0, gravity=False):
         """Instantiate RoddedRegion object"""
         # Instantiate Logger
         LoggedClass.__init__(self, 4, 'dassh.RoddedRegion')
@@ -333,10 +371,16 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         self._setup_region()
         self._setup_flowrate(flow_rate)
         self._setup_ht_constants()
-        # if self.n_ring == 1:
-        #     self._cleanup_1pin()
         self._setup_correlations(corr_friction, corr_flowsplit,
-                                 corr_mixing, corr_nusselt)
+                                 corr_mixing, corr_nusselt,
+                                 corr_shapefactor)
+        if spacer_grid is not None and any(spacer_grid.values()):
+            self._setup_spacer_grid(spacer_grid)
+        self._gravity = gravity
+        self._pressure_drop = {
+            'friction': 0.0,
+            'spacer_grid': 0.0,
+            'gravity': 0.0}
 
     ####################################################################
     # SETUP METHODS
@@ -402,68 +446,6 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         x_bnds[-1] = 6 / np.sqrt(3) * self.duct_ftf[-1][1]
         return x_bnds
 
-    def calculate_xbnds2(self):
-        edge_sc_per_side = int(self.subchannel.n_sc['duct']['edge'] / 6)
-        x_bnds = np.zeros(edge_sc_per_side + 1)
-        typ = self.subchannel.type[
-            -self.subchannel.n_sc['duct']['total']:].copy()
-        typ -= 3
-        typ = np.roll(typ, 1)
-        dx = np.array([self.pin_pitch, 2 * self.d['wcorner'][-1, 1]])
-        tmp = np.cumsum(dx[typ]) - 0.5 * dx[1]
-        x_bnds = tmp[:x_bnds.shape[0]]
-        P_hex = self.duct_ftf[-1][1] / np.sqrt(3)
-        x_bnds /= P_hex
-        x_bnds[0] = 0
-        x_bnds[-1] = 1
-        return x_bnds
-
-    def _cleanup_1pin(self):
-        """Clean up the parameters generated in a 1-pin assembly
-
-        Notes
-        -----
-        The methods in __init__ produce some incorrect parameter values
-        when applied to a 1-pin assembly. They shouldn't be accessible
-        because the "subchannel" attribute counts no interior/edge-type
-        subchannels, but eliminating those values that are incorrect
-        will help avoid headaches and confusion later
-
-        The following attributes are unaffected:
-        - bundle_params
-        - duct_params
-
-        The affected values are generally negative/inf/nan and are set
-        to zero below.
-
-        """
-        # Single values
-        self.d['pin-pin'] = 0.0
-        self.bypass_params['de'][:, 0] = 0.0
-
-        # Dicts with lists: first two values should be zero
-        for attr in ['bare_params', 'params']:
-            tmp_attr = getattr(self, attr)
-            for key in tmp_attr:
-                if key != 'theta':
-                    # Last value is always corner, keep it
-                    for idx in range(len(tmp_attr[key]) - 1):
-                        tmp_attr[key][idx] = 0.0
-            setattr(self, attr, tmp_attr)
-
-        # Lists of lists - pick indices that point corners -> corners
-        ij_pairs = [(2, 2), (2, 4), (4, 2), (4, 6), (6, 4)]
-        for attr in ['L', 'ht_consts']:
-            tmp_attr = getattr(self, attr)
-            for i in range(len(tmp_attr)):
-                for j in range(len(tmp_attr[i])):
-                    if not (i, j) in ij_pairs:
-                        if type(tmp_attr[i][j]) == list:
-                            tmp_attr[i][j] = [0.0] * len(tmp_attr[i][j])
-                        else:
-                            tmp_attr[i][j] = 0.0
-            setattr(self, attr, tmp_attr)
-
     def _setup_flowrate(self, flowrate):
         """Setup method to define the Assembly flowrate"""
         # What I will know is the total flow rate given to the
@@ -479,7 +461,7 @@ class RoddedRegion(LoggedClass, DASSH_Region):
             # First: try using loss coefficient to calculate pressure
             # drop; use to determine required flow rate
             if self._byp_k is not None:
-                raise NotImplementedError('Loss coefficient input'
+                raise NotImplementedError('Loss coefficient input '
                                           'not yet supported')
                 # Need to determine bypass flow rates based on pressure
                 # drop, which needs to be equal across all flow paths
@@ -508,44 +490,6 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                       * self.int_flow_rate
                       / self.bundle_params['area'])
 
-    def _iterate_bypass_flowrate(self, z0, z1, k_seal=[0]):
-        # diff in dP between bundle and bypass
-        self._k_byp_seal = np.array(k_seal)
-        dz = z1 - z0
-        diff = np.ones(self.n_bypass)
-        # while np.sum(np.abs(diff)) > 1e-6:
-        print('{:4s} {:>8s} {:>8s} {:>8s} {:>8s} {:>8s}'
-              .format('iter', 'Int FR', 'Byp FR', 'Int dP', 'Byp dP', 'Diff'))
-        A_duct = self.duct_ftf[-1][0]**2 * _sqrt3 / 2
-        v_tot = self.total_flow_rate / self.coolant.density / A_duct
-        seal_loss = self._k_byp_seal * self.coolant.density * v_tot**2 / 2
-        for i in range(20):
-            self._update_coolant_int_params(self.avg_coolant_int_temp)
-            self._update_coolant_byp_params(self.avg_coolant_byp_temp)
-            # to_print.append(self.coolant_int_params['ff'])
-            # to_print.append(self.coolant_byp_params['ff'])
-
-            dP_int = self.calculate_pressure_drop(dz)
-            dP_byp = self.calculate_byp_pressure_drop(dz)
-            dP_byp += seal_loss
-            diff = dP_byp - dP_int
-            print('{:<4d} {:>8.3f} {:>8.3f} {:>8.1f} {:>8.1f} {:>8.3f}'
-                  .format(i, self.int_flow_rate, self.byp_flow_rate[0],
-                          dP_int, dP_byp[0], diff[0]))
-
-            dP_target = np.average([dP_int, np.average(dP_byp)])
-
-            v_byp_target = np.sqrt(2 * self.bypass_params['total de']
-                                   * (dP_target - seal_loss)
-                                   / self.coolant_byp_params['ff']
-                                   / dz
-                                   / self.coolant.density)
-            self.byp_flow_rate = (v_byp_target
-                                  * self.bypass_params['total area']
-                                  * self.coolant.density)
-            self.int_flow_rate = (self.total_flow_rate
-                                  - np.sum(self.byp_flow_rate))
-
     def _setup_ht_constants(self):
         """Setup heat transfer constants in numpy arrays"""
         const = calculate_ht_constants(self)
@@ -567,7 +511,7 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         self.ht['cond'] = _setup_conduction_constants(self, const)
         self.ht['conv'] = _setup_convection_constants(self, const)
 
-    def _setup_correlations(self, ff, fs, mix, nu, raise_warnings=True):
+    def _setup_correlations(self, ff, fs, mix, nu, sf, warn=True):
         """Import correlations and load any constants
 
         Parameters
@@ -580,13 +524,15 @@ class RoddedRegion(LoggedClass, DASSH_Region):
             Mixing parameters correlation name
         nu : str
             Nusselt number correlation name
-        raise_warnings : boolean
+        sf : str
+            Shape factor correlation name
+        warn : boolean
             If True, raise warnings accumulated when importing
             correlations (default = True)
 
         """
         self.corr, self.corr_names, self.corr_constants = \
-            import_corr(ff, fs, mix, nu, self, raise_warnings)
+            import_corr(ff, fs, mix, nu, sf, self, warn)
         self.coolant_int_params = \
             {'Re': 0.0,  # bundle-average Reynolds number
              'Re_sc': np.zeros(3),  # subchannel Reynolds numbers
@@ -603,17 +549,138 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                  'vel': np.zeros(self.n_bypass),  # bypass-avg velocities
                  'ff': np.zeros(self.n_bypass),  # byp sc fric. fracs.
                  'htc': np.zeros((self.n_bypass, 2))}  # byp sc htc
+        # Update shape factor if correlation was specified
+        if self.corr['sf'] is not None:
+            self._sf = self.corr['sf'](self)
 
-    def _determine_byp_flow_rate(self):
-        """Calculate the bypass flow rate by estimating pressure drop
-        in the bundle and determining what flow rate is required to
-        achieve equal pressure drop in the bypass"""
-        # Start by assuming "area-based split"
-        self._update_coolant_int_params(self.avg_coolant_int_temp)
+        # Check P/D and W/D ratios for acceptability if CTD/UCTD.
+        # Already checked for turbulent value in read_input. Here,
+        # need to check if flow is laminar.
+        if 'ctd' in self.corr_names.values() or \
+                'uctd' in self.corr_names.values():
+            p2d = self.pin_pitch / self.pin_diameter
+            Re_bt = 1e4 * 10**(0.7 * p2d - 1)
+            m2a = self.int_flow_rate / self.bundle_params['area']
+            Re = m2a * self.bundle_params['de'] / self.coolant.viscosity
+            if Re < Re_bt:
+                p2d_limit = 2.38024  # Laminar limit
+                if p2d > p2d_limit:
+                    msg = f'ERROR: P/D for pin bundle "{self.name}" '
+                    + 'is too large for CTD/UCTD correlations. '
+                    + 'Consider modifying pin bundle design.'
+                    self.log('error', msg)
+                w2d_limit = 2.10889   # Laminar limit
+                if self.edge_pitch / self.pin_diameter > w2d_limit:
+                    msg = 'ERROR: Gap between pin bundle and duct '
+                    + f'for pin bundle "{self.name}" is too large '
+                    + 'to be acceptable by CTD/UCTD correlations. '
+                    + 'Consider modifying pin bundle dimensions.'
+                    self.log('error')
 
-        return
+    def _setup_spacer_grid(self, input_grid):
+        """Set up an attribute for spacer grid pressure losses
 
-    def clone(self, new_flowrate=None):
+        Parameters
+        ----------
+        input_grid : dict
+            Inputs for spacer grid pressure loss params from DASSH input
+
+        """
+        axial_positions = input_grid['axial_positions']
+        n_positions = len(axial_positions)
+        self.corr_constants['grid'] = {}
+        self.corr_constants['grid']['z'] = axial_positions
+        self.corr_constants['grid']['n'] = n_positions
+        if input_grid['loss_coeff']:
+            self.corr_constants['grid']['loss_coeff'] = \
+                input_grid['loss_coeff']
+            return
+        else:
+            # Pull the spacer grid solidity: the ratio of the grid
+            # cross-sectional area to the unrestricted flow area
+            if not input_grid['solidity']:
+                # Empirical relationship for solidity based on "practical
+                # grid design" from CDD correlation paper (Eq. 70)
+                self.corr_constants['grid']['solidity'] = \
+                    0.6957 - 162.8 * self.d['pin-pin']
+            else:
+                self.corr_constants['grid']['solidity'] = \
+                    input_grid['solidity']
+            # Store the correlation function that will be used to
+            # evaluate the loss coefficient
+            if input_grid['corr'] == 'REH':
+                import dassh.correlations.grid_rehme as gridcorr
+                self.corr['grid'] = gridcorr.calc_loss_coeff
+                self.corr_constants['grid']['corr_coeff'] = None
+            else:
+                assert input_grid['corr'] == 'CDD'
+                import dassh.correlations.grid_cdd as gridcorr
+                self.corr['grid'] = gridcorr.calc_loss_coeff
+                if not input_grid['corr_coeff']:
+                    self.corr_constants['grid']['corr_coeff'] = \
+                        gridcorr._DEFAULT_COEFFS
+                else:
+                    self.corr_constants['grid']['corr_coeff'] = \
+                        input_grid['corr_coeff']
+
+    def _init_static_correlated_params(self, t):
+        """Calculate bundle friction factor and flowsplit parameters
+        at the bundle-average temperature
+
+        Parameters
+        ----------
+        t : float
+            Bundle axial average temperature ((T_in + T_out) / 2)
+
+        Returns
+        -------
+        None
+
+        Notes
+        -----
+        This method is called within the '_setup_asm' method inside
+        the Reactor object instantiation. It is very similar to
+        '_update_coolant_int_params', found below.
+
+        """
+        # Update coolant material properties
+        t_inlet = self.coolant.temperature
+        self._update_coolant(t)
+        # Coolant axial velocity, bundle Reynolds number
+        mfr_over_area = self.int_flow_rate / self.bundle_params['area']
+        self.coolant_int_params['vel'] = mfr_over_area / self.coolant.density
+        self.coolant_int_params['Re'] = \
+            mfr_over_area * self.bundle_params['de'] / self.coolant.viscosity
+
+        # Spacer grid, if present
+        if 'grid' in self.corr_constants.keys():
+            try:
+                self.coolant_int_params['grid_loss_coeff'] = \
+                    self.corr_constants['grid']['loss_coeff']
+            except (KeyError, TypeError):
+                self.coolant_int_params['grid_loss_coeff'] = \
+                    self.corr['grid'](
+                        self.coolant_int_params['Re'],
+                        self.corr_constants['grid']['solidity'],
+                        self.corr_constants['grid']['corr_coeff'])
+
+        # Flow split parameters
+        if self.corr['fs'] is not None:
+            if 'grid' in self.corr.keys():
+                self.coolant_int_params['fs'] = \
+                    self.corr['fs'](self, grid=True)
+            else:
+                self.coolant_int_params['fs'] = \
+                    self.corr['fs'](self)
+
+        # Friction factor
+        if self.corr['ff'] is not None:
+            self.coolant_int_params['ff'] = self.corr['ff'](self)
+
+        # Reset inlet temperature
+        self.coolant.temperature = t_inlet
+
+    def clone(self, new_flowrate=None, new_avg_temp=None):
         """Clone the rodded region into another assembly object;
         shallow copy some attributes, deep copy others"""
         # Create a shallow copy (stuff like the pin and subchannel
@@ -624,6 +691,7 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         # for each clone; use temperature at "current" clone point
         clone.temp = copy.deepcopy(self.temp)
         clone.ebal = copy.deepcopy(self.ebal)
+        clone._pressure_drop = copy.deepcopy(self._pressure_drop)
         if hasattr(self, '_coolant_tracker'):
             clone._coolant_tracker = copy.deepcopy(self._coolant_tracker)
         if hasattr(self, 'pin_temps'):
@@ -633,12 +701,22 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                                   self.corr_names['fs'],
                                   self.corr_names['mix'],
                                   self.corr_names['nu'],
-                                  raise_warnings=False)
+                                  self.corr_names['sf'],
+                                  warn=False)
+        for attr in ('corr_constants', 'corr'):
+            if 'grid' in getattr(self, attr).keys():
+                getattr(clone, attr)['grid'] = \
+                    copy.deepcopy(getattr(self, attr)['grid'])
+
         if new_flowrate is not None:
             # Define new flow rate attribute in clone
             clone._setup_flowrate(new_flowrate)
             # New flow rate attributes used in new heat transfer consts
             clone._setup_ht_constants()
+        # If new average temperature, update the static correlated
+        # parameters
+        if new_avg_temp is not None:
+            clone._init_static_correlated_params(new_avg_temp)
 
         return clone
 
@@ -663,15 +741,10 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         # Need flow split to get mass flow rate to get avg temp, but
         # need avg temp to get flow split!
         if np.all(self.coolant_int_params['fs'] == 0):
-            # return (np.sum(self.temp['coolant_int']
-            #                * self.area['coolant_int'])
-            #         / self.total_area['coolant_int'])
             return (np.dot(self.temp['coolant_int'],
                            self.area['coolant_int'])
                     / self.total_area['coolant_int'])
         else:
-            # return (np.sum(self.sc_mfr * self.temp['coolant_int'])
-            #         / self.int_flow_rate)
             return (np.dot(self.sc_mfr, self.temp['coolant_int'])
                     / self.int_flow_rate)
 
@@ -701,7 +774,15 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                 tot *= self.byp_flow_rate / self.total_area['coolant_byp']
                 tot += self.avg_coolant_int_temp * self.int_flow_rate
                 avg = tot / self.total_flow_rate
-            return avg[0]  # np array --> float
+            # np array --> float
+            return avg[0]
+
+    @property
+    def pressure_drop(self):
+        """Combination of friction, spacer grid, and gravity losses"""
+        return self._pressure_drop['friction'] \
+            + self._pressure_drop['spacer_grid'] \
+            + self._pressure_drop['gravity']
 
     ####################################################################
     # UPDATE PROPERTIES
@@ -751,9 +832,12 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         self.coolant_int_params['Re'] = \
             mfr_over_area * self.bundle_params['de'] / self.coolant.viscosity
 
+        # MODIFICATION 2022-11-29: No longer updating flow split
+        # during the sweep. It is now determined at the start of
+        # the calculation, basedon bundle-average coolant temperature.
         # Flow split parameters
-        if self.corr['fs'] is not None:
-            self.coolant_int_params['fs'] = self.corr['fs'](self)
+        # if self.corr['fs'] is not None:
+        #     self.coolant_int_params['fs'] = self.corr['fs'](self)
 
         # Subchannel Reynolds numbers
         tmp = (self.coolant.density * self.coolant_int_params['vel']
@@ -771,19 +855,14 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                              self.htc_params['duct'])
         self.coolant_int_params['htc'] = \
             self.coolant.thermal_conductivity * nu / self.params['de']
-        # self.coolant_int_params['htc'][0] = \
-        #     self.coolant.thermal_conductivity * nu[0] / self.params['de'][0]
-        # self.coolant_int_params['htc'][1] = \
-        #     self.coolant.thermal_conductivity * nu[1] / self.params['de'][1]
-        # self.coolant_int_params['htc'][2] = \
-        #     self.coolant.thermal_conductivity * nu[2] / self.params['de'][2]
 
-        # 2021-03-09 MILOS MODIFICATION
-        # self.coolant_int_params['htc'] = np.array([1e5, 1e5, 1e5])
-
+        # MODIFICATION 2022-11-29: No longer updating friction factor
+        # during the sweep. It is now static and  determined at the
+        # start of the calculation, based on bundle-average coolant
+        # temperature.
         # Friction factor
-        if self.corr['ff'] is not None:
-            self.coolant_int_params['ff'] = self.corr['ff'](self)
+        # if self.corr['ff'] is not None:
+        #     self.coolant_int_params['ff'] = self.corr['ff'](self)
 
         # Mixing params - these come dimensionless, need to adjust
         if self.corr['mix'] is not None:
@@ -795,10 +874,6 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                    * self.coolant_int_params['fs'][1])
             self.coolant_int_params['swirl'][1] = tmp
             self.coolant_int_params['swirl'][2] = tmp
-
-        # 2021-03-09 MILOS MODIFICATION
-        # self.coolant_int_params['eddy'] = 0.0
-        # self.coolant_int_params['swirl'] = np.zeros(3)
 
     def _update_coolant_byp_params(self, temp_list):
         """Update correlated bundle bypass coolant parameters based
@@ -876,12 +951,41 @@ class RoddedRegion(LoggedClass, DASSH_Region):
     # PRESSURE DROP
     ####################################################################
 
-    def calculate_pressure_drop(self, dz):
-        """Calculate pressure drop across bundle with current step"""
-        return (self.coolant_int_params['ff'] * dz
-                * self.coolant.density
-                * self.coolant_int_params['vel']**2
-                / 2 / self.bundle_params['de'])
+    def calculate_pressure_drop(self, z, dz):
+        """Update bundle pressure drop with current step"""
+        self._pressure_drop['friction'] += \
+            self.calculate_friction_pressure_drop(dz)
+        if 'grid' in self.corr_constants.keys():
+            self._pressure_drop['spacer_grid'] += \
+                self.calculate_spacergrid_pressure_drop(z, dz)
+        if self._gravity:
+            self._pressure_drop['gravity'] += \
+                self.calculate_gravity_pressure_drop(dz)
+
+    def calculate_friction_pressure_drop(self, dz):
+        """Calculate friction pressure drop across current step"""
+        # Losses due to friction from flow through the bundle
+        return self.coolant_int_params['ff'] * dz \
+            * self.coolant.density \
+            * self.coolant_int_params['vel']**2 \
+            / self.bundle_params['de'] / 2.0
+
+    def calculate_spacergrid_pressure_drop(self, z, dz):
+        """Calculate pressure losses due to spacer grid if crossed
+        in current step"""
+        # Note: z = z_old + dz
+        if any(_z > z - dz and _z < z for _z in
+                self.corr_constants['grid']['z']):
+            return self.coolant_int_params['grid_loss_coeff'] \
+                * self.coolant.density \
+                * self.coolant_int_params['vel']**2 \
+                / 2.0
+        else:
+            return 0.0
+
+    def calculate_gravity_pressure_drop(self, dz):
+        """Calculate head losses associated with vertical upward flow"""
+        return self.coolant.density * 9.80665 * dz
 
     def calculate_byp_pressure_drop(self, dz):
         """Calculate bypass pressure drop with current step"""
@@ -903,7 +1007,7 @@ class RoddedRegion(LoggedClass, DASSH_Region):
     # TEMPERATURE CALCULATION
     ####################################################################
 
-    def calculate(self, dz, q, t_gap, htc_gap, adiabatic=False, ebal=False):
+    def calculate(self, dz, q, t_gap, h_gap, adiab=False, ebal=False):
         """Calculate new coolant and duct temperatures and pressure
         drop across axial step
 
@@ -916,7 +1020,7 @@ class RoddedRegion(LoggedClass, DASSH_Region):
         t_gap : numpy.ndarray
             Interassembly gap temperatures around the assembly at the
             j+1 axial level (array length = n_sc['duct']['total'])
-        htc_gap : float
+        h_gap : float
             Heat transfer coefficient for convection between the gap
             coolant and outer duct wall based on core-average inter-
             assembly gap coolant temperature
@@ -931,7 +1035,7 @@ class RoddedRegion(LoggedClass, DASSH_Region):
 
         """
         # Duct temperatures: calculate with new coolant properties
-        self._calc_duct_temp(q['duct'], t_gap, htc_gap, adiabatic)
+        self._calc_duct_temp(q['duct'], t_gap, h_gap, adiab)
 
         # Interior coolant temperatures: calculate using coolant
         # properties from previous axial step
@@ -951,12 +1055,6 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                     self._calc_coolant_byp_temp_stagnant(dz, ebal)
             # Update bypass coolant properties for the duct wall calc
             self._update_coolant_byp_params(self.avg_coolant_byp_temp)
-
-        # # Duct temperatures: calculate with new coolant properties
-        # self._calc_duct_temp(q['duct'], t_gap, htc_gap, adiabatic)
-
-        # Update pressure drop (now that correlations are updated)
-        self._pressure_drop += self.calculate_pressure_drop(dz)
 
     def activate(self, previous_reg, t_gap, h_gap, adiabatic):
         """Activate region by averaging coolant temperatures from
@@ -1073,9 +1171,7 @@ class RoddedRegion(LoggedClass, DASSH_Region):
                         * self.coolant.density
                         * self.coolant_int_params['swirl']
                         / self.coolant_int_params['fs'])
-        swirl_consts = swirl_consts[self.subchannel.type[
-            self.subchannel.n_sc['coolant']['interior']:
-            self.subchannel.n_sc['coolant']['total']]]
+        swirl_consts = swirl_consts[self.ht['conv']['type']]
         # Swirl flow from adjacent subchannel; =0 for interior sc
         # The adjacent subchannel is the one the swirl flow is
         # coming from i.e. it's in the opposite direction of the
@@ -1944,7 +2040,7 @@ def _setup_convection_constants(rr, ht_consts):
 ########################################################################
 
 
-def import_corr(friction, flowsplit, mixing, nusselt, bundle, warn):
+def import_corr(friction, flowsplit, mix, nu, sf, bundle, warn):
     """Import correlations to be used in a DASSH Assembly object
 
     Parameters
@@ -1955,12 +2051,15 @@ def import_corr(friction, flowsplit, mixing, nusselt, bundle, warn):
     flowsplit : str {'NOV', 'CTD', 'UCTD'}
         Name of the correlation used to determine the flow split
         parameter between coolant subchannels.
-    mixing : str {'MIT', 'CTD'}
+    mix : str {'MIT', 'CTD'}
         Name of the correlation used to determine the mixing
         parameters for coolant between subchannels
-    nusselt : str {'DB'}
+    nu : str {'DB'}
         Name of the correlation used to determine the Nusselt number,
         from which the heat transfer coefficients are determined
+    sf : str {'CT'}
+        Name of the correlation used to determine the conduction shape
+        factor; enhances conduction between subchannels
     bundle : DASSH RoddedRegion object
     warn : bool
         Raise applicability warnings or no
@@ -1976,7 +2075,6 @@ def import_corr(friction, flowsplit, mixing, nusselt, bundle, warn):
     """
     # Dictionary stores the calculation methods imported from
     # each correlation module
-
     corr = {}
     corr_names = {}
     corr_const = {}
@@ -2000,29 +2098,38 @@ def import_corr(friction, flowsplit, mixing, nusselt, bundle, warn):
         corr_names['fs'] = None
 
     # Mixing parameters
-    if mixing is not None:
-        mixing = '-'.join(re.split('-| ', mixing.lower()))
+    if mix is not None:
+        mix = '-'.join(re.split('-| ', mix.lower()))
         corr_names['mix'], corr['mix'], corr_const['mix'] = \
-            _import_mixing_correlation(mixing, bundle)
+            _import_mixing_correlation(mix, bundle)
     else:
         corr['mix'] = None
         corr_names['mix'] = None
 
+    # Conduction shape factor
+    if sf is not None:
+        sf = '-'.join(re.split('-| ', sf.lower()))
+        corr_names['sf'], corr['sf'], corr_const['sf'] = \
+            _import_shapefactor_correlation(sf, bundle)
+    else:
+        corr['sf'] = None
+        corr_names['sf'] = None
+
     # Nusselt number (for heat transfer coefficient)
-    nusselt = '-'.join(re.split('-| ', nusselt.lower()))
-    if nusselt in ['db', 'dittus-boelter']:
-        import dassh.correlations.nusselt_db as nu
+    nu = '-'.join(re.split('-| ', nu.lower()))
+    if nu in ['db', 'dittus-boelter']:
+        import dassh.correlations.nusselt_db as nusselt_db
         corr_names['nu'] = 'dittus-boelter'
-        corr['nu'] = nu.calculate_sc_Nu
+        corr['nu'] = nusselt_db.calculate_sc_Nu
         corr_const['nu'] = None
         # Add clad-to-coolant htc for bundle : use "bundle Nu" because
         # we do heat transfer to pins based on bundle-average Re
         # rather than subchannel Re
         corr_names['pin_nu'] = 'dittus-boelter'
-        corr['pin_nu'] = nu.calculate_bundle_Nu
+        corr['pin_nu'] = nusselt_db.calculate_bundle_Nu
     else:
         msg = 'Unknown correlation specified for Nusselt number: '
-        module_logger.error(msg + nusselt)
+        module_logger.error(msg + nu)
         sys.exit(1)
 
     return corr, corr_names, corr_const
@@ -2188,6 +2295,11 @@ def _import_mixing_correlation(name, bundle):
         name = 'upgraded-cheng-todreas'
         nickname = 'uctd'
 
+    elif name in ['kc', 'kim-chung', 'kc-bare', 'kim-chung-bare']:
+        import dassh.correlations.mixing_kc as mix
+        name = 'kim-chung-bare'
+        nickname = 'kc-bare'
+
     else:
         module_logger.error(f'Assembly {bundle.name}: unknown '
                             f'correlation specified for mixing '
@@ -2195,6 +2307,38 @@ def _import_mixing_correlation(name, bundle):
         sys.exit(1)
     constants = mix.calc_constants(bundle)
     return nickname, mix.calculate_mixing_params, constants
+
+
+def _import_shapefactor_correlation(name, bundle):
+    """Import mixing parameter correlations for use in DASSH Assembly
+
+    Parameters
+    ----------
+    name : str {'CT'}
+        Name of the correlation used to determine the mixing
+        parameters for coolant between subchannels
+    bundle : DASSH RoddedRegion object
+
+    Returns
+    -------
+    tuple
+        Correlation name, method, and dict of geometric constants
+
+    Notes
+    -----
+    No applicability warning - not sure there are any.
+
+    """
+    if name.lower() in ['ct', 'cheng-todreas']:
+        import dassh.correlations.shapefactor_ct as sf
+        name = 'cheng-todreas'
+        nickname = 'ct'
+    else:
+        module_logger.error(f'Assembly {bundle.name}: unknown '
+                            f'correlation specified for conduction '
+                            f'shape factor: {name}')
+        sys.exit(1)
+    return nickname, sf.calculate_shape_factor, None
 
 
 ########################################################################

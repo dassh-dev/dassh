@@ -1,0 +1,79 @@
+########################################################################
+# author: Milos Atz
+# date: 2022-12-19
+# comment: DASSH input example (seven assembly core, all rodded)
+########################################################################
+# SETUP: Problem setup, user options, etc
+
+[Setup]
+    [[Units]]
+        temperature    = Celsius
+        length         = cm
+        mass_flow_rate = kg/s
+
+
+########################################################################
+# POWER DISTRIBUTIONS
+
+[Power]
+    total_power = 1e7
+    [[ARC]]
+        power_model   = pin_only
+        fuel_material = metal
+        fuel_alloy    = zr
+        pmatrx = ../../test_data/seven_asm_vac/PMATRX
+        geodst = ../../test_data/seven_asm_vac/GEODST
+        ndxsrf = ../../test_data/seven_asm_vac/NDXSRF
+        znatdn = ../../test_data/seven_asm_vac/ZNATDN
+        labels = ../../test_data/seven_asm_vac/LABELS
+        nhflux = ../../test_data/seven_asm_vac/NHFLUX
+        ghflux = ../../test_data/seven_asm_vac/GHFLUX
+
+
+########################################################################
+# CORE DETAILS: Describe characteristics of the reactor core
+
+[Core]
+    length               = 375.0
+    assembly_pitch       = 12.0
+
+
+########################################################################
+# ASSEMBLY DETAILS: Describe a group of assemblies
+# NAME identifies a group of assemblies (e.g. "INNER_DRIVER")
+# Can be repeated for as many assemblies as required by the user.
+
+[Assembly]
+    [[fuel]]
+        num_rings      = 10
+        pin_pitch      = 0.6725
+        pin_diameter   = 0.5590
+        clad_thickness = 0.0500
+        wire_pitch     = 20.000
+        wire_diameter  = 0.100
+        duct_ftf       = 11.25, 11.75
+        duct_material  = HT9
+    [[control]]
+        num_rings      = 4
+        pin_pitch      = 1.630
+        pin_diameter   = 1.500
+        clad_thickness = 0.13266
+        wire_pitch     = 20.000
+        wire_diameter  = 0.120
+        duct_ftf       = 10.25, 10.75, 11.25, 11.75
+        duct_material  = HT9
+
+
+########################################################################
+# ASSIGN assemblies to positions in the core; assign fixed
+# flow rates or temperature limits to one or multiple assemblies.
+# Indicate which assemblies must be grouped together in an orificing
+# calculation.
+
+[Assignment]
+    [[ByPosition]]
+        control   = 1, 1, 1
+        fuel      = 2, 1, 6
+
+
+########################################################################

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-03-16
+date: 2022-04-20
 author: matz
 Test the DASSH Assembly object
 """
@@ -39,24 +39,24 @@ def test_instantiate_unrodded_assembly(c_shield_asm):
     assert len(c_shield_asm.region) == 1
 
     # Volume fraction of coolant
-    a_pins = 61 * np.pi * 0.013462**2 / 4
-    a_hex = np.sqrt(3) * 0.11154**2 / 2
-    ans = (a_hex - a_pins) / a_hex
-    assert pytest.approx(
-        c_shield_asm.active_region.vf['coolant'], ans)
+    a_pins = 61 * np.pi * (0.013462)**2 / 4
+    a_wire = 61 * np.pi * (0.000226)**2 / 4
+    a_hex = np.sqrt(3) * 0.111**2 / 2
+    ans = (a_hex - a_pins - a_wire) / a_hex
+    assert c_shield_asm.active_region.vf['coolant'] == pytest.approx(ans)
 
     # Coolant area
-    assert pytest.approx(
-        c_shield_asm.active_region.total_area['coolant_int'],
-        a_hex - a_pins)
+    assert c_shield_asm.active_region.total_area['coolant_int'] == \
+        pytest.approx(a_hex - a_pins - a_wire)
 
     # Check the velocity
     density = 852.407
     mfr = 0.0088
-    ans = mfr / density / (a_hex - a_pins)
+    ans = mfr / density / (a_hex - a_pins - a_wire)
     c_shield_asm.active_region._update_coolant_params(698.15)
-    assert pytest.approx(
-        c_shield_asm.active_region.coolant_params['vel'], ans)
+    diff = c_shield_asm.active_region.coolant_params['vel'] - ans
+    # Difference is numerical from area calc in RR equivalent
+    assert abs(diff) <= 2e-7
 
 
 def test_dz_unrodded_asm(c_shield_asm):

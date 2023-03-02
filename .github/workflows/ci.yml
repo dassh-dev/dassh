@@ -14,28 +14,27 @@ on:
   workflow_dispatch:
 
 jobs:
-  main:
-    runs-on: ubuntu-latest
 
+  test_python_older:
+    runs-on: ubuntu-20.04
     strategy:
       matrix:
-        python-version: [3.8, 3.7, 3.6]
-   
+        python-version: ["3.6"]
+
     name: "Python ${{ matrix.python-version }}"
     steps:
       - uses: actions/checkout@v2
-      
       - name: Set up Python ${{ matrix.python-version }}
         uses: actions/setup-python@v2
         with:
           python-version: ${{ matrix.python-version }}
-          
+
       - name: Package setup
         shell: bash
         run: |
           pip install -r requirements.txt
           pip install .
-      
+
       - name: Package tests
         shell: bash
         run: pytest --cov=./dassh ./tests/ --cov-report xml:coverage_${{ matrix.python-version }}.xml
@@ -48,13 +47,38 @@ jobs:
           name: codecov-umbrella
           verbose: true
           files: coverage_${{ matrix.python-version }}.xml
-          # dry_run: true
+          token: ${{ secrets.CODECOV_TOKEN }}
 
-  #finish:
-  #  needs: main
-  #  runs-on: ubuntu-latest
-  #  steps:
-  #    - name: CodeCov
-  #      shell: bash
-  #      run: codecov
-    
+  test_python_newer:
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        python-version: ["3.7", "3.8"]
+
+    name: "Python ${{ matrix.python-version }}"
+    steps:
+      - uses: actions/checkout@v2
+      - name: Set up Python ${{ matrix.python-version }}
+        uses: actions/setup-python@v2
+        with:
+          python-version: ${{ matrix.python-version }}
+
+      - name: Package setup
+        shell: bash
+        run: |
+          pip install -r requirements.txt
+          pip install .
+
+      - name: Package tests
+        shell: bash
+        run: pytest --cov=./dassh ./tests/ --cov-report xml:coverage_${{ matrix.python-version }}.xml
+
+      - name: Upload coverage to Codecov
+        uses: codecov/codecov-action@v2
+        with:
+          fail_ci_if_error: true
+          flags: unittests
+          name: codecov-umbrella
+          verbose: true
+          files: coverage_${{ matrix.python-version }}.xml
+          token: ${{ secrets.CODECOV_TOKEN }}

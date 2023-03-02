@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-02-16
+date: 2023-01-05
 author: matz
 Pytest fixtures and related test utilities for the whole shebang
 """
@@ -28,16 +28,22 @@ import numpy as np
 import pytest
 import dassh
 from dassh.__main__ import main as dassh_main
+from dassh.__main__ import integrate_pin_power as dassh_power
 
 
-def execute_dassh(args):
-    """Execute DASSH (separate process if Python < 3.6)"""
+def execute_dassh(args, entrypoint="dassh"):
+    """Execute DASSH (separate process if Python = 3.6)"""
     if sys.version_info < (3, 7):
-        return_code = subprocess.call(["dassh"] + list(args))
+        return_code = subprocess.call([entrypoint] + list(args))
         if return_code == 1:
             sys.exit(1)
     else:
-        dassh_main(args)
+        if entrypoint == "dassh":
+            dassh_main(args)
+        elif entrypoint == "dassh_power":
+            dassh_power(args)
+        else:
+            sys.exit(1)
 
 
 @pytest.fixture(scope='session')
@@ -402,6 +408,8 @@ def make_rodded_region_fixture(name, bundle_params, mat_params, fr):
                               bundle_params['corr_flowsplit'],
                               bundle_params['corr_mixing'],
                               bundle_params['corr_nusselt'],
+                              bundle_params['corr_shapefactor'],
+                              bundle_params['SpacerGrid'],
                               bundle_params['bypass_gap_flow_fraction'],
                               bundle_params['bypass_gap_loss_coeff'],
                               bundle_params['wire_direction'],
@@ -417,11 +425,13 @@ def assembly_default_params():
             'corr_friction': 'CTD',
             'corr_flowsplit': 'CTD',
             'corr_nusselt': 'DB',
+            'corr_shapefactor': None,
             'htc_params_duct': None,
             'bypass_gap_flow_fraction': 0.05,
             'bypass_gap_loss_coeff': None,
             'wire_direction': 'counterclockwise',
-            'shape_factor': 1.0}
+            'shape_factor': 1.0,
+            'SpacerGrid': None}
 
 
 @pytest.fixture(scope='module')
@@ -601,6 +611,7 @@ def simple_asm(assembly_default_params, small_core_power):
         avg_power,
         small_core_power.z_finemesh,
         rod_zbnds)
+    asm.rodded._init_static_correlated_params(623.15)
     return asm
 
 
@@ -697,7 +708,7 @@ def simple_ctrl_asm(simple_ctrl_params, simple_ctrl_rr, small_core_power):
         avg_power,
         small_core_power.z_finemesh,
         rod_zbnds)
-    print(asm.rodded.byp_flow_rate)
+    asm.rodded._init_static_correlated_params(623.15)
     return asm
 
 
@@ -764,7 +775,7 @@ def c_fuel_params(assembly_default_params):
 def c_fuel_rr(c_fuel_params):
     """DASSH RoddedRegion object for conceptual fuel asm"""
     flowrate = 25.0
-    rr = dassh.region_rodded.make_rr_asm(
+    rr = dassh.region_rodded.make(
         c_fuel_params[0], 'conceptual_fuel', c_fuel_params[1], flowrate)
     return activate_rodded_region(rr, 623.15)
 
@@ -796,7 +807,7 @@ def c_lrefl_simple(c_fuel_params, c_fuel_rr):
     z_lo = 0.0
     z_hi = 1.25
     vf_coolant = 0.25
-    return dassh.SingleNodeHomogeneous(
+    ur = dassh.SingleNodeHomogeneous(
         'test_simple_reg',
         z_lo, z_hi,
         c_fuel_rr.duct_ftf[-1],
@@ -805,6 +816,8 @@ def c_lrefl_simple(c_fuel_params, c_fuel_rr):
         c_fuel_params[1]['coolant'],
         c_fuel_params[1]['duct'],
         c_fuel_params[0]['htc_params_duct'])
+    ur._init_static_correlated_params(623.15)
+    return ur
 
 
 @pytest.fixture
@@ -820,6 +833,7 @@ def shield_ur_mnh():
     mnh = dassh.MultiNodeHomogeneous('test_mnh_reg', z_low, z_high, dftf,
                                      vfc, fr, coolant_mat, duct_mat,
                                      htc_params=None)
+    mnh._init_static_correlated_params(623.15)
     return activate_rodded_region(mnh, 623.15)
 
 
@@ -935,6 +949,8 @@ def c_shield_asm(assembly_default_params, small_core_power):
                                        small_core_power.z_finemesh,
                                        kbnds, scale=0.0031)
     asm.power = apower
+    for reg in asm.region:
+        reg._init_static_correlated_params(698.15)
     return asm
 
 
@@ -1132,6 +1148,23 @@ def pin(c_fuel_rr):
     p2d = c_fuel_rr.pin_pitch / c_fuel_rr.pin_diameter
     htcp = [p2d**3.8 * 0.01**0.86 / 3.0, 0.86, 0.86, 4.0 + 0.16 * p2d**5]
     fuel_params = {'r_frac': [0.0, 0.33333333, 0.66666667],
+                   'zr_frac': [0.1, 0.1, 0.1],
+                   'pu_frac': [0.2, 0.2, 0.2],
+                   'porosity': [0.25, 0.25, 0.25],
+                   'gap_thickness': 0.0,
+                   'htc_params_clad': htcp}
+    return dassh.PinModel(0.00628142,
+                          0.00050292,
+                          dassh.Material('ht9_se2anl'),
+                          fuel_params)
+
+
+@pytest.fixture
+def pin_annular(c_fuel_rr):
+    """Conceptual fuel pin object"""
+    p2d = c_fuel_rr.pin_pitch / c_fuel_rr.pin_diameter
+    htcp = [p2d**3.8 * 0.01**0.86 / 3.0, 0.86, 0.86, 4.0 + 0.16 * p2d**5]
+    fuel_params = {'r_frac': [0.25, 0.5, 0.75],
                    'zr_frac': [0.1, 0.1, 0.1],
                    'pu_frac': [0.2, 0.2, 0.2],
                    'porosity': [0.25, 0.25, 0.25],

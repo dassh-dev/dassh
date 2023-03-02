@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-08-12
+date: 2023-02-28
 author: matz
 Upgraded Cheng-Todreas correlation for flow split (2018)
 """
@@ -26,7 +26,7 @@ from . import flowsplit_ctd as fs_ctd
 applicability = fr_uctd.applicability
 
 
-def calculate_flow_split(asm_obj, regime=None, beta=1.0):
+def calculate_flow_split(asm_obj, grid=False, regime=None):
     """Calculate the flow split into the different types of
     subchannels based on the Upgraded Cheng-Todreas model
 
@@ -34,17 +34,12 @@ def calculate_flow_split(asm_obj, regime=None, beta=1.0):
     ----------
     asm_obj : DASSH Assembly object
         Contains the geometric description of the assembly
+    grid (optional) : boolean
+        Indicate whether the region also uses spacer grids
+        (default = False)
     regime : str or NoneType
         Indicate flow regime for which to calculate flow split
         {'turbulent', 'laminar', None}; default = None
-    beta : float
-        Beta is a factor used to combine the laminar and turbulent
-        flowpslit terms in the transition region. It comes from
-        Cheng's 1984 thesis in which he recommends a value of
-        0.05. There, Figure 4.19 shows the edge flowsplit assuming
-        beta=0.05. However, in reality beta=0.05 gives weird results
-        and beta=1.0 matches what's shown in the figure. Therefore,
-        it'set to 1.0 here by default.
 
     Returns
     -------
@@ -64,21 +59,26 @@ def calculate_flow_split(asm_obj, regime=None, beta=1.0):
         Re_bnds = asm_obj.corr_constants['fs']['Re_bnds']
     except (KeyError, AttributeError):
         Re_bnds = fr_uctd.calculate_Re_bounds(asm_obj)
-
     try:
         Cf = asm_obj.corr_constants['fs']['Cf_sc']
     except (KeyError, AttributeError):
         Cf = fr_uctd.calculate_subchannel_friction_factor_const(asm_obj)
 
-    if regime is not None:
-        return fs_ctd._calculate_flow_split(asm_obj, Cf, regime)
-    elif asm_obj.coolant_int_params['Re'] <= Re_bnds[0]:
-        return fs_ctd._calculate_flow_split(asm_obj, Cf, 'laminar')
-    elif asm_obj.coolant_int_params['Re'] >= Re_bnds[1]:
-        return fs_ctd._calculate_flow_split(asm_obj, Cf, 'turbulent')
+    # If spacer grids are used, an iterative method is required to
+    # determine the flow split regardless of the flow regime.
+    if grid:
+        return fs_ctd._calc_bundle_plus_grid_flow_split(
+            asm_obj, Cf, _lambda=7)
+
+    # If no spacer grids are used, return the bundle-only flow split.
     else:
-        return fs_ctd._calculate_flow_split(asm_obj, Cf, 'transition',
-                                            Re_bnds, beta)
+        Re_bundle = asm_obj.coolant_int_params['Re']
+        if regime == 'laminar' or Re_bundle <= Re_bnds[0]:
+            return asm_obj.corr_constants['fs']['fs']['laminar']
+        elif regime == 'turbulent' or Re_bundle >= Re_bnds[1]:
+            return asm_obj.corr_constants['fs']['fs']['turbulent']
+        else:
+            return fs_ctd._calc_transition_flowsplit(asm_obj, _lambda=7)
 
 
 def calc_constants(asm_obj):

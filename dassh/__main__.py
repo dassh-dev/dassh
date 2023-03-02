@@ -14,17 +14,18 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-01-20
+date: 2022-12-19
 author: matz
-Main DASSH calculation procedure
+Main DASSH calculation procedures
 """
 ########################################################################
 import os
 import sys
-import dassh
+import numpy as np
 import argparse
 import cProfile
 import logging
+import dassh
 _log_info = 20  # logging levels must be int
 
 
@@ -216,6 +217,7 @@ def _run_dassh(dassh_inp, args, timestep, wdir, link=None):
     # Perform the sweep
     dassh_logger.log(_log_info, 'Performing temperature sweep...')
     reactor.temperature_sweep(verbose=args['verbose'])
+    reactor.postprocess()
 
     # Post-processing: write output, save reactor if desired
     dassh_logger.log(_log_info, 'Temperature sweep complete')
@@ -276,6 +278,67 @@ def plot():
     dassh_logger.log(_log_info, 'Generating figures')
     dassh.plot.plot_all(inp, r)
     dassh_logger.log(_log_info, 'DASSH_PLOT execution complete')
+
+
+def integrate_pin_power(args=None):
+    """Set up DASSH Reactor object, integrate pin power, and write to CSV"""
+    # Get input file from command line arguments
+    parser = argparse.ArgumentParser(description='Process DASSH cmd')
+    parser.add_argument('inputfile',
+                        metavar='inputfile',
+                        help='The input file to run with DASSH')
+    parser.add_argument('--save_reactor',
+                        action='store_true',
+                        help='Save DASSH Reactor object after sweep')
+    args = parser.parse_args(args)
+
+    # Initiate logger
+    print(dassh._ascii._ascii_title)
+    in_path = os.path.split(args.inputfile)[0]
+    dassh_logger = dassh.logged_class.init_root_logger(in_path, 'dassh_power')
+
+    # Pre-processing
+    # Read input file and set up DASSH input object
+    dassh_logger.log(_log_info, f'Reading input: {args.inputfile}')
+    dassh_input = dassh.DASSHPower_Input(args.inputfile)
+
+    # Initialize the Reactor object
+    reactor = dassh.Reactor(dassh_input, write_output=False)
+
+    # Generate pin power distributions
+    dassh_logger.log(_log_info, 'Generating pin power distributions...')
+    asm_ids = []
+    n_pins = []
+    integrated_pin_powers = []
+    for a in reactor.assemblies:
+        if a.has_rodded:
+            asm_ids.append(a.id)
+            n_pins.append(a.rodded.n_pin)
+            integrated_pin_powers.append(
+                dassh.power._integrate_pin_power(a.power))
+
+    # Save reactor if desired
+    dassh_logger.log(_log_info, 'Saving data')
+    if args.save_reactor:
+        if sys.version_info < (3, 7):
+            handlers = dassh_logger.handlers[:]
+            for handler in handlers:
+                handler.close()
+                dassh_logger.removeHandler(handler)
+        reactor.save()
+        if sys.version_info < (3, 7):
+            dassh_logger = dassh.logged_class.init_root_logger(
+                os.path.split(dassh_logger._root_logfile_path)[0],
+                'dassh', 'a+')
+
+    # Write distributions to CSV
+    arr_to_write = np.zeros((max(n_pins) + 1, len(asm_ids)))
+    arr_to_write[0] = asm_ids
+    for col in range(arr_to_write.shape[1]):
+        arr_to_write[1:(n_pins[col] + 1), col] = integrated_pin_powers[col]
+    outpath = os.path.join(dassh_input.path, 'total_pin_power.csv')
+    np.savetxt(outpath, arr_to_write, delimiter=',')
+    dassh_logger.log(_log_info, 'DASSH_POWER execution complete')
 
 
 if __name__ == '__main__':

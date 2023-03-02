@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-03-23
+date: 2022-05-17
 author: matz
 Methods to plot DASSH objects (such as hexagonal fuel assemblies and
 the pins and subchannels that comprise them).
@@ -86,11 +86,11 @@ def plot_all(dassh_inp, dassh_reactor):
     None
 
     """
-    for plt_req in dassh_inp.data['Plot'].keys():
-        module_logger.log(20, f'....Plotting {plt_req}')
-        fxn = f'make_{dassh_inp.data["Plot"][plt_req]["type"]}'
+    for plt_name in dassh_inp.data['Plot'].keys():
+        module_logger.log(20, f'....Plotting {plt_name}')
+        fxn = f'make_{dassh_inp.data["Plot"][plt_name]["type"]}'
         getattr(sys.modules[__name__], fxn)(
-            dassh_reactor, dassh_inp.data['Plot'][plt_req])
+            dassh_reactor, dassh_inp.data['Plot'][plt_name], plt_name)
 
 
 ########################################################################
@@ -98,7 +98,7 @@ def plot_all(dassh_inp, dassh_reactor):
 ########################################################################
 
 
-def make_SubchannelPlot(dassh_reactor, plot_data):
+def make_SubchannelPlot(dassh_reactor, plot_data, plot_name):
     """Generate the assembly subchannel figures"""
     f = os.path.join(dassh_reactor.path, 'temp_coolant_int.csv')
     try:
@@ -127,15 +127,18 @@ def make_SubchannelPlot(dassh_reactor, plot_data):
                       pins=_data['pins'],
                       pin_alpha=_data['pin_alpha'])
             z_str = np.around(_data['bwd_len_conv'](zi), 2)
-            fname = '_'.join(['SubchannelPlot',
-                              'asm' + str(asm_id + 1),
-                              f'z={z_str}'])
-            fname += '.png'
-            fname = os.path.join(dassh_reactor.path, fname)
-            _save_and_close(fname, _data['dpi'])
+            if plot_data['use_default_filename']:
+                plot_filename = 'SubchannelPlot'
+            else:
+                plot_filename = plot_name
+            plot_filename += '_asm=' + str(asm_id + 1)
+            plot_filename += '_z=' + str(z_str)
+            plot_filename += '.png'
+            plot_filename = os.path.join(dassh_reactor.path, plot_filename)
+            _save_and_close(plot_filename, _data['dpi'])
 
 
-def make_PinPlot(dassh_reactor, plot_data):
+def make_PinPlot(dassh_reactor, plot_data, plot_name):
     """Generate the assembly pin-by-pin figures"""
     f = os.path.join(dassh_reactor.path, 'temp_pin.csv')
     try:
@@ -172,14 +175,19 @@ def make_PinPlot(dassh_reactor, plot_data):
                         cmap=_data['cmap'],
                         cbar_label=_data['cbar_label'])
                 z_str = np.around(_data['bwd_len_conv'](zi), 2)
-                fname = '_'.join(['PinPlot', 'asm' + str(asm_id + 1),
-                                  value, f'z={z_str}'])
-                fname += '.png'
-                fname = os.path.join(dassh_reactor.path, fname)
-                _save_and_close(fname, _data['dpi'])
+                if plot_data['use_default_filename']:
+                    plot_filename = 'PinPlot'
+                else:
+                    plot_filename = plot_name
+                plot_filename += '_asm=' + str(asm_id + 1)
+                plot_filename += '_' + value
+                plot_filename += '_z=' + str(z_str)
+                plot_filename += '.png'
+                plot_filename = os.path.join(dassh_reactor.path, plot_filename)
+                _save_and_close(plot_filename, _data['dpi'])
 
 
-def make_CoreSubchannelPlot(dassh_reactor, plot_data):
+def make_CoreSubchannelPlot(dassh_reactor, plot_data, plot_name):
     """Generate the core-wide subchannel figures"""
     f = os.path.join(dassh_reactor.path, 'temp_coolant_int.csv')
     try:
@@ -199,13 +207,17 @@ def make_CoreSubchannelPlot(dassh_reactor, plot_data):
                   rings=plot_data['rings'],
                   ignore_ur=plot_data['ignore_simple'])
         z_str = np.around(_data['bwd_len_conv'](zi), 2)
-        fname = '_'.join(['CoreSubchannelPlot', f'z={z_str}'])
-        fname += '.png'
-        fname = os.path.join(dassh_reactor.path, fname)
-        _save_and_close(fname, _data['dpi'])
+        if plot_data['use_default_filename']:
+            plot_filename = 'CoreSubchannelPlot'
+        else:
+            plot_filename = plot_name
+        plot_filename += '_z=' + str(z_str)
+        plot_filename += '.png'
+        plot_filename = os.path.join(dassh_reactor.path, plot_filename)
+        _save_and_close(plot_filename, _data['dpi'])
 
 
-def make_CorePinPlot(dassh_reactor, plot_data):
+def make_CorePinPlot(dassh_reactor, plot_data, plot_name):
     """Make core pin-by-pin figures"""
     f = os.path.join(dassh_reactor.path, 'temp_pin.csv')
     try:
@@ -225,23 +237,30 @@ def make_CorePinPlot(dassh_reactor, plot_data):
                      cbar_label=_data['cbar_label'],
                      rings=plot_data['rings'])
             z_str = np.around(_data['bwd_len_conv'](zi), 2)
-            fname = '_'.join(['CorePinPlot', v, f'z={z_str}'])
-            fname += '.png'
-            fname = os.path.join(dassh_reactor.path, fname)
-            _save_and_close(fname, _data['dpi'])
+            if plot_data['use_default_filename']:
+                plot_filename = 'CorePinPlot'
+            else:
+                plot_filename = plot_name
+            plot_filename += '_' + v
+            plot_filename += '_z=' + str(z_str)
+            plot_filename += '.png'
+            plot_filename = os.path.join(dassh_reactor.path, plot_filename)
+            _save_and_close(plot_filename, _data['dpi'])
 
 
-def make_CoreHexPlot(dassh_reactor, plot_data):
+def make_CoreHexPlot(dassh_reactor, plot_data, plot_name):
     """Generator function for CoreHexPlots"""
     chp = CoreHexPlot(dassh_reactor, plot_data)
     for v in plot_data['value']:
         if v == 'total_power':
-            chp.make_power(dassh_reactor, plot_data)
+            chp.make_power(dassh_reactor, plot_data, plot_name)
         else:
             if plot_data['z'] is None:
-                chp.make_axial_peak(dassh_reactor, plot_data, v)
+                chp.make_axial_peak(
+                    dassh_reactor, plot_data, v, plot_name)
             else:  # average in v
-                chp.make_radial_peak_or_avg(dassh_reactor, plot_data, v)
+                chp.make_radial_peak_or_avg(
+                    dassh_reactor, plot_data, v, plot_name)
 
 
 ########################################################################
@@ -1722,7 +1741,7 @@ class CoreHexPlot(CorePlot):
         # don't have to go through these iterations.
         return fs
 
-    def make_power(self, dassh_reactor, plot_data):
+    def make_power(self, dassh_reactor, plot_data, plot_name):
         """Generate the total assembly power hex plot"""
         data = []
         for a in dassh_reactor.assemblies:
@@ -1741,11 +1760,13 @@ class CoreHexPlot(CorePlot):
                   cmap=plot_data['cmap'],
                   cbar_label=cbl,
                   data_label=plot_data['data_label'])
-        fname = 'CoreHexPlot_total_power.png'
-        fname = os.path.join(dassh_reactor.path, fname)
-        _save_and_close(fname, plot_data['dpi'])
+        if plot_data['use_default_filename']:
+            plot_name = 'CoreHexPlot_total_power'
+        plot_name += '.png'
+        plot_name = os.path.join(dassh_reactor.path, plot_name)
+        _save_and_close(plot_name, plot_data['dpi'])
 
-    def make_axial_peak(self, dassh_reactor, plot_data, value):
+    def make_axial_peak(self, dassh_reactor, plot_data, value, plot_name):
         """Generate CoreHexPlot figure containing maximum temperature
         data for each assembly taken over entire axial space
 
@@ -1756,6 +1777,8 @@ class CoreHexPlot(CorePlot):
             Contains plot formatting requests
         value : str
             The type of data to plot
+        plot_name : string
+            Name of the plot given in the DASSH input
 
         Returns
         -------
@@ -1778,11 +1801,14 @@ class CoreHexPlot(CorePlot):
                   cbar_label=cbar_lab,
                   data_label=plot_data['data_label'],
                   omit_nonvalue_rings=plot_data['omit_nonvalue_rings'])
-        fname = f'CoreHexPlot_{value}.png'
-        fname = os.path.join(dassh_reactor.path, fname)
-        _save_and_close(fname, plot_data['dpi'])
+        if plot_data['use_default_filename']:
+            plot_name = 'CoreHexPlot'
+        plot_name += '_' + value
+        plot_name += '.png'
+        plot_name = os.path.join(dassh_reactor.path, plot_name)
+        _save_and_close(plot_name, plot_data['dpi'])
 
-    def make_radial_peak_or_avg(self, dassh_reactor, plot_data, value):
+    def make_radial_peak_or_avg(self, dassh_reactor, plot_data, value, name):
         """Generate CoreHexPlot figure containing maximum temperature
         data for each assembly at a given axial position
 
@@ -1793,6 +1819,8 @@ class CoreHexPlot(CorePlot):
             Contains plot formatting requests
         value : str
             The type of data to plot
+        name : str
+            Section name (thing to name the plot)
 
         Returns
         -------
@@ -1807,6 +1835,7 @@ class CoreHexPlot(CorePlot):
         else:
             f = 'temp_average.csv'
         try:
+            f = os.path.join(dassh_reactor.path, f)
             data = _load_data(f, z_conv)
         except FileNotFoundError:
             msg = 8 * '.' + f'File "{f}" not found, skipping {value}...'
@@ -1828,11 +1857,15 @@ class CoreHexPlot(CorePlot):
                           cbar_label=cbar_lab,
                           data_label=plot_data['data_label'],
                           omit_nonvalue_rings=plot_data['omit_nonvalue_rings'])
-                fname = '_'.join(['CoreHexPlot',
-                                  value,
-                                  f'z={z_str}.png'])
-                fname = os.path.join(dassh_reactor.path, fname)
-                _save_and_close(fname, plot_data['dpi'])
+            if plot_data['use_default_filename']:
+                plot_filename = 'CoreHexPlot'
+            else:
+                plot_filename = name
+            plot_filename += '_' + value
+            plot_filename += '_z=' + str(z_str)
+            plot_filename += '.png'
+            plot_filename = os.path.join(dassh_reactor.path, plot_filename)
+            _save_and_close(plot_filename, plot_data['dpi'])
 
     def _get_cbar_label(self, plot_data, value):
         """If no colorbar label is provided, generate one based on

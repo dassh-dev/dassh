@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2021-06-28
+date: 2023-02-28
 author: matz
 Objects and methods to print ASCII tables in Python
 """
@@ -872,20 +872,20 @@ class PressureDropTable(LoggedClass, DASSH_Table):
         self._ffmt4e = '{' + f':.{4}E' + '}'
 
         # Inherit from DASSH_Table
-        DASSH_Table.__init__(self, n_reg + 3, col_width, col0_width, sep)
+        DASSH_Table.__init__(self, n_reg + 6, col_width, col0_width, sep)
 
     def make(self, reactor_obj):
         """Create the table
 
         Parameters
         ----------
-        r_obj : DASSH Reactor object
+        reactor_obj : DASSH Reactor object
             Contains the assembly data to print
 
         """
         # Process units from input_obj: length
-        n_reg = self.n_col - 3
-        header = ['Name', 'Loc.', 'Total']
+        n_reg = self.n_col - 5
+        header = ['Name', 'Loc.', 'Total', 'Friction', 'SpacerGrid', 'Gravity']
         header += [f'Region {i + 1}' for i in range(n_reg)]
         self.add_row('Asm.', header)
         self.add_horizontal_line()
@@ -896,10 +896,24 @@ class PressureDropTable(LoggedClass, DASSH_Table):
             # Include total pressure drop
             params.append(self._ffmt4e.format(a.pressure_drop / 1e6))
 
+            # Separate out pressure drop due to friction and losses
+            # due to spacer grids, if applicable.
+            params += ['---', '---', '---']
+            if a.has_rodded:
+                spacer = a.rodded._pressure_drop['spacer_grid']
+                gravity = sum(x._pressure_drop['gravity'] for x in a.region)
+                friction = sum(x._pressure_drop['friction'] for x in a.region)
+                assert a.pressure_drop - spacer - gravity - friction < 1e-6
+                params[-3] = self._ffmt4e.format(friction / 1e6)
+                if spacer > 0.0:
+                    params[-2] = self._ffmt4e.format(spacer / 1e6)
+                if reactor_obj._options['include_gravity']:
+                    params[-1] = self._ffmt4e.format(gravity / 1e6)
+
             # Fill up the row with blanks; replace as applicable
             params += ['' for ri in range(n_reg)]
             for ri in range(len(a.region)):
-                params[ri + 3] = self._ffmt4e.format(
+                params[ri + 6] = self._ffmt4e.format(
                     a.region[ri].pressure_drop / 1e6)
             # self.add_row(_fmt_idx(a.id), params)
             self.add_row(_fmt_idx(i), params)
@@ -1219,10 +1233,12 @@ class CoolantTempTable(LoggedClass, DASSH_Table):
     title = "COOLANT TEMPERATURE SUMMARY" + "\n"
     notes = """Column heading definitions
     Power - Total assembly power
-    Bulk outlet - Mixed-mean coolant temp. at the assembly outlet
-    Peak outlet - Maximum coolant subchannel temp. at the assembly outlet
-    Peak total - Axial-maximum coolant subchannel temp. in the assembly
-    Height - Axial height at which "Peak total" temp. occurs
+    Bulk outlet - Mixed-mean coolant temperature at the assembly outlet
+    Peak outlet - Maximum coolant subchannel temperature at the assembly outlet
+    Peak total - Axial-maximum coolant subchannel temperature in the assembly
+    Peak + Unc. - "Peak total" coolant temperature plus HCF uncertainty
+    Peak height - Axial height at which "Peak total" temperature occurs
+
 """
 
     def __init__(self, col_width=12, col0_width=4, sep=' '):
@@ -1232,19 +1248,34 @@ class CoolantTempTable(LoggedClass, DASSH_Table):
         # Float formatting option
         self._ffmt = '{' + f':.{self.dp}e' + '}'
         self._ffmt2 = '{' + f':.{2}f' + '}'
+        self._namefmt = '{:>' + str(col_width - 1) + '}'
 
         # Inherit from DASSH_Table
-        DASSH_Table.__init__(self, 7, col_width, col0_width, sep)
+        DASSH_Table.__init__(self, 8, col_width, col0_width, sep)
 
-    def make(self, r_obj):
+    def make(self, r_obj, hotspot_data=None):
         """Create the table
 
         Parameters
         ----------
         reactor_obj : DASSH Reactor object
             Contains the assembly data to print
+        hotspot_data (optional) : tuple
+            dict containing numpy.ndarray of N-sigma hotspot temps; keys
+                indicate corresponding regions (e.g. "coolant", "fuel_cl")
+            list of corresponding asm IDs
+            path to subfactors used in the calculation
+            input and output "sigma" values
 
         """
+        # Figure out whether to include hotspot data
+        if hotspot_data is not None and \
+                'coolant' in hotspot_data[0].keys():
+            msg = _make_hotspot_msg(r_obj, 'coolant')
+        else:
+            msg = """Peak temperatures plus uncertainty are not calculated."""
+            msg += "\n"
+        self.notes += msg
         # Erase any existing data in the table
         self.clear()
         # Process units from input_obj: temp, length, mfr
@@ -1261,24 +1292,22 @@ class CoolantTempTable(LoggedClass, DASSH_Table):
                           'Bulk outlet',
                           'Peak outlet',
                           'Peak total',
-                          'Peak ht.'])
-        self.add_row('Asm.', ['Loc.',
-                              '(W)',
-                              f'({fr_unit})',
-                              f'({fmttd_temp_unit})',
-                              f'({fmttd_temp_unit})',
-                              f'({fmttd_temp_unit})',
-                              f'({len_unit})'])
+                          'Peak + Unc.',
+                          'Peak height'])
+        self.add_row('Asm', ['Name',
+                             '(W)',
+                             f'({fr_unit})',
+                             f'({fmttd_temp_unit})',
+                             f'({fmttd_temp_unit})',
+                             f'({fmttd_temp_unit})',
+                             f'({fmttd_temp_unit})',
+                             f'({len_unit})'])
         self.add_horizontal_line()
 
         for i in range(len(r_obj.assemblies)):
             a = r_obj.assemblies[i]
 
-            # Here again, the first column in the dump file is the
-            # DASSH ID, so we need to use the assembly.ID attribute
-            # to locate the rows we want to search
-
-            # Coolant temperatures
+            # Outlet and peak coolant temperatures
             tc_avg = self.temp_conv(a.avg_coolant_temp)
             tc_max_out = self.temp_conv(
                 np.max(a.region[-1].temp['coolant_int']))
@@ -1291,14 +1320,28 @@ class CoolantTempTable(LoggedClass, DASSH_Table):
                 tc_max_ht = self._ffmt2.format(len_conv(tc_max_ht))
             tc_max_tot = self.temp_conv(tc_max_tot)
 
-            data = [_fmt_pos(a.loc),
+            # Peak temperature plus uncertainty
+            # Note: hotspot_data == (t_hotspot, asm_ids)
+            tc_max_unc = '-----'
+            if not hotspot_data \
+                    or 'coolant' not in hotspot_data[0].keys() \
+                    or a.id not in hotspot_data[1]['coolant']:
+                pass
+            else:
+                idx = hotspot_data[1]['coolant'].index(a.id)
+                tc_max_unc = self._ffmt2.format(
+                    self.temp_conv(
+                        hotspot_data[0]['coolant'][idx][0]))
+
+            # Collect the data in a row and append
+            data = [self._namefmt.format(a.name),
                     '{:.5E}'.format(a.total_power),
                     '{:.5E}'.format(mfr_conv(a.flow_rate)),
                     self._ffmt2.format(tc_avg),
                     self._ffmt2.format(tc_max_out),
                     self._ffmt2.format(tc_max_tot),
+                    tc_max_unc,
                     tc_max_ht]
-            # self.add_row(_fmt_idx(a.id), data)
             self.add_row(_fmt_idx(i), data)
 
 
@@ -1441,7 +1484,7 @@ Duct face key                  Face 6    =   Face 1
 
 
 class PeakPinTempTable(LoggedClass, DASSH_Table):
-    """Create table
+    """Create table for nominal and 2-sigma peak pin temperatures
 
     Parameters
     ----------
@@ -1455,28 +1498,24 @@ class PeakPinTempTable(LoggedClass, DASSH_Table):
 
     """
 
-    col_id = {'clad': 5, 'fuel': -1}
-    col_id = {'clad': {'od': 4, 'mw': 5, 'id': 6},
-              'fuel': {'od': 7, 'cl': 8}}
+    _lookup_keys = {'clad': {'od': 'clad_od',
+                             'mw': 'clad_mw',
+                             'id': 'clad_id'},
+                    'fuel': {'od': 'fuel_od',
+                             'cl': 'fuel_cl'}}
 
-    def __init__(self, col_width=9, col0_width=4, sep=' ', ffmt2=2):
-        """Instantiate flow parameters output table"""
-        # Decimal places for rounding, where necessary
-        self.dp = col_width - 6
-        # Float formatting option
-        self._ffmt = '{' + f':.{self.dp}e' + '}'
-        self._ffmt2 = '{' + f':.{ffmt2}f' + '}'
+    _notes = """The table shows radial pin temperatures in the pin and at the
+height where the peak {} {} temperature occurs. Nominal
+temperatures are those calculated directly by DASSH.
 
-        # Inherit from DASSH_Table
-        DASSH_Table.__init__(self, 10, col_width, col0_width, sep)
+{}""" + "\n"
 
-    def make(self, reactor_obj, component='clad', region='mw'):
-        """Create the table
+    def __init__(self, component, region,
+                 col_w=7, col0_w=4, sep=' ', ffmt2=1):
+        """Instantiate peak pin temperature output table
 
         Parameters
         ----------
-        reactor_obj : DASSH Reactor object
-            Contains the assembly data to print
         component : str {'clad', 'fuel'}
             Report clad/fuel temperatures at height of peak
             temperature for this component
@@ -1487,63 +1526,129 @@ class PeakPinTempTable(LoggedClass, DASSH_Table):
             If component = 'fuel': {'od', 'cl'}
 
         """
-        # Override the title
+        self._component = component
+        self._region = region
+        self._lookup = component.lower() + '_' + region.lower()
+        # Decimal places for rounding, where necessary
+        self.dp = col_w - 6
+        # Float formatting option
+        self._ffmt = '{' + f':.{self.dp}e' + '}'
+        self._ffmt2 = '{' + f':.{ffmt2}f' + '}'
+        # Number of data columns - does not include column 0
+        if component == 'clad':
+            if region == 'od':
+                n_cols = 12
+            elif region == 'mw':
+                n_cols = 13
+            else:
+                n_cols = 14
+        else:  # component == 'fuel'
+            if region == 'od':
+                n_cols = 15
+            else:
+                n_cols = 16
+        # Inherit from DASSH_Table
+        DASSH_Table.__init__(self, n_cols, col_w, col0_w, sep)
+
+    def make(self, r_obj, hotspot_data=None):
+        """Create the table
+
+        Parameters
+        ----------
+        r_obj : DASSH Reactor object
+            Contains the assembly data to print
+        hotspot_data (optional) : tuple
+            numpy.ndarray of N-sigma hotspot temps
+            list of corresponding asm IDs
+            path to subfactors used in the calculation
+            input and output "sigma" values
+
+        """
+        # Override the title and notes
         self.title = 'PEAK {0} {1} TEMPERATURES'.format(
-            component.upper(), region.upper()) + "\n"
+            self._component.upper(), self._region.upper()) + "\n"
+        # Figure out whether to include hotspot data
+        if hotspot_data is not None and \
+                self._lookup in hotspot_data[0].keys():
+            # any(self._lookup in hotspot_data[0][a].values
+            #     for a in hotspot_data[0].keys()):
+            msg = _make_hotspot_msg(r_obj, self._lookup)
+        else:
+            msg = """Peak temperatures plus uncertainty are not calculated."""
+        self.notes = self._notes.format(self._component, self._region, msg)
 
         # Erase any existing data in the table
         self.clear()
+
         # Process units from input_obj: temp, length
-        temp_unit = reactor_obj.units['temperature']
+        temp_unit = r_obj.units['temperature']
         fmttd_temp_unit = _formatted_temp_units[temp_unit]
         self.temp_conv = self._get_temp_conv(temp_unit)
-        len_unit = reactor_obj.units['length']
+        len_unit = r_obj.units['length']
         self.len_conv = self._get_len_conv(len_unit)
 
         # Custom format the top row
         row = ' ' * (self.col0_width)
-        row += ' ' * self.col_width * 2
-        row += self.divider * 3
-        fmtter = '{:>' + f'{self.col_width}.{self.col_width}' + 's}'
-        row += fmtter.format('Height')
-        row += self.divider
-        row += fmtter.format('Pin power')
-        row += self.divider
-        row += f'  Nominal Radial Temperatures ({fmttd_temp_unit}) --> '
+        row += ' ' * self.col_width * 4
+        row += self.divider * 5
+        row += f'| Nominal Peak Temps ({fmttd_temp_unit}) '
+        row += '-' * (2 - len(fmttd_temp_unit))
+        row += '----------------------'
+        row += f'| N-Sigma Peak Temps ({fmttd_temp_unit}) '
+        row += '-' * (self.width - len(row))
         self._table += row + '\n'
-        # self.add_row('', ['', '',
-        #                   'Height',
-        #                   'Pin power',
-        #                   'Nominal',
-        #                   'Temperatures',
-        #                   f'({fmttd_temp_unit}) --> ',
-        #                   '', '', ''])
-        self.add_row('Asm.', ['Loc.',
-                              'Pin',
-                              f'({len_unit})',
-                              f'(W/{len_unit})',
-                              'Coolant',
-                              'Clad OD',
-                              'Clad MW',
-                              'Clad ID',
-                              'Fuel OD',
-                              'Fuel CL'])
+
+        # Custom format the second row
+        fmtter = '{:>' + f'{self.col_width}.{self.col_width}' + 's}'
+        row = ['Asm',  # Name
+               '',  # Pin
+               fmtter.format('Height'),
+               fmtter.format('Power'),
+               '|' + ' ' * (self.col_width - 1),  # Coolant
+               fmtter.format('Clad'),             # OD
+               fmtter.format('Clad'),             # MW
+               fmtter.format('Clad'),             # ID
+               fmtter.format('Fuel'),             # OD
+               fmtter.format('Fuel'),             # CL
+               '|' + ' ' * (self.col_width - 1),  # Coolant
+               fmtter.format('Clad'),             # OD
+               fmtter.format('Clad'),             # MW
+               fmtter.format('Clad'),             # ID
+               fmtter.format('Fuel'),             # OD
+               fmtter.format('Fuel')]             # CL
+        row = row[:(self.n_col)]
+        self.add_row('Asm', row)
+
+        # Custom format the third row
+        row = [fmtter.format('Name'),
+               fmtter.format('Pin'),
+               f'({len_unit})',  # Height unit
+               f'(W/{len_unit})',  # Power unit
+               '|  Cool',
+               'OD',  # Clad
+               'MW',  # Clad
+               'ID',  # Clad
+               'OD',  # Pin
+               'CL',  # Pin
+               '|  Cool',
+               'OD',  # Clad
+               'MW',  # Clad
+               'ID',  # Clad
+               'OD',  # Pin
+               'CL']   # Pin
+        row = row[:(self.n_col)]
+        self.add_row('ID', row)
         self.add_horizontal_line()
 
-        keys = {'clad': {'od': 'clad_od',
-                         'mw': 'clad_mw',
-                         'id': 'clad_id'},
-                'fuel': {'od': 'fuel_od',
-                         'cl': 'fuel_cl'}}
         # Get peak temperatures @ height of peak component temp
         tab = []
-        for i in range(len(reactor_obj.assemblies)):
-            a = reactor_obj.assemblies[i]
-            # row = [_fmt_idx(a.id), _fmt_pos(a.loc)]
-            row = [_fmt_idx(i), _fmt_pos(a.loc)]
+        for i in range(len(r_obj.assemblies)):
+            a = r_obj.assemblies[i]
+            row = [_fmt_idx(i)]
             if 'pin' in a._peak.keys():
-                xx = keys[component][region]
-                row += self._get_temps(a, a._peak['pin'][xx][2])
+                k = self._lookup_keys[self._component][self._region]
+                row += self._get_nominal_temps(a, a._peak['pin'][k][2])
+                row += self._get_hotspot_temps(hotspot_data, a.id)
                 tab.append(row)
             else:
                 continue
@@ -1552,22 +1657,80 @@ class PeakPinTempTable(LoggedClass, DASSH_Table):
         for row in tab:
             self.add_row(row[0], row[1:])
 
-    def _get_temps(self, asm_obj, data):
+    def _get_nominal_temps(self, asm_obj, data):
         """Get cladding/fuel temperatures at the requested height
         for the requested pin"""
         # Get pin (data[2]) and height (z = data[1])
         pin = str(int(data[2]))
         height = self._ffmt2.format(self.len_conv(data[1]))
-        out = [pin, height]
+        out = [asm_obj.name, pin, height]
 
-        # Get power
-        plin = asm_obj.power.get_power(data[1])
+        # Get power: round height to make sure no numerical error
+        plin = asm_obj.power.get_power(round(data[1], 10))
         plin = plin['pins'][int(data[2])] / self.len_conv(1)
         out.append(self._ffmt2.format(plin))
 
         # Add temperatures and return
         out += [self._ffmt2.format(self.temp_conv(x)) for x in data[3:]]
         return out
+
+    def _get_hotspot_temps(self, hotspot_data, a_id):
+        """Get hotspot cladding/fuel temperatures"""
+        # Note: hotspot_data == (t_hotspot, asm_ids)
+        empty = ['-----' for i in range(self.n_col - 9)]
+        if not hotspot_data:
+            return empty
+        elif self._lookup not in hotspot_data[0].keys():
+            return empty
+        elif a_id not in hotspot_data[1][self._lookup]:
+            return empty
+        else:
+            idx = hotspot_data[1][self._lookup].index(a_id)
+            # tmp = hotspot_data[0][idx]
+            # print(tmp)
+            # print([self._ffmt2.format(self.temp_conv(x)) for x in tmp])
+            t_hotspot = [self._ffmt2.format(self.temp_conv(x))
+                         for x in hotspot_data[0][self._lookup][idx]]
+            if len(t_hotspot) > len(empty):
+                t_hotspot = t_hotspot[:len(empty)]
+            elif len(t_hotspot) < len(empty):
+                diff = len(empty) - len(t_hotspot)
+                t_hotspot += ['-----' for i in range(diff)]
+            else:
+                pass
+            return t_hotspot
+
+
+########################################################################
+
+
+def _make_hotspot_msg(r_obj, region_lookup):
+    """ x """
+    msg = """Hot spot temperatures are calculated based on:
+- user input for hot channel factors (built-in or user-specified);
+- the degree of uncertainty in the provided statistical factors; and
+- the degree of uncertainty desired in the output hotspot temperatures.
+
+Assembly        Input unc.   Output unc.  Hotspot subfactors
+"""
+    msg += '- ' * 50 + '\n'
+    for a in r_obj._options['hotspot'].keys():
+        # Skip if no hotspot temperatures for this assembly type
+        if region_lookup not in r_obj._options['hotspot'][a].keys():
+            continue
+        # Otherwise add a line for this assembly type
+        tmp = r_obj._options['hotspot'][a][region_lookup]
+        line = []
+        line.append(a[:14])
+        line.append(" " * (14 - len(line[0])) + "  ")
+        line.append(f"{tmp['input_sigma']}-sigma")
+        line.append(" " * (11 - len(line[-1])) + "  ")
+        line.append(f"{tmp['output_sigma']}-sigma")
+        line.append(" " * (11 - len(line[-1])) + "  ")
+        line.append(tmp['subfactors'])
+        line = "".join(line)
+        msg += line + "\n"
+    return msg
 
 
 ########################################################################

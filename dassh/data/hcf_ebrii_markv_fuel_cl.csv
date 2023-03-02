@@ -1,0 +1,10 @@
+﻿Subfactor,Type,Coolant,Film,Cladding,Gap,Fuel
+Power level measurement,Direct,1.02,1.02,1.02,1.02,1.013
+Neutron and gamma flux dist.,Statistical,1.07,1.1,1.1,1.1,1.1
+Subassembly coolant flow rate,Statistical,1.079,1.025,1,1,1
+Flow profile within assembly,Statistical,1.056,1.018,1,1,1
+Clad thickness manufacturing deviation,Statistical,1,1,1.03,1,1
+Fissile content manufacturing deviation,Statistical,1.06,1.06,1.06,1.06,1.04
+Clad thermal conductivity,Statistical,1,1,1.08,1,1
+Fuel thermal conductivity,Statistical,1,1,1,1,1.25
+Heat transfer coefficient,Statistical,1,1.2,1,1,1

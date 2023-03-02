@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-03-22
+date: 2023-02-28
 author: matz
 Test the DASSH read_input module and DASSH_input object
 """
@@ -671,10 +671,16 @@ def test_unrecognized_inputs(testdir, caplog):
             testdir,
             'test_inputs',
             'input_unrecognized_args.txt'))
-    m1 = 'Warning: unrecognized input. section: "Unrecognized_Section"'
+    m1 = 'Warning: unrecognized input. Section: "Unrecognized_Section"'
     assert m1 in caplog.text
-    m2 = 'Warning: unrecognized input. section: "{}"; keyword: "{}"'
+    m2 = 'Warning: unrecognized input. Section: "{}"; keyword: "{}"'
     assert m2.format('Power"//"ARC', 'wrong_arg') in caplog.text
+    assert m2.format('Plot"//"MyPlot', 'wrong_arg') in caplog.text
+    assert m2.format('Plot', 'MyPlot') not in caplog.text
+    assert 'Section: "Materials"' not in caplog.text
+    assert 'Section: "Core"' not in caplog.text
+    assert 'Section: "Assembly"' not in caplog.text
+    assert 'Section: "Setup"' not in caplog.text
 
 
 def test_detailed_subchannel_table_inputs(testdir, caplog):
@@ -714,3 +720,97 @@ def test_detailed_subchannel_table_inputs(testdir, caplog):
     assert len(tmp['assemblies']) == 1
     assert tmp['assemblies'][0] == 1
     assert all(x in ans_z for x in tmp['axial_positions'])
+
+
+def test_warning_bare_rod_kc_corr(testdir, caplog):
+    """Confirm DASSH warning if KC bare rode mixing core is
+    used for wire wrapped bundle"""
+    dassh.DASSH_Input(
+        os.path.join(
+            testdir,
+            'test_inputs',
+            'x_input_kcmix_wire.txt'))
+    msg = 'WARNING: Asm "TEST"; Using bare-rod correlation for ' \
+          'turbulent mixing but specified nonzero wire diameter.'
+    print(caplog.text)
+    assert msg in caplog.text
+
+
+def test_spacergrid_axialpos_warn_error(testdir, caplog):
+    """Confirm DASSH warning/error for acceptable spacer
+    grid axial positions"""
+    with pytest.raises(SystemExit):
+        dassh.DASSH_Input(
+            os.path.join(
+                testdir,
+                'test_inputs',
+                'x_spacergrid_axialpositions.txt'))
+    # Warning that assembly has both wire wrap and spacer grids
+    msg = 'WARNING: Asm "driver"; Bundle has both wire wrap and '
+    assert msg in caplog.text
+    # Warning that DASSH is dismissing some spacer grid axial positions
+    msg = 'WARNING: Asm "driver"; Spacer grid axial position "50.0" is'
+    assert msg in caplog.text
+    # Error that none of the spacer grid axial positions are valid
+    msg = 'ERROR: Asm "driver"; No acceptable spacer grid axial positions'
+    assert msg in caplog.text
+
+
+def test_spacergrid_solidity_warning_and_coeff_error(testdir, caplog):
+    """Test that DASSH raises a warning when the user does not
+    provide spacer grid solidity input, and that DASSH crashes
+    when incorrect correlation coefficients are supplied"""
+    with pytest.raises(SystemExit):
+        dassh.DASSH_Input(
+            os.path.join(
+                testdir,
+                'test_inputs',
+                'x_spacergrid_corr.txt'))
+    # Check warnings
+    msg = 'Bundle has both wire wrap and spacer grids'
+    assert msg in caplog.text
+    msg = 'Spacer grid solidity (A_grid / A_flow) is undefined'
+    assert msg in caplog.text
+    # Check error
+    msg = '"CDD" correlation requires 7 coefficients; found 6'
+    assert msg in caplog.text
+
+
+def test_spacergrid_solidity_error(testdir, caplog):
+    """Test DASSH error when default solidity gives bad result"""
+    with pytest.raises(SystemExit):
+        dassh.DASSH_Input(
+            os.path.join(
+                testdir,
+                'test_inputs',
+                'x_spacergrid_solidity.txt'))
+    # Check warning
+    msg = 'Spacer grid solidity (A_grid / A_flow) is undefined'
+    assert msg in caplog.text
+    # Check error
+    msg = 'Default solidity relationship gives result outside '
+    assert msg in caplog.text
+
+
+def test_dasshpower_incomplete_input(testdir, caplog):
+    """dassh_power access point allows for some missing inputs that
+    are otherwise required by DASSH - check the fill behavior"""
+    with pytest.raises(SystemExit):
+        dassh.DASSH_Input(
+            os.path.join(
+                testdir,
+                'test_inputs',
+                'input_dasshpower.txt'))
+    msg = '"coolant_inlet_temp" key in section "Core" failed validation'
+    assert msg in caplog.text
+
+    # Should cause no failure
+    dasshpower_input = dassh.DASSHPower_Input(
+        os.path.join(
+            testdir,
+            'test_inputs',
+            'input_dasshpower.txt'))
+    assert dasshpower_input.data['Assignment']['ByPosition'][0][2] == \
+        {'flowrate': 5.0}
+    assert dasshpower_input.data['Core']['coolant_material'] == 'sodium'
+    assert dasshpower_input.data['Core']['coolant_inlet_temp'] == 773.15

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-03-17
+date: 2022-12-06
 author: matz
 Test the DASSH Assembly object
 """
@@ -104,6 +104,7 @@ def test_pin_only_int_coolant_verification(testdir):
     dT_ans = T_ans - r.inlet_temp
     r.reset()
     asm = r.assemblies[0].clone(new_loc=(0, 0))
+    asm.rodded._init_static_correlated_params(623.15)
     assert np.all(asm.rodded.temp['coolant_int'] == 623.15)
     assert np.all(asm.rodded.temp['duct_mw'] == 623.15)
     assert np.all(asm.rodded.temp['duct_surf'] == 623.15)
@@ -250,12 +251,12 @@ def test_bypass_gap_verification(simple_ctrl_asm):
         for i in range(len(keys)):
             print(keys[i] + ': ' + '{:.15e}'.format(vals[i]))
 
-    ans = np.array([6.234377846069E+02, 6.236242077736E+02,
-                    6.234377827967E+02, 6.236242078352E+02,
-                    6.234377846069E+02, 6.236242077736E+02,
-                    6.234377827967E+02, 6.236242078352E+02,
-                    6.234377846069E+02, 6.236242077736E+02,
-                    6.234377827967E+02, 6.236242078352E+02])
+    ans = np.array([6.2343766926209E+02, 6.2361524214799E+02,
+                    6.2343766744661E+02, 6.2361524220506E+02,
+                    6.2343766926209E+02, 6.2361524214799E+02,
+                    6.2343766744661E+02, 6.2361524220506E+02,
+                    6.2343766926209E+02, 6.2361524214799E+02,
+                    6.2343766744661E+02, 6.2361524220506E+02])
     simple_ctrl_asm._z = 1.29
     z = 1.29
     dz = 0.001

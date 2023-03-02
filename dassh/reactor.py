@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-03-23
+date: 2023-02-28
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -112,6 +112,12 @@ class Reactor(LoggedClass):
 
         """
         LoggedClass.__init__(self, 0, 'dassh.reactor.Reactor')
+        self._input_path = dassh_input.path
+        if path is None:
+            self.path = dassh_input.path
+        else:
+            self.path = path
+            os.makedirs(path, exist_ok=True)
 
         # Store user options from input/invocation
         self.units = dassh_input.data['Setup']['Units']
@@ -120,12 +126,6 @@ class Reactor(LoggedClass):
         # Store general inputs
         self.inlet_temp = dassh_input.data['Core']['coolant_inlet_temp']
         self.asm_pitch = dassh_input.data['Core']['assembly_pitch']
-        self._input_path = dassh_input.path
-        if path is None:
-            self.path = dassh_input.path
-        else:
-            self.path = path
-            os.makedirs(path, exist_ok=True)
 
         # Store DASSH materials (already loaded in DASSH_Input)
         self.materials = dassh_input.materials
@@ -203,6 +203,8 @@ class Reactor(LoggedClass):
         self._options['se2geo'] = inp.data['Setup']['se2geo']
         self._options['param_update_tol'] = \
             inp.data['Setup']['param_update_tol']
+        self._options['include_gravity'] = \
+            inp.data['Setup']['include_gravity_head_loss']
 
         if 'AssemblyTables' in inp.data['Setup'].keys():
             self._options['AssemblyTables'] = \
@@ -233,6 +235,9 @@ class Reactor(LoggedClass):
         self._options['ebal'] = inp.data['Setup']['calc_energy_balance']
         if 'calc_energy_balance' in kwargs.keys():
             self._options['ebal'] = kwargs['calc_energy_balance']
+
+        self._options['hotspot'] = \
+            dassh.hotspot._setup_postprocess(inp)
 
         # DUMP FILE ARGUMENTS: collect to set up files at sweep time
         self._options['dump'] = inp.data['Setup']['Dump']
@@ -395,7 +400,8 @@ class Reactor(LoggedClass):
                 self.inlet_temp,
                 mfrx,
                 se2geo=self._options['se2geo'],
-                param_update_tol=self._options['param_update_tol'])
+                param_update_tol=self._options['param_update_tol'],
+                gravity=self._options['include_gravity'])
 
         # Store as attribute b/c used later to write summary output
         self.asm_templates = asm_templates
@@ -513,7 +519,10 @@ class Reactor(LoggedClass):
         # Normalize power to user request
         renorm = 1.0
         if ptot_user is not None:
-            renorm = ptot_user / pcalc
+            if ptot_user == 0.0 or pcalc == 0.0:
+                renorm = 0.0
+            else:
+                renorm = ptot_user / pcalc
             for i in range(len(plist)):
                 if plist[i] == []:  # skip if asm is undefined
                     continue
@@ -621,6 +630,8 @@ class Reactor(LoggedClass):
            assign power profiles.
         5. Store outlet temperature estimate to use when determining
            axial mesh size requirement.
+        6. Calculate friction factor and flowsplit parameters using
+           bundle axial-average coolant temperature.
 
         """
         # List of assemblies to populate
@@ -638,16 +649,11 @@ class Reactor(LoggedClass):
             loc = k[1][:2]
             asm_data = inp.data['Assembly'][atype]
 
-            # Power scaling for individual assemblies: WARNING
-            # This is only meant to be a developer feature to test
-            # heat transfer between assemblies. It will ruin the
-            # normalization of power to the fixed value requested
-            # in the input
+            # WARNING: Power scaling for individual assemblies is
+            # is only meant to be a developer feature to test heat
+            # transfer between assemblies. It will ruin the power
+            # normalization if a value was requested in the input
             power_scalar = 1.0
-            # if self._options['debug']:
-            #     if 'scale_power' in k[2].keys():
-            #         power_scalar = k[2]['scale_power']
-            # asm_power *= power_scalar
 
             # Clone assembly object from template using flow rate
             # and assign power profiles
@@ -667,6 +673,14 @@ class Reactor(LoggedClass):
                 self.log('error', m[1].format(i + 1))
             asm.total_power = asm_power[i][2]
             asm._estimated_T_out = To[i]
+
+            # Calculate the friction factor and flow split parameters
+            # for each region at the assembly axial-average temperature
+            t_avg = (self.inlet_temp + To[i]) / 2
+            for reg in asm.region:
+                reg._init_static_correlated_params(t_avg)
+
+            # Add the assembly to the list.
             assemblies.append(asm)
 
         # Sort the assemblies according to the DASSH assembly ID
@@ -973,11 +987,16 @@ class Reactor(LoggedClass):
             self._options['dump']['names'].append('maximum')
             self.log('info', _msg.format('maximum coolant and pin',
                                          'temp_maximum.csv'))
+        if self._options['dump']['pressure_drop']:
+            self._options['dump']['names'].append('pressure_drop')
+            self.log('info', _msg.format('pressure drop', 'pressure_drop.csv'))
 
         # Set up dictionary of paths to data
         self._options['dump']['paths'] = {}
         for f in self._options['dump']['names']:
-            name = f'temp_{f}'
+            name = f
+            if f != 'pressure_drop':
+                name = f'temp_{f}'
             fullname = f'{name}.csv'
             if os.path.exists(os.path.join(self.path, fullname)):
                 os.remove(os.path.join(self.path, fullname))
@@ -988,6 +1007,7 @@ class Reactor(LoggedClass):
         self._options['dump']['cols'] = {}
         self._options['dump']['cols']['average'] = 10
         self._options['dump']['cols']['maximum'] = 7
+        self._options['dump']['cols']['pressure_drop'] = 7
         self._options['dump']['cols']['coolant_int'] = 3 + max(
             [a.rodded.subchannel.n_sc['coolant']['total']
              if a.has_rodded else 1 for a in self.assemblies])
@@ -1070,14 +1090,6 @@ class Reactor(LoggedClass):
             self._data_close()
         except (AttributeError, KeyError):
             pass
-
-        # write the summary output
-        if self._options['write_output']:
-            self.write_output_summary()
-
-        # write detailed assembly subchannel output, if requested
-        if 'AssemblyTables' in self._options.keys():
-            self.write_assembly_data_tables()
 
     def _print_log_msg(self, step):
         """Format the message to log to the screen"""
@@ -1183,65 +1195,6 @@ class Reactor(LoggedClass):
                                          gap_htc,
                                          self._is_adiabatic)
 
-    def axial_step_parallel(self, z, dz, worker_pool):
-        """Parallelized version of axial_step; NOT FUNCTIONAL
-
-        Parameters
-        ----------
-        z : float
-            Absolute axial position (m)
-        dz : float
-            Axial mesh size (m)
-        verbose (optional) : bool
-            Indicate whether to print step summary
-        worker_pool : multiprocessing Pool object
-            Workers to perform parallel tasks
-
-        """
-        # First, some administrative stuff: figure out whether you're
-        # dumping temperatures at this axial step
-        dump_step = self._determine_whether_to_dump_data(z, dz)
-
-        # 1. Calculate gap coolant temperatures at the j+1 level
-        #    based on duct wall temperatures at the j level.
-        if self.core.model is not None:
-            # worker_pool = mp.Pool()
-            t_duct = []
-            for asm in self.assemblies:
-                t_duct.append(
-                    worker_pool.apply_async(
-                        approximate_temps,
-                        args=(asm.x_pts,
-                              asm.duct_outer_surf_temp,
-                              self.core.x_pts,
-                              asm._lstsq_params, )
-                    )
-                )
-            t_duct = np.array([td.get() for td in t_duct])
-            self.core.calculate_gap_temperatures(dz, t_duct)
-            # worker_pool.close()
-            # worker_pool.join()
-        # 2. Calculate assembly coolant and duct temperatures.
-        #    Different treatment depending on whether in the
-        #    heterogeneous or homogeneous region; varies assembly to
-        #    assembly, handled in the same method.
-        updated_asm = []
-        # worker_pool = mp.Pool()
-        for asm in self.assemblies:
-            updated_asm.append(
-                worker_pool.apply_async(
-                    self._calculate_asm_temperatures,
-                    args=(asm, z, dz, dump_step, ),
-                    error_callback=err_cb))
-        self.assemblies = [a.get() for a in updated_asm]
-        # worker_pool.close()
-        # worker_pool.join()
-
-        # Write the results
-        if dump_step:
-            for asm in self.assemblies:
-                asm.write(self._options['dump']['files'], None)
-
     def _determine_whether_to_dump_data(self, z, dz):
         """Dump data to CSV if interval length is reached or if at
         an axial region boundary"""
@@ -1311,6 +1264,19 @@ class Reactor(LoggedClass):
     # WRITE OUTPUT
     ####################################################################
 
+    def postprocess(self):
+        """Prepare and write output"""
+        # Perform the hotspot analysis on clad/pin temperatures
+        hotspot_results = dassh.hotspot.analyze(self)
+
+        # Write the summary output
+        if self._options['write_output']:
+            self.write_output_summary(hotspot_results)
+
+        # Write detailed assembly subchannel output, if requested
+        if 'AssemblyTables' in self._options.keys():
+            self.write_assembly_data_tables()
+
     def write_summary(self):
         """Write the main DASSH output file"""
         # Output file preamble
@@ -1334,13 +1300,13 @@ class Reactor(LoggedClass):
         with open(os.path.join(self.path, 'dassh.out'), 'w') as f:
             f.write(out)
 
-    def write_output_summary(self):
+    def write_output_summary(self, hotspot_data=None):
         """Write the main DASSH output file"""
         out = ''
 
         # Pressure drop
-        dp = dassh.table.PressureDropTable(
-            max([len(a.region) for a in self.assemblies]))
+        n_regions = max([len(a.region) for a in self.assemblies])
+        dp = dassh.table.PressureDropTable(n_regions)
         out += dp.generate(self)
 
         # Energy balances
@@ -1354,17 +1320,30 @@ class Reactor(LoggedClass):
 
         # Coolant temperatures
         coolant_table = dassh.table.CoolantTempTable()
-        out += coolant_table.generate(self)
+        out += coolant_table.generate(self, hotspot_data)
 
         # Duct temperatures
         duct_table = dassh.table.DuctTempTable()
         out += duct_table.generate(self)
 
         # Peak pin temperatures
+        # First, figure out which peak temperatures to include.
+        # By default, clad MW and fuel CL will be included.
+        include = [('clad', 'mw'), ('fuel', 'cl')]
+        if hotspot_data:
+            if 'clad_od' in hotspot_data[0].keys():
+                # Put clad OD at the beginning
+                include.insert(0, ('clad', 'od'))
+            if 'clad_id' in hotspot_data[0].keys():
+                # Put clad ID right before fuel CL
+                include.insert(-1, ('clad', 'id'))
+            if 'fuel_od' in hotspot_data[0].keys():
+                # Put fuel OD right before fuel CL
+                include.insert(-1, ('fuel', 'od'))
         if any(['pin' in a._peak.keys() for a in self.assemblies]):
-            max_temps = dassh.table.PeakPinTempTable()
-            out += max_temps.generate(self, 'clad', 'mw')
-            out += max_temps.generate(self, 'fuel', 'cl')
+            for k in include:
+                peak_pin = dassh.table.PeakPinTempTable(k[0], k[1])
+                out += peak_pin.generate(self, hotspot_data)
 
         # Append to file
         with open(os.path.join(self.path, 'dassh.out'), 'a') as f:

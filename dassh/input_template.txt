@@ -10,6 +10,7 @@
     param_update_tol = float(min=0.0, max=1.0, default=0.0)
     parallel = boolean(default=False)
     n_cpu = integer(min=1, default=None)
+    include_gravity_head_loss = boolean(default=False)
     [[Dump]]
         all = boolean(default=False)
         coolant = boolean(default=False)
@@ -19,6 +20,7 @@
         gap_fine = boolean(default=False)
         average = boolean(default=False)
         maximum = boolean(default=False)
+        pressure_drop = boolean(default=False)
         interval = float(min=0.0, default=None)
     [[Units]]
         temperature = string(default='kelvin')
@@ -80,11 +82,12 @@
         duct_ftf = float_list(min=2)
         duct_material = string
         clad_thickness = float
-        corr_mixing = option('MIT', 'CTD', 'UCTD', default='CTD')
+        corr_mixing = option('MIT', 'CTD', 'UCTD', 'KC-BARE', default='CTD')
         corr_friction = option('NOV', 'REH', 'ENG', 'CTD', 'CTS', 'UCTD', default='CTD')
         corr_flowsplit = option('NOV', 'SE2', 'MIT', 'CTD', 'UCTD', default='CTD')
+        corr_shapefactor = option('CT', default=None) 
         corr_nusselt = string(default='DB')
-	dummy_pin = int_list(min=1, default=None)
+        dummy_pin = int_list(min=1, default=None)
         htc_params_duct = float_list(default=None)
         bypass_gap_flow_fraction = float(default=0.05)
         bypass_gap_loss_coeff = float(default=None)
@@ -104,6 +107,12 @@
                 magic_knob = float(default=1.0)
                 htc_params = float_list(default=None)
                 convection_factor = float(min=0.000001, max=1.0, default=1.0)
+        [[[SpacerGrid]]]
+            corr = option('REH', 'CDD', default=None)
+            corr_coeff = float_list(default=None)
+            loss_coeff = float(min=0, default=None)
+            axial_positions = float_list(min=1, default=None)
+            solidity = float(min=0.0, max=1.0, default=None)
         [[[FuelModel]]]
             fcgap_thickness = float(min=0.0, default=0.0)
             gap_thickness = float(min=0.0, default=0.0)
@@ -122,6 +131,12 @@
             htc_params_clad = float_list(default=None)
             pin_material = force_list(default=None)
             r_frac = force_list(default=list(0.0))
+        [[[Hotspot]]]
+            [[[[__many__]]]]
+                temperature = option('coolant', 'clad_od', 'clad_mw', 'clad_id', 'fuel_od', 'fuel_cl')
+                input_sigma = integer(min=0, default=3)
+                output_sigma = integer(min=0, default=2)
+                subfactors = string(default=None)
 
 
 [Orificing]
@@ -138,3 +153,7 @@
     regroup_improvement_tol = float(min=0.0, max=1.0, default=0.05)
     pressure_drop_limit = float(min=0.0, default=None)
     recycle_results = boolean(default=False)
+
+
+[Plot]
+    [[__many__]]

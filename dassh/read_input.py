@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-03-23
+date: 2023-02-28
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -182,25 +182,8 @@ class DASSHPlot_Input(LoggedClass):
         """Read and check DASSHPlot input data against the template"""
         # Read input with ConfigObj and check it against the template
         tmp_path = os.path.join(_ROOT, 'dasshplot_input_template.txt')
-        inp = ConfigObj(infile.splitlines(), configspec=tmp_path,
-                        raise_errors=True, file_error=True)
-
-        # Instantiate Validator object; check against the template
-        validator = Validator()
-        res = inp.validate(validator, preserve_errors=True)
-        if res is not True:
-            msg = ''
-            for (sec_list, key, _) in flatten_errors(inp, res):
-                if key is not None:
-                    msg += ('"%s" key in section "%s" failed validation'
-                            '; check that it meets the requirements'
-                            % (key, ', '.join(sec_list)) + '\n')
-                else:
-                    msg += ('Error found in the following '
-                            + 'section: %s ' % ', '.join(sec_list)
-                            + '; maybe missing required input?' + '\n')
-            self.log('error', msg)
-
+        inp = _configobj_load(self, infile, tmp_path)
+        _configobj_check_extra_kw(self, inp, only='Plot')
         return inp
 
     def load_from_reactor(self, infile, reactor):
@@ -464,13 +447,14 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
 
     Notes
     -----
-    DASSH input files contain 4 main sections and 2 optional sections:
-    1. File paths to ARC files: [ARC]
+    DASSH input files contain 4 main sections and 3 optional sections:
+    1. Power distribution details: [Power]
     2. Core parameters: [Core]
     3. Assembly details: [Assembly]
     4. Assembly assignments: [Assignment]
     5. (optional) Problem setup: [Setup]
     6. (optional) Custom material properties: [Materials]
+    7. (optional) Orificing optimization inputs: [Orificing]
 
     This object reads these inputs using the ConfigObj package,
     performs additional checks on those inputs beyond what is
@@ -479,7 +463,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
 
     """
 
-    def __init__(self, infile, empty4c=False):
+    def __init__(self, infile, empty4c=False, power_only=False):
         """Read and check the input data"""
         LoggedClass.__init__(self, 4, 'dassh.read_input.DASSH_Input')
         DASSH_Assignment.__init__(self)
@@ -496,9 +480,9 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         # Read all sections except Assignment into ConfigObj dict,
         # stored in instances as self.data; make sure that the main
         # required sections are present
-        self.get_input(str_infile)
+        self.data = _configobj_load(self, str_infile, self.tmp_path)
         self.check_configobj_sections()
-        self.check_for_extra_kw()
+        _configobj_check_extra_kw(self, self.data, skip='Plot')
 
         # Process Assignment text input; add to self.data
         self.data['Assignment'] = \
@@ -526,9 +510,11 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         self.check_fuel_model()
         self.check_pin_model()
         self.check_correlations()
+        self.check_spacergrid()
         # Assignment
         self.check_assignment_assembly_agreement()
-        self.check_assignment_boundary_conditions()
+        if not power_only:  # Can ignore BC if called through dassh_power
+            self.check_assignment_boundary_conditions()
         self.check_assignment_against_geodst(empty4c)
         self.convert_assn_deltaT_to_outletT()
         # Core
@@ -579,40 +565,6 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         clone.timepoints = copy.deepcopy(self.timepoints)
         clone.path = copy.deepcopy(self.path)
         return clone
-
-    def get_input(self, infile):
-        """Read input into dictionary using configobj.
-
-        Parameters
-        ----------
-        infile : str
-            File path to user-produced DASSH input file
-
-        Returns
-        -------
-        dict
-            Input file data
-
-        """
-        inp = ConfigObj(infile.splitlines(), configspec=self.tmp_path,
-                        raise_errors=True, file_error=True)
-        # Instantiate Validator object; check against the template
-        validator = Validator()
-        res = inp.validate(validator, preserve_errors=True)
-        if res is not True:
-            msg = ''
-            for (sec_list, key, _) in flatten_errors(inp, res):
-                if key is not None:
-                    msg += ('"%s" key in section "%s" failed validation'
-                            '; check that it meets the requirements'
-                            % (key, ', '.join(sec_list)) + '\n')
-                else:
-                    msg += ('Error found in the following '
-                            + 'section: %s ' % ', '.join(sec_list)
-                            + '; maybe missing required input?' + '\n')
-            self.log('error', msg)
-        # otherwise no errors, return data
-        self.data = inp
 
     def get_timepoints(self, infile):
         with open(infile, 'r') as f:
@@ -671,18 +623,6 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         """Get template config file for single- or multi-time input."""
         tmp_path = os.path.join(_ROOT, 'input_template.txt')
         return tmp_path
-
-    def check_for_extra_kw(self):
-        """If the user added anything funky, make sure it's known"""
-        extra_args = configobj.get_extra_values(self.data)
-        for x in extra_args:
-            msg = 'Warning: unrecognized input. '
-            section = '"//"'.join(x[0])
-            if section == '':
-                msg += f'section: "{x[1]}"'
-            else:
-                msg += f'section: "{section}"; keyword: "{x[1]}"'
-            self.log('warning', msg)
 
     ####################################################################
     # INPUT FILE VALIDATION
@@ -1035,7 +975,8 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         for asm in self.data['Assembly']:
             pre = f'Asm: "{asm}"; '  # indicate asm for error msg
             # For asm with default FuelModel entry: delete and continue
-            if self.data['Assembly'][asm]['FuelModel'] == _DEFAULT:
+            if all(_DEFAULT[k] == self.data['Assembly'][asm]['FuelModel'][k]
+                   for k in _DEFAULT.keys()):
                 del self.data['Assembly'][asm]['FuelModel']
                 continue
 
@@ -1128,7 +1069,8 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         for asm in self.data['Assembly']:
             pre = f'Asm: "{asm}"; '  # indicate asm for error msg
             # For asm with default PinModel entry: delete and continue
-            if self.data['Assembly'][asm]['PinModel'] == _DEFAULT:
+            if all(_DEFAULT[k] == self.data['Assembly'][asm]['PinModel'][k]
+                   for k in _DEFAULT.keys()):
                 del self.data['Assembly'][asm]['PinModel']
                 continue
             else:
@@ -1204,32 +1146,125 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
 
     def check_correlations(self):
         """Add some hard cutoffs on assembly characteristics to avoid
-        negative numbers"""
-        # Maximum P/D or W/D ratio for CTD/UCTD correlation
-        limit = 2.10
+        negative numbers.
+
+        Notes
+        -----
+        This check is based on determining what values of P/D or W/D
+        (W is edge pitch: the distance from the center of an edge pin
+        to the inner duct wall) are allowable by solving for the
+        quadratic roots based on the coefficients in Table 4 of the
+        1986 Cheng-Todreas paper.
+
+        There are two maximum values for P/D or W/D: one for laminar
+        flow, another for turbulent flow. The laminar flow value is
+        more restrictive. At the time this function is called, we
+        don't know what the flow regime is. Therefore, we use the
+        less restrictive value (turbulent) and will check again
+        later on.
+
+        """
+        # w2d_limit = 2.10889   # LAMINAR
+        # p2d_limit = 2.38024  # LAMINAR
+        w2d_limit = 3.33271   # TURBULENT
+        p2d_limit = 3.70617  # TURBULENT
         for asm in self.data['Assembly']:
-            pre = f'Asm: \"{asm}\"; '  # indicate asm for error msg
-            if any(corr in ['ctd', 'uctd'] for corr in
+            pre = f'Asm \"{asm}\"; '  # indicate asm for error msg
+            if any(corr.lower() in ('ctd', 'uctd') for corr in
                    [self.data['Assembly'][asm]['corr_friction'],
                     self.data['Assembly'][asm]['corr_flowsplit'],
                     self.data['Assembly'][asm]['corr_mixing']]):
-                # Calculate pitch-to-diameter ratio
-                p2d = (self.data['Assembly'][asm]['pin_pitch'] /
-                       self.data['Assembly'][asm]['pin_diameter'])
-                # Calculate edge gap-to-diameter ratio
+                # Pull stuff out of the dictionary, it's too much
+                d = self.data['Assembly'][asm]['pin_diameter']
+                p = self.data['Assembly'][asm]['pin_pitch']
+                p2d = p / d
+                nr = self.data['Assembly'][asm]['num_rings']
                 dftf = min(self.data['Assembly'][asm]['duct_ftf'])
-                w = (dftf + self.data['Assembly'][asm]['pin_diameter']
-                     - (np.sqrt(3)
-                        * (self.data['Assembly'][asm]['n_ring'] - 1)
-                        * self.data['Assembly'][asm]['pin_pitch']))
-                w2d = w / self.data['Assembly'][asm]['pin_diameter']
-                msg = pre + ('{:s} must be less than {:.2f} in order to '
-                             'guarantee that (U)CTD parameters remain '
-                             'non-negative.')
-                if p2d > limit:
-                    self.log('error', msg.format('P/D', limit))
-                if w2d > limit:
-                    self.log('error', msg.format('W/D', limit))
+                w = (dftf + d - (np.sqrt(3) * (nr - 1) * p))
+                w2d = w / d
+                msg = 'ERROR: ' + pre
+                if p2d > p2d_limit:
+                    msg += ('Bundle P/D is too large to be acceptable '
+                            'for CTD/UCTD correlations. Consider '
+                            'modifying pin bundle design.')
+                    self.log('error', msg)
+                if w2d > w2d_limit:
+                    msg += ('Gap between pin bundle and duct is too '
+                            'large to be acceptable by CTD/UCTD '
+                            'correlations. Consider modifying pin '
+                            'bundle dimensions.')
+                    self.log('error', msg)
+            if self.data['Assembly'][asm]['corr_mixing'] == 'KC-BARE':
+                if self.data['Assembly'][asm]['wire_diameter'] > 0.0:
+                    msg = 'WARNING: ' + pre
+                    msg += 'Using bare-rod correlation for turbulent ' \
+                           'mixing but specified nonzero wire diameter.'
+                    self.log('warning', msg)
+
+    def check_spacergrid(self):
+        """Check for correct spacer grid inputs"""
+        for a in self.data['Assembly']:
+            pre = f'Asm \"{a}\"; '  # indicate asm for error msg
+            if any(self.data['Assembly'][a]['SpacerGrid'].values()):
+                asm_input = self.data['Assembly'][a]
+
+                # Warn if assembly also has wire wrap - it'd be weird
+                # to have both
+                if asm_input['wire_diameter'] > 0.0:
+                    msg = f'WARNING: {pre}'
+                    msg += 'Bundle has both wire wrap and spacer grids'
+                    self.log('warning', msg)
+
+                # Axial positions must be in pin bundle (rodded) region
+                bnds = [asm_input['AxialRegion']['rods']['z_lo'],
+                        asm_input['AxialRegion']['rods']['z_hi']]
+                z_to_keep = []
+                for z in asm_input['SpacerGrid']['axial_positions']:
+                    if z < bnds[0] or z > bnds[1]:
+                        msg = f'WARNING: {pre}'
+                        msg += f'Spacer grid axial position "{z}" ' \
+                               'is outside pin bundle region; skipping'
+                        self.log('warning', msg)
+                    else:
+                        z_to_keep.append(z)
+                asm_input['SpacerGrid']['axial_positions'] = z_to_keep
+
+                # Input must have values for "z" (axial position)
+                if not asm_input['SpacerGrid']['axial_positions'] or \
+                        asm_input['SpacerGrid']['axial_positions'] == []:
+                    msg = f'ERROR: {pre}'
+                    msg += 'No acceptable spacer grid axial positions'
+                    self.log('error', msg)
+
+                # Checks for correlation inputs
+                if asm_input['SpacerGrid']['corr'] is not None:
+                    # Warn if solidity is undefined
+                    if asm_input['SpacerGrid']['solidity'] is None:
+                        msg = f'WARNING: {pre}'
+                        msg += 'Spacer grid solidity (A_grid / A_flow) ' \
+                               'is undefined; using default value'
+                        self.log('warning', msg)
+                        # Confirm that default relationship gives
+                        # meaningful result
+                        g = asm_input['pin_pitch'] - asm_input['pin_diameter']
+                        # Get conversion method to convert to m
+                        conv = utils.get_length_conversion(
+                            self.data['Setup']['Units']['length'], 'm')
+                        s = 0.6957 - 162.8 * conv(g)
+                        if s < 0.0 or s > 1.0:
+                            msg = f'ERROR: {pre}'
+                            msg += 'Default solidity relationship gives ' \
+                                f'result outside acceptable range (0-1): {s}'
+                            self.log('error', msg)
+                    # If CDD correlation is used, check coefficients
+                    if asm_input['SpacerGrid']['corr'].lower() == 'cdd' \
+                            and asm_input['SpacerGrid']['corr_coeff']:
+                        nc = len(asm_input['SpacerGrid']['corr_coeff'])
+                        if nc != 7:
+                            msg = f'ERROR: {pre}'
+                            msg += '"CDD" correlation requires 7 '\
+                                   f'coefficients; found {nc}'
+                            self.log('error', msg)
 
     def check_assignment_assembly_agreement(self):
         """Make sure all assigned assemblies are specified"""
@@ -1256,6 +1291,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
         """Confirm that all boundary conditions (flow rate or outlet
         temperature) are non-negative"""
         for i in range(len(self.data['Assignment']['ByPosition'])):
+            msg = f'ERROR: Assignment section line {i}: '
             assn = self.data['Assignment']['ByPosition'][i]
             if assn == []:
                 continue
@@ -1267,15 +1303,13 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                     bc = key
                     nkwarg += 1
             if nkwarg == 0:
-                self.log('error', f'Assignment section line {i}: '
-                                  'missing boundary condition')
+                self.log('error', msg + 'missing boundary condition')
             if nkwarg > 1:
-                self.log('error', f'Assignment section line {i}: '
-                                  'too many boundary conditions given')
+                self.log('error', msg + 'too many boundary conditions given')
 
             # Check that value is nonnegative
-            msg = (f'Assignment section line {i}: \"{bc}\" must be '
-                   f'positive but was given {assn[2][bc]}')
+            msg = (msg + f'\"{bc}\" must be positive but '
+                   f'was given {assn[2][bc]}')
             self._check_nonzero(assn[2][bc], msg)
 
     def convert_assn_deltaT_to_outletT(self):
@@ -1476,7 +1510,7 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
     def check_dump(self):
         """Check specifications for dumping temperatures"""
         keys = ['all', 'coolant', 'duct', 'pins', 'gap',
-                'average', 'maximum', 'gap_fine']
+                'average', 'maximum', 'gap_fine', 'pressure_drop']
         warn = False
         for k in self.data['Setup']['Dump'].keys():
             if k == 'interval':
@@ -2023,6 +2057,86 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
 
 
 ########################################################################
+# GENERAL CONFIGOBJ METHODS
+########################################################################
+
+
+def _configobj_load(dassh_inp_object, infile, path_to_template):
+    """Read input into dictionary using configobj.
+
+    Parameters
+    ----------
+    dassh_inp_object : DASSH_Input or DASSHPlot_Input object
+        DASSH input handler
+    infile : str
+        User-produced DASSH input file
+    path_to_template : str
+        File path to Configobj input template
+
+    Returns
+    -------
+    dict
+        Input file data
+
+    """
+    inp = ConfigObj(infile.splitlines(), configspec=path_to_template,
+                    raise_errors=True, file_error=True)
+    # Instantiate Validator object; check against the template
+    validator = Validator()
+    res = inp.validate(validator, preserve_errors=True)
+    if res is not True:
+        msg = ''
+        for (sec_list, key, _) in flatten_errors(inp, res):
+            if key is not None:
+                msg += ('"%s" key in section "%s" failed validation'
+                        '; check that it meets the requirements'
+                        % (key, ', '.join(sec_list)) + '\n')
+            else:
+                msg += ('Error found in the following '
+                        + 'section: %s ' % ', '.join(sec_list)
+                        + '; maybe missing required input?' + '\n')
+        dassh_inp_object.log('error', msg)
+    # otherwise no errors, return data
+    return inp
+
+
+def _configobj_check_extra_kw(dassh_inp_obj, inp_data, only=None, skip=None):
+    """If the user added anything funky, make sure it's known
+
+    Parameters
+    ----------
+    dassh_inp_object : DASSH_Input or DASSHPlot_Input object
+        DASSH input handler
+    input_data : dict
+        Input file data from ConfigObj
+    only (optional) : str
+        Check arguments for a specific section (default=None)
+    skip (optional) : str
+        Skip a specific section (default=None)
+
+    Returns
+    -------
+    None
+
+    """
+    extra_args = configobj.get_extra_values(inp_data)
+    for x in extra_args:
+        msg = 'Warning: unrecognized input. '
+        if len(x[0]) > 0:
+            sec = '"//"'.join(x[0])
+            msg += f'Section: "{sec}"'
+            msg += f'; keyword: "{x[1]}"'
+        else:
+            msg += f'Section: "{x[1]}"'
+        if only is not None and only not in msg:
+            continue
+        elif skip is not None and skip in msg:
+            continue
+        else:
+            dassh_inp_obj.log('warning', msg)
+
+
+########################################################################
 # AXIAL REGION BOUNDARY MATCHING
 ########################################################################
 
@@ -2155,6 +2269,16 @@ def convert_length(data):
             data['Assembly'][a]['FuelModel']['gap_thickness'] = \
                 conv(data['Assembly'][a]['FuelModel']['gap_thickness'])
 
+        if 'PinModel' in data['Assembly'][a].keys():
+            data['Assembly'][a]['PinModel']['gap_thickness'] = \
+                conv(data['Assembly'][a]['PinModel']['gap_thickness'])
+
+        if data['Assembly'][a]['SpacerGrid']['axial_positions']:
+            kz = 'axial_positions'
+            for i in range(len(data['Assembly'][a]['SpacerGrid'][kz])):
+                data['Assembly'][a]['SpacerGrid'][kz][i] = \
+                    conv(data['Assembly'][a]['SpacerGrid'][kz][i])
+
     # Convert requested axial plane solves
     if data['Setup']['axial_plane'] is not None:
         for i in range(len(data['Setup']['axial_plane'])):
@@ -2170,6 +2294,9 @@ def convert_length(data):
     if data['Setup']['Dump']['interval'] is not None:
         data['Setup']['Dump']['interval'] = \
             conv(data['Setup']['Dump']['interval'])
+    else:
+        # SET DEFAULT DUMP INTERVAL: 1 cm
+        data['Setup']['Dump']['interval'] = 0.01
 
     # Convert duct approx cutoff
     if data['Setup']['conv_approx_dz_cutoff'] is not None:
@@ -2217,3 +2344,77 @@ def convert_mass_flow_rate(data):
                                   ['ByPosition']
                                   [i][2]['flowrate']))
     return data
+
+
+########################################################################
+
+
+class DASSHPower_Input(DASSH_Input, LoggedClass):
+    """Object for processing DASSH input files for pin power
+    integration only.
+
+    Parameters
+    ----------
+    infile : str
+        Path to DASSH input file
+
+    Notes
+    -----
+    The standard DASSH input file requires information that is not
+    relevant for pin power integration (e.g. mass flow rates). This
+    object allows the user to specify a partial DASSH input file and
+    fills in the missing information with dummy values so that the
+    standard DASSH infrastructure can be used.
+
+    """
+    def __init__(self, infile):
+        # Initial object setup and inheritance
+        LoggedClass.__init__(self, 4, 'dassh.read_input.DASSHPower_Input')
+        DASSH_Assignment.__init__(self)
+        self.path = os.path.split(infile)[0]
+
+        # Fill out potentially missing sections.
+        with open(infile, 'r') as f:
+            infile_str = f.read()
+
+        # Since most DASSH inputs have defaults or are optional,
+        # the only required inputs that could be missing (if only
+        # the necessary information is given) are in the [Core]
+        # input section
+        # Add dummy for "coolant_inlet_temp"; units don't matter
+        # because no temperature calculations are performed.
+        if 'coolant_inlet_temp' not in infile_str:
+            str_to_add = '\n    coolant_inlet_temp = 500.0'
+            tag = infile_str.find('[Core]')
+            tag = infile_str.find('\n', tag)
+            infile_str = infile_str[:tag] + str_to_add + infile_str[tag:]
+        # Add dummy for "coolant_material"
+        if 'coolant_material' not in infile_str:
+            str_to_add = '\n    coolant_material = sodium'
+            tag = infile_str.find('[Core]')
+            tag = infile_str.find('\n', tag)
+            infile_str = infile_str[:tag] + str_to_add + infile_str[tag:]
+
+        # Write new input to temp input file
+        path, fname = os.path.split(infile)
+        tmp = os.path.join(path, '.' + fname)
+        with open(tmp, 'w') as f:
+            f.write(infile_str)
+
+        # Activate standard DASSH_Input object and remove temp input file
+        DASSH_Input.__init__(self, tmp, power_only=True)
+        os.remove(tmp)
+
+        # Add dummy conditions to Assignment section if missing
+        # (Attributes were added by inheriting the DASSH_Input object)
+        k1 = 'Assignment'
+        k2 = 'ByPosition'
+        for i in range(len(self.data[k1][k2])):
+            # Skip if empty
+            if self.data[k1][k2][i]:
+                # Proceed only if missing the assignment condition
+                if not self.data[k1][k2][i][2]:
+                    # Assign arbitrary flow rate condition; not
+                    # concerned about units or constraints because
+                    # there will be no sweep.
+                    self.data[k1][k2][i][2] = {'flowrate': 5.0}
