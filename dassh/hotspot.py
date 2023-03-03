@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2023-02-28
+date: 2023-03-02
 author: matz
 comment: Hot spot analysis via the semistatistical horizontal method
 """
@@ -128,26 +128,29 @@ def analyze(r_obj):
             # Collect assembly IDs that match the name
             ids = [a.id for a in r_obj.assemblies if a.name == asm_name]
             n_asm = len(ids)
-            # Do each hotspot calc
-            for k in _REGIONS:
-
+            for k in _REGIONS:  # Do each hotspot calc
                 if k in hs.keys():
                     # Add assembly IDs/names to relevant list
                     asm_ids[k] += ids
                     asm_names[k] += [asm_name for i in range(n_asm)]
+                    # Pull dT from the assembly
                     dT = _get_peak_dt(r_obj, asm_name, k)
-                    cols = _COLS_NEEDED[k]
-                    subf, expr = _read_hcf_table(hs[k]['subfactors'], cols)
+                    # Read the HCF from the table at the specified path
+                    subf, expr = _read_hcf_table(
+                        hs[k]['subfactors'],
+                        _COLS_NEEDED[k])
+                    # Split the clad OD-MW and MW-ID subfactors
                     if k in ('clad_id', 'fuel_od', 'fuel_cl'):
                         subf, expr = _split_clad_subfactors(subf, expr)
                     subf = _evaluate_hcf_expr(subf, expr, dT)
+                    # Crop the subfactors table based on the size of dT
+                    for typ in subf.keys():
+                        subf[typ] = subf[typ][:, :, :dT.shape[1]]
+                    # Do the calculations
                     peak_temps[k].append(
                         calculate_temps(r_obj.inlet_temp, dT, subf,
                                         IN_sigma=hs[k]['input_sigma'],
                                         OUT_sigma=hs[k]['output_sigma']))
-                # else:
-                #     empty_fill = np.zeros(n_asm)
-                #     peak_temps[k].append(empty_fill)
 
     # Need to sort! Create lists of ids, names, and temps. Sort
     # all according to ids. Then write into output table
@@ -163,14 +166,7 @@ def analyze(r_obj):
             order = np.argsort(asm_ids[k])
             asm_ids[k] = [asm_ids[k][i] for i in order]
             asm_names[k] = [asm_names[k][i] for i in order]
-            try:
-                # peak_temps[k] = np.hstack(peak_temps[k])
-                peak_temps[k] = np.vstack(peak_temps[k])
-            except:
-                print(k)
-                for x in peak_temps[k]:
-                    print(x.shape)
-                raise
+            peak_temps[k] = np.vstack(peak_temps[k])
             peak_temps[k] = peak_temps[k][order]
     # return peak_temps, asm_ids, asm_names
     return peak_temps, asm_ids

@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2023-02-28
+date: 2023-03-02
 author: matz
 Object to hold and control DASSH components and execute simulations
 """
@@ -744,21 +744,12 @@ class Reactor(LoggedClass):
         gap_fr = inp_obj.data['Core']['bypass_fraction'] * self.flow_rate
 
         # Estimate outlet temperature based on core power
-        # print(t_in, self.total_power, total_fr)
         cool_mat = inp_obj.data['Core']['coolant_material'].lower()
-        # print(self.total_power, self.inlet_temp, self.flow_rate)
         t_out = dassh.utils.Q_equals_mCdT(self.total_power,
                                           self.inlet_temp,
                                           self.materials[cool_mat],
                                           mfr=self.flow_rate)
 
-        # Instantiate and load core object
-        # core_obj = dassh.core.Core(
-        #     geodst,
-        #     gap_fr,
-        #     self.materials[inp_obj.data['Core']['coolant_material'].lower()],
-        #     inlet_temperature=self.inlet_temp,
-        #     model=inp_obj.data['Core']['gap_model'])
         _asm = np.ones(len(inp_obj.data['Assignment']['ByPosition']))
         _asm *= np.nan
         for a in self.assemblies:
@@ -1597,7 +1588,6 @@ class Reactor(LoggedClass):
 
         # Load data for postprocessing
         f = os.path.join(self.path, 'temp_pin.csv')
-        print(list_ax_pos)
         temps = dassh.plot._load_data(f, list_ax_pos, list_asm_id_b0)
 
         # Initialize array for each assembly being dumped
