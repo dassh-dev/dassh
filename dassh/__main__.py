@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-12-19
+date: 2023-03-02
 author: matz
 Main DASSH calculation procedures
 """
@@ -59,7 +59,7 @@ def main(args=None):
     print(dassh._ascii._ascii_title)
     in_path = os.path.split(args.inputfile)[0]
     dassh_logger = dassh.logged_class.init_root_logger(in_path, 'dassh')
-    dassh_logger.info("DASSH logger initialized")
+    dassh_logger.info(f"DASSH v{dassh.__version__} logger initialized")
 
     # Pre-processing
     # Read input file and set up DASSH input object

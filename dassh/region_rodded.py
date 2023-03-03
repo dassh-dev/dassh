@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-12-20
+date: 2023-03-02
 author: matz
 Methods to describe the components of hexagonal fuel typical of
 liquid metal fast reactors
@@ -124,7 +124,6 @@ def make(inp, name, mat, fr, se2geo=False, update_tol=0.0, gravity=False):
                  0.86, 0.86, 4.0 + 0.16 * p2d**5]
         inp['PinModel']['pin_material'] = \
             [x.clone() for x in mat['pin']]
-        print(inp['PinModel'])
         rr.pin_model = PinModel(inp['pin_diameter'],
                                 inp['clad_thickness'],
                                 mat['clad'],
