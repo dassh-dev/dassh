@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2022-05-17
+date: 2023-03-13
 author: matz
 Methods to plot DASSH objects (such as hexagonal fuel assemblies and
 the pins and subchannels that comprise them).
@@ -739,7 +739,6 @@ class SubchannelPlot(AssemblyPlot):
         xy = self.sc['xy'][np.where(self.sc['type'] == 1)]
         if xy_shift is not None:
             xy += xy_shift
-
         z = data[np.where(self.sc['type'] == 1)]
         # Need to loop over sides to properly orient each square to
         # be flush with the duct wall
@@ -747,26 +746,32 @@ class SubchannelPlot(AssemblyPlot):
         shift = np.zeros((6, 2))
         # patches.Rectangle plots from the LOWER LEFT corner rather
         # than center - need to shift each rectangle based on angle.
-        shift[0] = [-self.sc['radius'][1][1], 0.0]
+        hyp = np.sqrt(self.sc['radius'][1][0]**2 + self.sc['radius'][1][1]**2)
+        psi = np.arccos(self.sc['radius'][1][0] / hyp)
+        # Offset for sides 1 and 4
+        x_offset1 = np.sin(np.pi / 3 + psi) * 0.5 * hyp
+        y_offset1 = np.cos(np.pi / 3 + psi) * 0.5 * hyp
+        # Offset for sides 3 and 5
+        x_offset2 = np.cos(np.pi / 6 + psi) * 0.5 * hyp
+        y_offset2 = np.sin(np.pi / 6 + psi) * 0.5 * hyp
+        shift[0] = [-x_offset1, y_offset1]
         shift[1] = [-0.5 * self.sc['radius'][1][1],
                     0.5 * self.sc['radius'][1][0]]
-        shift[2] = [0.5 * self.sc['radius'][1][1],
-                    np.sqrt(3) * 0.5 * self.sc['radius'][1][1]]
-        shift[3] = [self.sc['radius'][1][1], 0.0]
+        shift[2] = [x_offset2, y_offset2]
+        shift[3] = [x_offset1, -y_offset1]
         shift[4] = [0.5 * self.sc['radius'][1][1],
                     -0.5 * self.sc['radius'][1][0]]
-        shift[5] = [-0.5 * self.sc['radius'][1][1],
-                    -np.sqrt(3) * 0.5 * self.sc['radius'][1][1]]
+        shift[5] = [-x_offset2, -y_offset2]
         edge_sq = []
         for i in range(6):
             side_xy = xy[i * sc_edge_side:(i + 1) * sc_edge_side]
             side_xy += shift[i]
-            edge_sq += [mpl.patches.Rectangle(
-                (xi, yi),
-                self.sc['radius'][1][0],
-                self.sc['radius'][1][1],
-                angle=self.sc['angle'][1][i])
-                for xi, yi in zip(side_xy[:, 0], side_xy[:, 1])]
+            for xi, yi in zip(side_xy[:, 0], side_xy[:, 1]):
+                edge_sq.append(mpl.patches.Rectangle(
+                    (xi, yi),
+                    self.sc['radius'][1][0],
+                    self.sc['radius'][1][1],
+                    angle=self.sc['angle'][1][i]))
         edge_sq = mpl.collections.PatchCollection(edge_sq, **kwargs)
         edge_sq.set_array(z)
         ax.add_collection(edge_sq)

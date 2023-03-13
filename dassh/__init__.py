@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2023-03-02
+date: 2023-03-13
 author: Milos Atz, Micheal Smith
 """
 ########################################################################
@@ -46,4 +46,4 @@ import dassh.py4c as py4c
 np.set_printoptions(threshold=sys.maxsize, linewidth=500)
 
 
-__version__ = '0.12.1'
+__version__ = '0.12.2'
