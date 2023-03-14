@@ -1175,11 +1175,13 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                     self.data['Assembly'][asm]['corr_flowsplit'],
                     self.data['Assembly'][asm]['corr_mixing']]):
                 # Pull stuff out of the dictionary, it's too much
+                # Note that units are not converted yet here, but because
+                # we're interested in the ratios rather than the absolute
+                # values, that should be okay.
                 d = self.data['Assembly'][asm]['pin_diameter']
                 p = self.data['Assembly'][asm]['pin_pitch']
                 p2d = p / d
                 nr = self.data['Assembly'][asm]['num_rings']
-
                 duct_ftf = min(self.data['Assembly'][asm]['duct_ftf'])
                 bundle_ftf = np.sqrt(3) * (nr - 1) * p + d
                 gap = 0.5 * (duct_ftf - bundle_ftf)
