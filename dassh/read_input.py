@@ -14,7 +14,7 @@
 # permissions and limitations under the License.
 ########################################################################
 """
-date: 2023-02-28
+date: 2023-03-14
 author: Milos Atz
 This module defines the object that reads the DASSH input file
 into Python data structures.
@@ -1179,8 +1179,11 @@ class DASSH_Input(DASSHPlot_Input, DASSH_Assignment, LoggedClass):
                 p = self.data['Assembly'][asm]['pin_pitch']
                 p2d = p / d
                 nr = self.data['Assembly'][asm]['num_rings']
-                dftf = min(self.data['Assembly'][asm]['duct_ftf'])
-                w = (dftf + d - (np.sqrt(3) * (nr - 1) * p))
+
+                duct_ftf = min(self.data['Assembly'][asm]['duct_ftf'])
+                bundle_ftf = np.sqrt(3) * (nr - 1) * p + d
+                gap = 0.5 * (duct_ftf - bundle_ftf)
+                w = gap + d
                 w2d = w / d
                 msg = 'ERROR: ' + pre
                 if p2d > p2d_limit:
