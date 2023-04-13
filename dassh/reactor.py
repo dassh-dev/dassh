@@ -1288,7 +1288,7 @@ class Reactor(LoggedClass):
         out += flow.generate(self)
 
         # Write to output file
-        with open(os.path.join(self.path, 'dassh.out'), 'w') as f:
+        with open(os.path.join(self.path, 'dassh.out'), 'w', encoding='utf8') as f:
             f.write(out)
 
     def write_output_summary(self, hotspot_data=None):
