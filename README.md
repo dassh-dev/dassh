@@ -7,6 +7,12 @@
 
 The Ducted Assembly Steady State Heat Transfer Software (DASSH) is an open-source tool for calculating temperature and flow distributions in hexagonal, ducted assemblies comprised of wire-wrapped pin bundles. DASSH is intended for use during the design process to provide a rapid assessment of the flow and temperature distribution, especially when assembly designs are in their early stages and not fully developed.
 
+## Important Note 
+
+This python version of DASSH is now considered obsolete and has been replaced with the Fortran version of DASSH (herein referred to as DASSH-F).
+DASSH-F can be acquired by emailing `nera-software@anl.gov` to apply for access.
+As such, this repository is no longer actively being maintained or updated.
+
 ## Installation
 DASSH requires Python 3.6+. Detailed installation instructions can be found in the [user guide](https://github.com/dassh-dev/documents/blob/master/user_guide.pdf).
 
@@ -17,7 +23,12 @@ If you use DASSH in your research, please consider citing the following conferen
 * Milos Atz, Micheal A. Smith, Florent Heidet, "Ducted Assembly Steady State Heat Transfer Software (DASSH) - User Guide", ANL/NSE-21/34, Argonne National Laboratory, 2021.
 
 ## Troubleshooting and reporting bugs
-If you encounter issues installing or running DASSH or would like to report a bug, please reach out to the developer via `matz [at] anl [dot] gov`
+
+If you encounter issues installing or running DASSH or would like to report a bug, please reach out to the developer via `nera-software@anl.gov` or open an Issue.
+
+## Contributing
+
+If you would like to contribute, please refer the [guidelines here](./CONTRIBUTING.md).
 
 ## Documentation
 * User guide: https://github.com/dassh-dev/documents/blob/master/user_guide.pdf
